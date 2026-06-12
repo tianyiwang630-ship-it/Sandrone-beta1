@@ -46,7 +46,6 @@ workspace/*.py
 !workspace/temp/.gitkeep
 
 # agent-alpha 本地运行目录
-/home/
 /bin/
 /userfile/
 /cache/
@@ -54,6 +53,11 @@ workspace/*.py
 /data/
 /state/
 /config/appdata/
+# home 只忽略运行态内容，但保留 skills
+/home/*
+!/home/.agents/
+!/home/.agents/skills/
+!/home/.agents/skills/**
 
 # 输入输出文件目录
 /input files/

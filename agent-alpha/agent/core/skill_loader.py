@@ -61,6 +61,9 @@ class SkillLoader:
         """Return the full skill body in tool_result-friendly markup."""
         skill = self.skills.get(name)
         if not skill:
+            self.reload()
+            skill = self.skills.get(name)
+        if not skill:
             available = ", ".join(sorted(self.skills)) or "(none)"
             return f"Error: Unknown skill '{name}'. Available: {available}"
         return f'<skill name="{name}">\n{skill["body"]}\n</skill>'

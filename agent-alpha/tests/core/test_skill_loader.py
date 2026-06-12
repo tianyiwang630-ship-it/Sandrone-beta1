@@ -137,6 +137,31 @@ Review carefully.
         cleanup_test_dir(tmp_dir)
 
 
+def test_skill_loader_reloads_once_when_skill_was_installed_after_startup():
+    tmp_dir = make_test_dir("skill-loader")
+    try:
+        skills_dir = tmp_dir / "skills"
+        skills_dir.mkdir(parents=True)
+
+        loader = SkillLoader(skills_dir)
+
+        skill_dir = skills_dir / "fresh"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            """---
+name: fresh
+description: Newly installed skill
+---
+Fresh skill body.
+""",
+            encoding="utf-8",
+        )
+
+        assert loader.get_content("fresh") == '<skill name="fresh">\nFresh skill body.\n</skill>'
+    finally:
+        cleanup_test_dir(tmp_dir)
+
+
 def test_skill_loader_reads_primary_and_agent_home_skill_dirs():
     tmp_dir = make_test_dir("skill-loader")
     try:

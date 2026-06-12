@@ -41,3 +41,6 @@
 | c72a8d | 06-11 15:48 | 1 | workspace | session-log/logs/2026-06-11_15-48-54_session_c72a8d.json | 你好，你能登上我的twitter吗 |
 | a4cfbd | 06-11 15:50 | 3 | workspace | session-log/logs/2026-06-11_15-50-08_session_a4cfbd.json | 你好，你能登上我的twitter吗 |
 | a969fd | 06-11 16:02 | 8 | workspace | session-log/logs/2026-06-11_16-03-44_session_a969fd.json | agent-alpha\session-log\logs是你的运行日志，你去看一下超过3000行的日志，然后分析一下每一个日志的脉络，同时找出ai出错的地方；你在workspace创建一个文件夹，06 |
+| f3f029 | 06-12 11:40 | 4 | workspace | session-log/logs/2026-06-12_11-40-22_session_f3f029.json | https://github.com/lijigang/ljg-skills.git 安装这个skill |
+| f54ad4 | 06-12 11:47 | 1 | workspace | session-log/logs/2026-06-12_11-47-31_session_f54ad4.json | 你有哪些skill |
+| 3b6179 | 06-12 16:44 | 8 | workspace | session-log/logs/2026-06-12_16-44-33_session_3b6179.json | 你有哪些skill |

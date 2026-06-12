@@ -5,6 +5,7 @@ Bash Tool - 像 Claude Code 一样执行 bash 命令
 import subprocess
 import platform
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -252,11 +253,48 @@ class BashTool(BaseTool):
         except ValueError as exc:
             return self._working_dir_error(str(exc), command)
 
+        misplaced_path_error = self._detect_project_root_prefixed_runtime_path(command, cwd)
+        if misplaced_path_error:
+            return self._working_dir_error(misplaced_path_error, command)
+
         return {
             "success": True,
             "command": command,
             "cwd": cwd,
         }
+
+    def _detect_project_root_prefixed_runtime_path(self, command: str, cwd: Path) -> str | None:
+        try:
+            cwd.resolve().relative_to(self.project_root)
+        except ValueError:
+            return None
+
+        protected_runtime_dirs = (
+            "home",
+            "temp",
+            "skills",
+            "cache",
+            "config",
+            "state",
+            "workspace",
+        )
+        project_name = re.escape(self.project_root.name)
+        dirs = "|".join(re.escape(item) for item in protected_runtime_dirs)
+        pattern = re.compile(
+            rf"(?<![\w.:\-/\\])(?:\./)?{project_name}[\\/](?:{dirs})(?:[\\/]|$)",
+            re.IGNORECASE,
+        )
+        match = pattern.search(command)
+        if not match:
+            return None
+
+        bad_path = match.group(0).replace("\\", "/").rstrip("/")
+        relative_path = bad_path.split("/", 1)[1] if "/" in bad_path else bad_path
+        return (
+            "当前 bash 已经在 AGENT_ALPHA_ROOT 内部，不要写 "
+            f"`{bad_path}/...`。请改用 `{relative_path}/...`；"
+            "例如使用 `temp/...`、`home/.agents/skills/...` 或 `skills/...`。"
+        )
 
     def _resolve_working_dir(self, working_dir: str | Path | None) -> Path:
         if working_dir in (None, ""):

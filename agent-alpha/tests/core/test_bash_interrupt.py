@@ -62,6 +62,49 @@ def test_bash_tool_interrupt_kills_process_tree(monkeypatch, tmp_path):
     assert result["stderr"] == "partial stderr"
 
 
+def test_bash_tool_rejects_project_root_prefixed_runtime_paths(monkeypatch, tmp_path):
+    project_root = tmp_path / "agent-alpha"
+    project_root.mkdir()
+    popen_called = False
+
+    monkeypatch.setattr(BashTool, "_detect_shell", lambda self: setattr(self, "shell", "cmd"))
+
+    def fake_popen(*args, **kwargs):
+        nonlocal popen_called
+        popen_called = True
+        return FakePopen()
+
+    monkeypatch.setattr("agent.tools.bash_tool.subprocess.Popen", fake_popen)
+
+    tool = BashTool(project_root=project_root)
+    result = tool.execute(
+        command=(
+            "mkdir -p agent-alpha/temp/skill-install && "
+            "cp -r agent-alpha/temp/skill-install/repo/skills/* agent-alpha/home/.agents/skills/"
+        )
+    )
+
+    assert result["success"] is False
+    assert "当前 bash 已经在 AGENT_ALPHA_ROOT 内部" in result["error"]
+    assert "temp/..." in result["error"]
+    assert popen_called is False
+
+
+def test_bash_tool_allows_absolute_project_runtime_paths(monkeypatch, tmp_path):
+    project_root = tmp_path / "agent-alpha"
+    project_root.mkdir()
+    fake_proc = FakePopen()
+    fake_proc.returncode = 0
+
+    monkeypatch.setattr(BashTool, "_detect_shell", lambda self: setattr(self, "shell", "cmd"))
+    monkeypatch.setattr("agent.tools.bash_tool.subprocess.Popen", lambda *args, **kwargs: fake_proc)
+
+    tool = BashTool(project_root=project_root)
+    result = tool.execute(command=f'echo ok > "{project_root / "temp" / "out.txt"}"')
+
+    assert result["command"].startswith("echo ok")
+
+
 def test_terminate_process_tree_uses_taskkill_on_windows(monkeypatch):
     calls = []
     fake_proc = FakePopen()

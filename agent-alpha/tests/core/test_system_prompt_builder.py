@@ -72,6 +72,9 @@ def test_system_prompt_includes_runtime_paths_skills_mcp_and_prompt_docs():
     assert "tokens, cookies, API keys, auth headers, proxies" in prompt
     assert "not path policy" in prompt
     assert "## Bash Runtime" in prompt
+    assert "bash cwd is already AGENT_ALPHA_ROOT" in prompt
+    assert "Use `home/...`, `temp/...`, `skills/...`" in prompt
+    assert "agent-alpha/agent-alpha" in prompt
     assert "General CLI commands are allowed" in prompt
     assert "do not explicitly write outside agent-alpha" in prompt
     assert "Do not install skill bodies into ~/.claude/skills" in prompt

@@ -15,6 +15,16 @@ Install skill bodies preferably into:
 agent-alpha/home/.agents/skills/<skill-name>
 ```
 
+When writing bash commands, remember that bash already runs with cwd set to `AGENT_ALPHA_ROOT`, the `agent-alpha` directory itself. In bash command arguments, use project-root-relative paths without the `agent-alpha/` prefix:
+
+```text
+home/.agents/skills/<skill-name>
+temp/skill-install/<source-name>
+skills/<skill-name>
+```
+
+Do not write bash commands like `agent-alpha/home/...`, `agent-alpha/temp/...`, or `agent-alpha/skills/...`; they create a wrong nested `agent-alpha/agent-alpha/...` path.
+
 `load_skill` also reads the compatibility directory:
 
 ```text
@@ -101,7 +111,7 @@ Do not create, edit, delete, move, or overwrite ordinary files outside agent-alp
    - local directory
    - GitHub repository URL
    - GitHub repository subpath
-2. If the source is GitHub, clone or download it into `agent-alpha/temp/skill-install/<source-name>`.
+2. If the source is GitHub, clone or download it into `temp/skill-install/<source-name>` from bash. Conceptually, this is `agent-alpha/temp/skill-install/<source-name>`.
 3. Read installation documents before copying:
    - `README.md`
    - `INSTALL.md`
@@ -114,8 +124,8 @@ Do not create, edit, delete, move, or overwrite ordinary files outside agent-alp
    - prefer `SKILL.md` frontmatter `name`
    - otherwise use the skill directory name
    - for packs, prefix with the pack name if needed to avoid conflicts, such as `superpowers-brainstorming`
-6. Copy the skill body into `agent-alpha/home/.agents/skills/<skill-name>`.
-7. Translate third-party target paths to alpha paths. Example: if a README says `~/.claude/skills/agent-reach`, use `agent-alpha/home/.agents/skills/agent-reach`.
+6. Copy the skill body into `home/.agents/skills/<skill-name>` from bash. Conceptually, this is `agent-alpha/home/.agents/skills/<skill-name>`.
+7. Translate third-party target paths to alpha paths. Example: if a README says `~/.claude/skills/agent-reach`, use `home/.agents/skills/agent-reach` in bash commands.
 
 ## Dependency Rules
 
@@ -126,10 +136,10 @@ Python dependencies and Python CLI tools must install into `agent-alpha/.venv`.
 Prefer:
 
 ```text
-agent-alpha/.venv/Scripts/python.exe -m pip install <packages>
-agent-alpha/.venv/bin/python -m pip install <packages>
-uv pip install --python agent-alpha/.venv/Scripts/python.exe <packages>
-uv pip install --python agent-alpha/.venv/bin/python <packages>
+.venv/Scripts/python.exe -m pip install <packages>
+.venv/bin/python -m pip install <packages>
+uv pip install --python .venv/Scripts/python.exe <packages>
+uv pip install --python .venv/bin/python <packages>
 ```
 
 Allowed only when it resolves to `agent-alpha/.venv`:
@@ -157,7 +167,7 @@ installing into user site-packages
 installing into another project's virtualenv
 ```
 
-If a README asks to install a Python CLI with `pipx install ...` or `uv tool install ...`, translate it to an alpha venv install first. For example, use `agent-alpha/.venv/Scripts/python.exe -m pip install ...` on Windows or `agent-alpha/.venv/bin/python -m pip install ...` on Linux/macOS.
+If a README asks to install a Python CLI with `pipx install ...` or `uv tool install ...`, translate it to an alpha venv install first. For example, use `.venv/Scripts/python.exe -m pip install ...` on Windows or `.venv/bin/python -m pip install ...` on Linux/macOS.
 
 npm and Go global installs keep host-global meaning:
 

@@ -82,6 +82,8 @@ Logs directory: {logs_line}
 
 ## Bash Runtime
 - Bash commands run with cwd={Path(skills_dir).parent}.
+- Because bash cwd is already AGENT_ALPHA_ROOT, do not prefix project-local bash paths with `agent-alpha/`. Use `home/...`, `temp/...`, `skills/...`, `cache/...`, `config/...`, `state/...`, or `workspace/...` in bash commands. For example, clone skills into `temp/skill-install/<repo>` and install third-party skill bodies into `home/.agents/skills/<skill-name>`.
+- Bash commands that write to `agent-alpha/home`, `agent-alpha/temp`, `agent-alpha/skills`, `agent-alpha/cache`, `agent-alpha/config`, `agent-alpha/state`, or `agent-alpha/workspace` are wrong in this runtime because they would create nested paths such as `agent-alpha/agent-alpha/...`.
 - agent-alpha/.venv/Scripts or agent-alpha/.venv/bin and agent-alpha/bin are placed at the front of PATH, so Python CLI tools installed in the alpha venv can be called directly when available.
 - Bash receives the project-local runtime env above plus persistent variables from {Path(skills_dir).parent / "config" / "runtime_env.local.json"}.
 - General CLI commands are allowed when they do not match dangerous system commands and do not explicitly write outside agent-alpha or the current workspace.

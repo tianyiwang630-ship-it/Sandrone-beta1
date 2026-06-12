@@ -17,6 +17,10 @@ def test_install_alpha_skill_is_available_and_contains_path_rules():
     content = loader.get_content("install-alpha-skill")
 
     assert "agent-alpha/home/.agents/skills/<skill-name>" in content
+    assert "bash already runs with cwd set to `AGENT_ALPHA_ROOT`" in content
+    assert "home/.agents/skills/<skill-name>" in content
+    assert "temp/skill-install/<source-name>" in content
+    assert "Do not write bash commands like `agent-alpha/home/...`" in content
     assert "agent-alpha/skills/<skill-name>" in content
     assert "~/.claude/skills" in content
     assert "agent-alpha/.venv" in content

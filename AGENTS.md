@@ -16,7 +16,7 @@ agent-beta也是focus的项目，是打算从0开始新建一个，和agent-alph
 期望改的目标：1 减少冗余代码 2 优化代码架构 3 提高配置灵活性和模块化，包括但是不限于记忆模块、压缩模块、自我模块和情感模块 4 提升鲁棒性 5 每一个agent类，可以输入工作路径、自动识别agent人格md文档，便于多agent编排
 agent-alpha\路径管理说明.md是alpha项目的路径管理
 # 当下进展
-要完善agent实例化，并且要能达到安装learning proj里的agent reach这样的cli工具skill，以及良好的subagent/cron功能，且可以为日后多agent编排打下基础
+
 
 # 约束
 1 在借鉴openclaw hermes codex等agent的某处设计时，不得设计这些agent所没有的新设计，这样一定会让事情变得无谓的复杂，如果一个设计不在openclaw hermes codex出现，那么就是非必要的冗余。

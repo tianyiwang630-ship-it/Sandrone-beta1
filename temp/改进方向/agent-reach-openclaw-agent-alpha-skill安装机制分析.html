@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Reach / OpenClaw / agent-alpha Skill 安装机制分析</title>
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --panel: rgba(255, 252, 245, 0.92);
+      --card: #fffdf8;
+      --ink: #1e1a16;
+      --muted: #675d52;
+      --line: rgba(74, 56, 38, 0.16);
+      --accent: #a44a2f;
+      --accent-2: #1f6a6f;
+      --accent-3: #7a6a1d;
+      --good: #1c6b3d;
+      --warn: #b7661f;
+      --bad: #9d2e2e;
+      --shadow: 0 22px 48px rgba(44, 31, 17, 0.12);
+      --radius: 20px;
+      --mono: "Consolas", "SFMono-Regular", "Courier New", monospace;
+      --sans: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(164, 74, 47, 0.12), transparent 28%),
+        radial-gradient(circle at top right, rgba(31, 106, 111, 0.14), transparent 24%),
+        linear-gradient(180deg, #efe7d7 0%, #f8f4eb 20%, #f3efe6 100%);
+      line-height: 1.68;
+    }
+
+    .shell {
+      width: min(1180px, calc(100vw - 40px));
+      margin: 28px auto 48px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(145deg, rgba(35, 25, 18, 0.96), rgba(77, 49, 32, 0.93));
+      color: #fff8ee;
+      border-radius: 28px;
+      padding: 34px 34px 30px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -8% -45% auto;
+      width: 360px;
+      height: 360px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 209, 122, 0.26), transparent 64%);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(255, 248, 238, 0.12);
+      border: 1px solid rgba(255, 248, 238, 0.18);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      line-height: 1.2;
+    }
+
+    h1 {
+      margin-top: 18px;
+      font-size: clamp(30px, 5vw, 54px);
+      max-width: 900px;
+    }
+
+    .hero p {
+      max-width: 900px;
+      margin: 16px 0 0;
+      color: rgba(255, 244, 232, 0.88);
+      font-size: 16px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 26px;
+    }
+
+    .hero-stat {
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: rgba(255, 248, 238, 0.08);
+      border: 1px solid rgba(255, 248, 238, 0.12);
+    }
+
+    .hero-stat strong {
+      display: block;
+      font-size: 14px;
+      color: rgba(255, 244, 232, 0.72);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .hero-stat span {
+      display: block;
+      font-size: 19px;
+      font-weight: 700;
+    }
+
+    .section {
+      margin-top: 24px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 26px;
+      box-shadow: 0 12px 28px rgba(50, 34, 19, 0.06);
+      backdrop-filter: blur(8px);
+    }
+
+    .section h2 {
+      font-size: 26px;
+      margin-bottom: 16px;
+    }
+
+    .section h3 {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+
+    .lede {
+      font-size: 17px;
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px 18px 16px;
+    }
+
+    .card .tag {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #fff;
+    }
+
+    .tag.good { background: var(--good); }
+    .tag.warn { background: var(--warn); }
+    .tag.bad { background: var(--bad); }
+    .tag.info { background: var(--accent-2); }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 18px;
+    }
+
+    .grid-2.equal {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .quote {
+      background: linear-gradient(180deg, rgba(164, 74, 47, 0.08), rgba(164, 74, 47, 0.02));
+      border-left: 4px solid var(--accent);
+      border-radius: 16px;
+      padding: 16px 18px;
+      color: #4b3b30;
+    }
+
+    .quote strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--ink);
+    }
+
+    .list, .timeline {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .list li, .timeline li {
+      margin: 8px 0;
+    }
+
+    .matrix {
+      overflow-x: auto;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: #fffdf8;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 860px;
+    }
+
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(74, 56, 38, 0.12);
+    }
+
+    th {
+      background: rgba(122, 106, 29, 0.08);
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    td strong {
+      display: inline-block;
+      margin-bottom: 6px;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-right: 6px;
+      margin-bottom: 6px;
+      border: 1px solid currentColor;
+    }
+
+    .pill.good { color: var(--good); background: rgba(28, 107, 61, 0.08); }
+    .pill.warn { color: var(--warn); background: rgba(183, 102, 31, 0.08); }
+    .pill.bad { color: var(--bad); background: rgba(157, 46, 46, 0.08); }
+    .pill.info { color: var(--accent-2); background: rgba(31, 106, 111, 0.08); }
+
+    .code {
+      font-family: var(--mono);
+      font-size: 13px;
+      background: rgba(30, 26, 22, 0.05);
+      border: 1px solid rgba(30, 26, 22, 0.08);
+      border-radius: 12px;
+      padding: 14px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .step {
+      position: relative;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 18px 18px 16px;
+    }
+
+    .step .num {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: inline-grid;
+      place-items: center;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .evidence {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .evidence .code {
+      height: 100%;
+    }
+
+    .footer {
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+    }
+
+    @media (max-width: 980px) {
+      .hero-grid,
+      .cards,
+      .grid-2,
+      .grid-2.equal,
+      .steps,
+      .evidence {
+        grid-template-columns: 1fr;
+      }
+
+      .shell {
+        width: min(100vw - 24px, 1180px);
+        margin: 12px auto 28px;
+      }
+
+      .hero,
+      .section {
+        padding: 20px;
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .shell {
+        width: 100%;
+        margin: 0;
+      }
+
+      .hero,
+      .section {
+        box-shadow: none;
+        background: #fff;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div class="eyebrow">Harness Engineering Report</div>
+      <h1>为什么 OpenClaw 能装上 Agent Reach，而 agent-alpha 还不行</h1>
+      <p>
+        这不是“模型会不会自己悟”的差别，而是 harness 工程能力链条的差别。<br />
+        Agent Reach 本质上不是一个普通 prompt skill，而是一套“安装脚手架 + CLI + 外部依赖 + 最终 skill 注册”的复合型能力包。
+        OpenClaw 已经具备承接这类能力包的外壳，而 agent-alpha 目前还把 skill 主要当成文档资源。
+      </p>
+      <div class="hero-grid">
+        <div class="hero-stat">
+          <strong>一句话结论</strong>
+          <span>OpenClaw 能装，是因为它有“安装闭环”；agent-alpha 只有“读取闭环”。</span>
+        </div>
+        <div class="hero-stat">
+          <strong>关键对象</strong>
+          <span>Agent Reach 不是普通 skill，而是带安装器的 skill scaffold。</span>
+        </div>
+        <div class="hero-stat">
+          <strong>借鉴方向</strong>
+          <span>把 skill 从“说明书”升级成“可安装能力包”。</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>1. 先说结论</h2>
+      <p class="lede">
+        如果从 harness engineering 角度拆开看，这个问题可以归结为三个层次：对象是不是可安装单元、宿主有没有安装机制、安装后有没有运行与隔离机制。
+      </p>
+      <div class="cards">
+        <article class="card">
+          <div class="tag good">OpenClaw</div>
+          <p>
+            已经把 skill 当成一等公民。skill 可以有依赖声明、安装策略、OS 限制、工具目录、安装状态和安全边界。
+          </p>
+        </article>
+        <article class="card">
+          <div class="tag warn">Agent Reach</div>
+          <p>
+            本身就自带 CLI 安装器，会装系统依赖、会配置外部工具、最后还会把自己的 SKILL.md 安装到 OpenClaw 的 skill 目录。
+          </p>
+        </article>
+        <article class="card">
+          <div class="tag bad">agent-alpha</div>
+          <p>
+            目前把 skill 主要当成“可被 prompt 加载的说明文档”。它能发现 skill，但还不会把 skill 当成“需要安装、校验、托管”的能力包。
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>2. Agent Reach 到底是什么</h2>
+      <div class="grid-2">
+        <div>
+          <h3>它不是普通 skill</h3>
+          <ul class="list">
+            <li>它有自己的 Python 包和 CLI 入口，`pyproject.toml` 里注册了 `agent-reach = agent_reach.cli:main`。</li>
+            <li>它不是只放一个 `SKILL.md`，而是把 `guides/`、`skill/`、`scripts/` 一起打进安装包。</li>
+            <li>它的 `install` 命令会先安装依赖，再配置环境，最后才把 skill 注册给宿主 agent。</li>
+            <li>它的 `SKILL.md` 也依赖外部 CLI，例如 `mcporter`、`gh`、`curl`、`twitter`、`yt-dlp` 等。</li>
+          </ul>
+        </div>
+        <div class="quote">
+          <strong>换成更直白的话</strong>
+          Agent Reach 不是“给 agent 看的文档”，而是“给 agent 装能力的脚手架”。<br />
+          最终让模型调用的是 skill 文档，但前面真正起作用的是安装器、CLI、依赖和环境配置。
+        </div>
+      </div>
+      <div class="evidence" style="margin-top:16px;">
+        <div class="code">Agent Reach CLI 里直接提供：
+- install
+- doctor
+- configure
+- uninstall
+- skill --install / --uninstall</div>
+        <div class="code">_cmd_install() 的流程是：
+1. 创建 ~/.agent-reach/tools
+2. 安装核心系统依赖
+3. 安装 / 配置 mcporter
+4. 安装可选渠道依赖
+5. 导入 cookies
+6. doctor 检查
+7. 调用 _install_skill()</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>3. OpenClaw 为什么能装上 Agent Reach</h2>
+      <p class="lede">
+        OpenClaw 能装上，并不是因为“它更聪明”，而是因为它的 harness 已经把下面这条链条打通了。
+      </p>
+      <ol class="timeline">
+        <li><strong>它承认 skill 不是纯文档。</strong> OpenClaw 的 skill metadata 有 `requires` 和 `install` 概念，说明 skill 可以声明自己缺什么、怎么装。</li>
+        <li><strong>它承认安装器是 skill 生命周期的一部分。</strong> `install` 支持 `brew`、`node`、`go`、`uv`、`download` 多种类型。</li>
+        <li><strong>它有执行安装动作的能力。</strong> OpenClaw 本身可以运行安装命令，不是只会加载 prompt 文本。</li>
+        <li><strong>它有每个 skill 自己的工具目录。</strong> 下载或解压的内容不会乱写到项目根目录，而是进入独立 tools root。</li>
+        <li><strong>它有安全边界。</strong> 下载和解压会检查路径越界，安装前还会做代码安全扫描。</li>
+        <li><strong>它有托管 skill 的目录体系。</strong> `~/.openclaw/skills/...` 这类目录是 OpenClaw 的正式 skill 挂载点。</li>
+        <li><strong>它还能配合 Agent Reach 自己的安装器。</strong> 当你把 Agent Reach 的安装文档或仓库线索给到 OpenClaw，它既能执行里面的安装步骤，也能接住最后落下来的 skill 文件。</li>
+      </ol>
+      <div class="matrix" style="margin-top:18px;">
+        <table>
+          <thead>
+            <tr>
+              <th>能力环节</th>
+              <th>OpenClaw 的现状</th>
+              <th>对 Agent Reach 成功安装的意义</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Skill 元数据模型</strong></td>
+              <td>有 `requires`、`install`、`os`、`skillKey`、`homepage` 等字段</td>
+              <td>能把“这个 skill 需要外部命令和安装器”表达出来</td>
+            </tr>
+            <tr>
+              <td><strong>安装器类型</strong></td>
+              <td>支持 `brew`、`node`、`go`、`uv`、`download`</td>
+              <td>能够覆盖常见 CLI、二进制工具、工具包下载等场景</td>
+            </tr>
+            <tr>
+              <td><strong>状态判断</strong></td>
+              <td>能判断缺哪些 bin、env、config，并挑选安装方案</td>
+              <td>不是盲装，而是“先判断缺口，再执行安装”</td>
+            </tr>
+            <tr>
+              <td><strong>工具隔离</strong></td>
+              <td>每个 skill 有独立的 tools 目录</td>
+              <td>下载的 exe、解压包、辅助工具有正式归属地</td>
+            </tr>
+            <tr>
+              <td><strong>安装安全</strong></td>
+              <td>下载有 SSRF 防护，解压检查路径边界，安装前做扫描</td>
+              <td>减少“安装一个 skill 却把整个环境搞脏”的风险</td>
+            </tr>
+            <tr>
+              <td><strong>宿主目录接入</strong></td>
+              <td>OpenClaw 识别 `~/.openclaw/skills` 等技能目录</td>
+              <td>Agent Reach 安装完可以把自己的 skill 正式挂进去</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>4. Agent Reach 是怎么把自己“装进 OpenClaw”的</h2>
+      <div class="grid-2 equal">
+        <div class="card">
+          <h3>Agent Reach 自己做的事</h3>
+          <ul class="list">
+            <li>运行 `agent-reach install` 时，会先准备 `~/.agent-reach/tools`。</li>
+            <li>会安装系统依赖和渠道依赖，而不是只复制一份说明文档。</li>
+            <li>最后调用 `_install_skill()`，把 `SKILL.md + references/` 复制到宿主 skill 目录。</li>
+            <li>它明确检查 `~/.openclaw/skills`，也支持 `OPENCLAW_HOME` 指向的 OpenClaw 目录。</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>OpenClaw 宿主做的事</h3>
+          <ul class="list">
+            <li>允许 agent 执行安装说明里的命令，前提是工具权限配置到位。</li>
+            <li>有正式的 skill 发现与加载机制，能在 `~/.openclaw/skills/agent-reach` 看到它。</li>
+            <li>有安装状态与依赖模型，未来还能继续托管和诊断这种 skill。</li>
+          </ul>
+        </div>
+      </div>
+      <div class="quote" style="margin-top:16px;">
+        <strong>这里最容易误判的一点</strong>
+        不是 OpenClaw “凭空把一个仓库变成 skill”。<br />
+        真正发生的是：Agent Reach 自己本来就是一个带安装逻辑的包；OpenClaw 则是一个足够成熟的宿主，能执行安装、承接结果、识别并继续使用这个 skill。
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>5. 为什么 agent-alpha 现在做不到</h2>
+      <p class="lede">
+        agent-alpha 现在不是“差一点”，而是能力链条还停留在更前面的阶段。它已经会发现 skill，但还没有进入 skill 生命周期管理。
+      </p>
+      <div class="matrix">
+        <table>
+          <thead>
+            <tr>
+              <th>维度</th>
+              <th>OpenClaw</th>
+              <th>agent-alpha</th>
+              <th>结果</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>skill 定义</strong></td>
+              <td>能力包，可带依赖与安装策略</td>
+              <td>主要是 `SKILL.md` 文档 + 可选脚本</td>
+              <td>agent-alpha 不知道“这个 skill 需要先装”</td>
+            </tr>
+            <tr>
+              <td><strong>前置检查</strong></td>
+              <td>判断 bin / env / config 是否缺失</td>
+              <td>没有正式的依赖检查层</td>
+              <td>模型即使看到了 skill，也不知道缺口在哪</td>
+            </tr>
+            <tr>
+              <td><strong>安装器模型</strong></td>
+              <td>内建 `brew/node/go/uv/download`</td>
+              <td>没有 skill install spec</td>
+              <td>不能把“安装动作”结构化</td>
+            </tr>
+            <tr>
+              <td><strong>工具目录</strong></td>
+              <td>每个 skill 有独立 tools root</td>
+              <td>没有 per-skill artifact 目录</td>
+              <td>exe、zip、CLI 工具无正式存放位置</td>
+            </tr>
+            <tr>
+              <td><strong>宿主目录体系</strong></td>
+              <td>有 shared/workspace/managed 技能目录</td>
+              <td>主要盯着项目根目录 `skills/`</td>
+              <td>不适合装“外来 skill”或多实例 skill</td>
+            </tr>
+            <tr>
+              <td><strong>安全安装边界</strong></td>
+              <td>已有下载、扫描、路径边界处理</td>
+              <td>没有面向 skill 安装的安全层</td>
+              <td>就算硬做安装，也不够稳</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid-2 equal" style="margin-top:16px;">
+        <div class="code">agent-alpha/agent/core/skill_loader.py 的核心逻辑：
+1. 递归找 SKILL.md
+2. 解析简单 frontmatter
+3. 给系统提示词做 skill summary
+4. 需要时返回 skill body
+
+也就是说，它是在“读 skill”，不是“装 skill”。</div>
+        <div class="code">agent-alpha/agent/core/tool_loader.py 的核心逻辑：
+1. 加载 MCP tools
+2. 加载 shared load_skill
+3. 加载 builtin tools
+
+这里也没有“managed skill installer”这一层。</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>6. OpenClaw 最值得借的，不是界面，而是这套机制</h2>
+      <div class="cards">
+        <article class="card">
+          <div class="tag info">机制 1</div>
+          <h3>Skill 元数据升级</h3>
+          <p>
+            不再只有 `name/description/tags`，而要允许 skill 声明 `requires`、`install`、`os`、`homepage`、`artifactDir` 等信息。
+          </p>
+        </article>
+        <article class="card">
+          <div class="tag info">机制 2</div>
+          <h3>安装状态层</h3>
+          <p>
+            在真正调用 skill 之前，先回答三个问题：缺什么、能不能装、建议怎么装。这样模型就不是瞎试。
+          </p>
+        </article>
+        <article class="card">
+          <div class="tag info">机制 3</div>
+          <h3>每个 skill 自己的工具目录</h3>
+          <p>
+            任何下载的 exe、zip 解压内容、CLI 工具缓存，都应该有独立归宿，而不是散落在项目根目录或工作区里。
+          </p>
+        </article>
+        <article class="card">
+          <div class="tag info">机制 4</div>
+          <h3>受控安装器执行</h3>
+          <p>
+            不是让模型随便拼 bash，而是让 harness 认识有限几类安装方式，并统一处理错误、回退和权限。
+          </p>
+        </article>
+        <article class="card">
+          <div class="tag info">机制 5</div>
+          <h3>外来 skill 接入路径</h3>
+          <p>
+            要能从本地目录、仓库、包管理器、下载链接等来源安装 skill，而不是只能读项目自带的 `skills/`。
+          </p>
+        </article>
+        <article class="card">
+          <div class="tag info">机制 6</div>
+          <h3>安全边界</h3>
+          <p>
+            下载地址、解压目录、可执行文件位置、安装后扫描，这些都要由 harness 接手，不能完全丢给模型的自由发挥。
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>7. agent-alpha 如何支持这种“非典型 skill”</h2>
+      <p class="lede">
+        这里的“非典型 skill”，指的不是只有 `SKILL.md` 的 skill，而是可能携带 exe、CLI、MCP server、下载包、系统依赖、配置向导的一类能力包。
+      </p>
+      <div class="steps">
+        <article class="step">
+          <div class="num">1</div>
+          <h3>先把 skill 定义改对</h3>
+          <ul class="list">
+            <li>给 `SKILL.md` frontmatter 增加结构化字段，或者单独引入 `skill.json`。</li>
+            <li>最少应支持：`requires.bins`、`requires.env`、`install[]`、`os`、`skill_key`、`entrypoints`。</li>
+            <li>把“普通文档 skill”和“安装型 skill”统一纳入一个模型。</li>
+          </ul>
+        </article>
+        <article class="step">
+          <div class="num">2</div>
+          <h3>再补一个 skill manager</h3>
+          <ul class="list">
+            <li>负责发现 skill、计算状态、执行安装、登记产物、暴露错误信息。</li>
+            <li>不要把这层塞进 `skill_loader.py`，因为那会把“读文档”和“装能力”搅在一起。</li>
+            <li>这层应该比 `load_skill` 更靠外，属于 harness 控制面。</li>
+          </ul>
+        </article>
+        <article class="step">
+          <div class="num">3</div>
+          <h3>最后接入运行时</h3>
+          <ul class="list">
+            <li>当模型要调用某 skill 时，运行时先看它是否 ready。</li>
+            <li>如果没装好，优先走受控安装流程，而不是让模型自己随手写命令。</li>
+            <li>安装完成后，再把 skill 能力暴露给提示词和工具系统。</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>8. 一个适合 agent-alpha 的落地模型</h2>
+      <div class="grid-2 equal">
+        <div>
+          <h3>建议的数据模型</h3>
+          <div class="code">SkillPackage
+- id
+- name
+- source (local/git/url/package)
+- workspace_scope / agent_scope
+- docs (SKILL.md, references/)
+- requires
+  - bins[]
+  - env[]
+  - config[]
+- install[]
+  - kind: uv | node | go | download | pip | exe | mcp
+  - payload
+- artifacts_dir
+- status
+  - discovered
+  - installable
+  - installed
+  - ready
+  - failed</div>
+        </div>
+        <div>
+          <h3>建议的控制流</h3>
+          <div class="code">discover skill
+-> parse metadata
+-> evaluate requirements
+-> choose install strategy
+-> install into per-skill dir
+-> register binaries / MCP / docs
+-> expose skill summary to prompt
+-> allow model invocation</div>
+        </div>
+      </div>
+      <div class="quote" style="margin-top:16px;">
+        <strong>这里最关键的一步</strong>
+        不要再让 “skill 是否可用” 只取决于 `SKILL.md` 是否存在。<br />
+        真正合理的条件应该是：文档存在、依赖满足、安装完成、产物可达、运行时已登记。
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>9. 分阶段改造建议</h2>
+      <div class="grid-2 equal">
+        <div class="card">
+          <div class="tag good">第一阶段：最小闭环</div>
+          <ul class="list">
+            <li>给 skill frontmatter 增加 `requires` 和 `install`。</li>
+            <li>新增 `skill_manager.py`，只做发现、状态计算、安装入口。</li>
+            <li>给每个 skill 分配独立 artifacts 目录，比如 `<agent-home>/tools/<skill-key>/`。</li>
+            <li>先支持 `uv`、`node`、`download` 三种安装类型就够了。</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="tag warn">第二阶段：适配 Agent Reach 这类 skill</div>
+          <ul class="list">
+            <li>支持“skill 安装后还要注册 SKILL.md”的模式。</li>
+            <li>支持 repo/url/package 作为 skill 来源。</li>
+            <li>允许安装器声明“安装完成后执行注册动作”，例如复制文档、登记 MCP、写配置。</li>
+            <li>把 `doctor` 之类的检查结果也纳入 skill status。</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="tag info">第三阶段：真正进入 orchestrator 能力</div>
+          <ul class="list">
+            <li>把 skill 安装与 agent 实例目录绑定，而不是绑项目根目录。</li>
+            <li>支持多 agent / 多 workspace 的 skill 隔离与共享策略。</li>
+            <li>给前端或 API 暴露 skill 状态、安装日志、失败原因。</li>
+            <li>加上安全审计和受控权限模型，避免变成“万能执行器”。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>10. 最后的判断</h2>
+      <div class="cards">
+        <article class="card">
+          <div class="tag good">判断 1</div>
+          <p>
+            OpenClaw 能装 Agent Reach，不是偶然成功，而是因为 OpenClaw 和 Agent Reach 正好在同一套“可安装 skill”范式里。
+          </p>
+        </article>
+        <article class="card">
+          <div class="tag warn">判断 2</div>
+          <p>
+            agent-alpha 目前还停留在“skill 文档分发”范式，所以面对这种带 CLI / exe / 安装器的 skill，会天然吃力。
+          </p>
+        </article>
+        <article class="card">
+          <div class="tag info">判断 3</div>
+          <p>
+            你真正该借鉴的不是 OpenClaw 的所有复杂度，而是它把 skill 从“说明书”升级成“生命周期对象”的那层设计。
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>附：本次判断主要依据</h2>
+      <div class="evidence">
+        <div class="code">Agent Reach
+- README.md
+- docs/install.md
+- pyproject.toml
+- agent_reach/cli.py
+- agent_reach/skill/SKILL.md
+- tests/test_skill_command.py</div>
+        <div class="code">OpenClaw / agent-alpha
+- openclaw/src/agents/skills/types.ts
+- openclaw/src/agents/skills-install.ts
+- openclaw/src/agents/skills-install-download.ts
+- openclaw/src/agents/skills/tools-dir.ts
+- agent-alpha/agent/core/skill_loader.py
+- agent-alpha/agent/core/tool_loader.py</div>
+      </div>
+    </section>
+
+    <div class="footer">
+      生成时间：2026-04-10 | 侧重点：原理分析 + 可落地改进方向（以 agent-alpha 为主）
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Skill 安装机制对比：OpenClaw / Hermes / agent-alpha</title>
+  <style>
+    :root {
+      --ink: #202124;
+      --muted: #667085;
+      --paper: #eef5f2;
+      --panel: #ffffff;
+      --line: #cbd9d4;
+      --openclaw: #176b87;
+      --hermes: #9a5a2e;
+      --alpha: #3f7354;
+      --accent: #b13f2a;
+      --shadow: 0 18px 44px rgba(24, 54, 48, .12);
+      --radius: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(23, 107, 135, .06) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(63, 115, 84, .06) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      font-family: "Microsoft YaHei", "Noto Sans CJK SC", "PingFang SC", sans-serif;
+      line-height: 1.65;
+    }
+
+    header {
+      padding: 48px min(5vw, 72px) 28px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, .78);
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 1040px;
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(34px, 5vw, 72px);
+      line-height: 1.03;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 980px;
+      margin: 18px 0 0;
+      color: #4b5563;
+      font-size: 18px;
+    }
+
+    main {
+      padding: 28px min(5vw, 72px) 56px;
+    }
+
+    section {
+      max-width: 1220px;
+      margin: 0 auto 28px;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    .system-card {
+      min-height: 258px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .system-card::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 7px;
+      background: var(--stripe);
+    }
+
+    .openclaw {
+      --stripe: var(--openclaw);
+    }
+
+    .hermes {
+      --stripe: var(--hermes);
+    }
+
+    .alpha {
+      --stripe: var(--alpha);
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #edf7f5;
+      color: #225a66;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .step {
+      position: relative;
+      min-height: 112px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, .88);
+      border-radius: var(--radius);
+    }
+
+    .step strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 15px;
+    }
+
+    .step span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .step::after {
+      content: "→";
+      position: absolute;
+      right: -11px;
+      top: 40px;
+      color: #6d7f79;
+      font-weight: 800;
+    }
+
+    .step:last-child::after {
+      content: "";
+    }
+
+    .matrix {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .matrix th,
+    .matrix td {
+      padding: 12px 13px;
+      border: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    .matrix th {
+      background: #dcebe6;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    .yes {
+      color: #155e75;
+      font-weight: 700;
+    }
+
+    .partial {
+      color: #92400e;
+      font-weight: 700;
+    }
+
+    .no {
+      color: #667085;
+      font-weight: 700;
+    }
+
+    .scenario {
+      display: grid;
+      grid-template-columns: 270px 1fr;
+      gap: 16px;
+    }
+
+    .repo-token {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 220px;
+      padding: 18px;
+      border: 1px solid #9eb8af;
+      background: #173b42;
+      color: #f7fbfa;
+      border-radius: var(--radius);
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 18px;
+      text-align: center;
+      word-break: break-word;
+    }
+
+    .lanes {
+      display: grid;
+      gap: 12px;
+    }
+
+    .lane {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .lane-name {
+      padding: 14px;
+      color: #fff;
+      font-weight: 800;
+    }
+
+    .lane.openclaw .lane-name {
+      background: var(--openclaw);
+    }
+
+    .lane.hermes .lane-name {
+      background: var(--hermes);
+    }
+
+    .lane.alpha .lane-name {
+      background: var(--alpha);
+    }
+
+    .lane-body {
+      padding: 14px;
+    }
+
+    .mini-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .mini-list li {
+      margin: 5px 0;
+    }
+
+    .source-map {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: #e3f0ec;
+      color: #225a66;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: .92em;
+    }
+
+    footer {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 8px 0 34px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 980px) {
+      .three,
+      .two,
+      .source-map,
+      .scenario {
+        grid-template-columns: 1fr;
+      }
+
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      .step::after {
+        content: "↓";
+        right: 18px;
+        top: auto;
+        bottom: -20px;
+      }
+
+      .step:last-child::after {
+        content: "";
+      }
+
+      .lane {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">Local Code Research · 2026-05-26</p>
+    <h1>Skill 安装机制对比</h1>
+    <p class="subtitle">OpenClaw、Hermes、agent-alpha 在“安装、存储、配置、更新、调用、删除 skill”上的机制差异。重点场景是：用户给出 <code>Panniantong/Agent-Reach.git</code>，并希望自动处理 npm / pip 依赖。</p>
+  </header>
+
+  <main>
+    <section class="grid three">
+      <article class="card system-card openclaw">
+        <h2>OpenClaw</h2>
+        <p>把 skill 包管理和依赖安装拆开。ClawHub 更像 skill 包管理器；OpenClaw 核心读取 skill frontmatter 里的结构化 install spec，并能执行 <code>brew</code>、<code>node</code>、<code>go</code>、<code>uv</code>、<code>download</code>。</p>
+        <div class="tags">
+          <span class="tag">结构化依赖安装</span>
+          <span class="tag">bin 缺失检查</span>
+          <span class="tag">多目录加载</span>
+        </div>
+      </article>
+
+      <article class="card system-card hermes">
+        <h2>Hermes</h2>
+        <p>有完整 hub：GitHub、URL、tap、索引等来源，安装前 quarantine 和安全扫描，安装后写 lock，支持 update / uninstall / enable / disable。</p>
+        <div class="tags">
+          <span class="tag">Hub 生命周期</span>
+          <span class="tag">Lock + Hash</span>
+          <span class="tag">多来源安装</span>
+        </div>
+      </article>
+
+      <article class="card system-card alpha">
+        <h2>agent-alpha</h2>
+        <p>当前主要是本地加载器：扫描 <code>skills/SKILL.md</code>，注册 <code>load_skill</code>。能在 bash 权限层识别 npm / pip 命令，但没有 skill 安装生命周期。</p>
+        <div class="tags">
+          <span class="tag">本地扫描</span>
+          <span class="tag">load_skill</span>
+          <span class="tag">bash 审批</span>
+        </div>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>生命周期视图</h2>
+      <div class="flow" aria-label="skill 生命周期">
+        <div class="step"><strong>1. 来源</strong><span>仓库、registry、URL、内置目录、本地目录。</span></div>
+        <div class="step"><strong>2. 安装</strong><span>下载或复制 skill 文件，确定安装目录。</span></div>
+        <div class="step"><strong>3. 依赖</strong><span>检查 bin、解析 install spec、执行 npm / uv / go 等。</span></div>
+        <div class="step"><strong>4. 管理</strong><span>记录 lock、hash、来源、启用禁用、更新删除。</span></div>
+        <div class="step"><strong>5. 调用</strong><span>slash command、skill_view、load_skill 或 tool dispatch。</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>核心能力矩阵</h2>
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th>能力</th>
+            <th>OpenClaw</th>
+            <th>Hermes</th>
+            <th>agent-alpha</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>扫描本地 <code>SKILL.md</code></td>
+            <td><span class="yes">有</span>，支持多来源目录</td>
+            <td><span class="yes">有</span>，主目录是 <code>~/.hermes/skills</code></td>
+            <td><span class="yes">有</span>，主要是项目 <code>skills/</code></td>
+          </tr>
+          <tr>
+            <td>从 GitHub 安装 skill</td>
+            <td><span class="partial">部分</span>，主要通过 ClawHub 或外部包管理</td>
+            <td><span class="yes">有</span>，hub 支持 GitHub 目录标识</td>
+            <td><span class="no">无</span>，只能手动或普通 bash</td>
+          </tr>
+          <tr>
+            <td>lock / 来源记录</td>
+            <td><span class="yes">有</span>，ClawHub 使用 <code>.clawhub/lock.json</code></td>
+            <td><span class="yes">有</span>，<code>.hub/lock.json</code> 记录 hash、文件、来源</td>
+            <td><span class="no">无</span></td>
+          </tr>
+          <tr>
+            <td>自动依赖安装</td>
+            <td><span class="yes">有</span>，依赖来自结构化 install spec</td>
+            <td><span class="partial">未发现</span>，hub 安装文件，不自动跑 pip/npm</td>
+            <td><span class="no">无</span>，仅 bash 层可审批执行</td>
+          </tr>
+          <tr>
+            <td>更新</td>
+            <td><span class="yes">有</span>，ClawHub update；运行时 watch refresh</td>
+            <td><span class="yes">有</span>，根据 lock 重新 fetch 并比较 hash</td>
+            <td><span class="no">无</span>，只有重新扫描</td>
+          </tr>
+          <tr>
+            <td>删除</td>
+            <td><span class="partial">由 ClawHub / 文件层处理</span></td>
+            <td><span class="yes">有</span>，只卸载 hub 记录的 skill</td>
+            <td><span class="no">无</span>，手动删除目录</td>
+          </tr>
+          <tr>
+            <td>调用</td>
+            <td>slash command、tool dispatch、bin status</td>
+            <td>progressive disclosure、<code>skill_view</code></td>
+            <td><code>load_skill(name)</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="scenario">
+      <div class="repo-token">Panniantong/<br>Agent-Reach.git</div>
+      <div class="lanes">
+        <div class="lane openclaw">
+          <div class="lane-name">OpenClaw</div>
+          <div class="lane-body">
+            <ul class="mini-list">
+              <li>skill 包进入系统通常交给 ClawHub 或本地 skill 目录。</li>
+              <li>如果 <code>SKILL.md</code> 声明了 install spec，可检查缺失 bin 并安装依赖。</li>
+              <li>依赖安装是结构化流程，不只是模型自由执行命令。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="lane hermes">
+          <div class="lane-name">Hermes</div>
+          <div class="lane-body">
+            <ul class="mini-list">
+              <li>hub 可下载包含 <code>SKILL.md</code> 的 GitHub 目录。</li>
+              <li>安装前 quarantine 和安全扫描，安装后写 lock。</li>
+              <li>本地代码未显示会自动执行 <code>pip install</code> 或 <code>npm install</code>。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="lane alpha">
+          <div class="lane-name">agent-alpha</div>
+          <div class="lane-body">
+            <ul class="mini-list">
+              <li>没有“GitHub repo → skill 安装”的内置入口。</li>
+              <li>没有依赖声明解析、lock、更新、卸载。</li>
+              <li>npm / pip 只是在 bash 命令审批层被识别。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid two">
+      <article class="card">
+        <h2>依赖安装差异</h2>
+        <p><strong>OpenClaw</strong> 把依赖写入 skill metadata，再由 installer 执行。它知道要检查哪些 bin，也知道用 npm、uv、go、brew 或 download 中的哪一种安装。</p>
+        <p class="muted">这使得“一个 skill 需要某个 CLI 工具”变成可检查、可安装、可报错的流程。</p>
+      </article>
+      <article class="card">
+        <h2>包管理差异</h2>
+        <p><strong>Hermes</strong> 更像 skill hub。它能记录来源、文件、hash、安装路径、扫描结果，并通过 lock 做更新和卸载。</p>
+        <p class="muted">这使得“一个 skill 从哪里来、现在是不是最新、能不能删除”变成可管理状态。</p>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>agent-alpha 当前边界</h2>
+      <p>agent-alpha 当前有 <code>SkillLoader</code>、<code>ToolLoader</code> 和 <code>load_skill</code>，所以它能使用本地已有 skill。它也能在 <code>command_path_extractor.py</code> 和 <code>sandbox_guard.py</code> 里识别 npm / pip 安装命令需要审批。但它还没有把“安装 skill”作为一个独立生命周期来处理。</p>
+    </section>
+
+    <section>
+      <h2>证据地图</h2>
+      <div class="source-map">
+        <article class="card">
+          <h3>OpenClaw</h3>
+          <p class="muted"><code>src/agents/skills-install.ts</code><br><code>src/agents/skills-status.ts</code><br><code>src/agents/skills/workspace.ts</code><br><code>docs/tools/clawhub.md</code></p>
+        </article>
+        <article class="card">
+          <h3>Hermes</h3>
+          <p class="muted"><code>tools/skills_hub.py</code><br><code>hermes_cli/skills_hub.py</code><br><code>tools/skills_tool.py</code><br><code>tools/skills_config.py</code></p>
+        </article>
+        <article class="card">
+          <h3>agent-alpha</h3>
+          <p class="muted"><code>agent/core/skill_loader.py</code><br><code>agent/core/tool_loader.py</code><br><code>agent/core/command_path_extractor.py</code><br><code>agent/core/sandbox_guard.py</code></p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    本页为本地源码阅读产物，不包含联网查询；没有对项目主体代码做修改。
+  </footer>
+</body>
+</html>

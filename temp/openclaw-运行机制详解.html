@@ -1,0 +1,1386 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenClaw 运行机制详解</title>
+    <style>
+      :root {
+        --bg: #f4efe6;
+        --panel: rgba(255, 252, 247, 0.94);
+        --panel-strong: #fffaf1;
+        --ink: #1f2b24;
+        --muted: #5f6f66;
+        --line: rgba(64, 86, 73, 0.18);
+        --line-strong: rgba(64, 86, 73, 0.32);
+        --accent: #1f6b57;
+        --accent-2: #a35e2c;
+        --accent-soft: rgba(31, 107, 87, 0.11);
+        --shadow: 0 20px 60px rgba(31, 43, 36, 0.12);
+        --font-sans: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        --font-serif: "Georgia", "Noto Serif SC", "Songti SC", serif;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: var(--font-sans);
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(31, 107, 87, 0.14), transparent 28%),
+          radial-gradient(circle at top right, rgba(163, 94, 44, 0.12), transparent 24%),
+          linear-gradient(180deg, #f7f1e8 0%, #f1eadf 100%);
+      }
+
+      .page {
+        display: grid;
+        grid-template-columns: 300px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        align-self: start;
+        height: 100vh;
+        padding: 24px 18px;
+        overflow: auto;
+        border-right: 1px solid var(--line);
+        background: rgba(250, 245, 238, 0.92);
+        backdrop-filter: blur(16px);
+      }
+
+      .brand, .toc, section {
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .brand { padding: 18px; }
+      .brand small, .section-head small {
+        display: block;
+        color: var(--accent-2);
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .brand h1 {
+        margin: 8px 0 0;
+        font-family: var(--font-serif);
+        font-size: 30px;
+        line-height: 1.15;
+      }
+      .brand p, .section-head p, .card p, .card li, .detail-panel p, .detail-panel li,
+      .module-detail p, .module-detail li, details > div {
+        color: var(--muted);
+        line-height: 1.78;
+      }
+
+      .toc { margin-top: 18px; padding: 18px; }
+      .toc-title {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .toc a {
+        display: block;
+        margin-bottom: 8px;
+        padding: 10px 12px;
+        color: var(--ink);
+        text-decoration: none;
+        border-radius: 12px;
+      }
+      .toc a:hover, .toc a.active { background: var(--accent-soft); color: var(--accent); }
+
+      .sidebar-note {
+        margin-top: 18px;
+        padding: 16px 18px;
+        border-radius: 20px;
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(31, 107, 87, 0.08), rgba(163, 94, 44, 0.08));
+        color: var(--muted);
+        line-height: 1.72;
+      }
+
+      .main { padding: 28px 28px 56px; }
+
+      .hero {
+        position: relative;
+        overflow: hidden;
+        padding: 28px;
+        border-radius: 32px;
+        background:
+          linear-gradient(135deg, rgba(31, 107, 87, 0.94), rgba(38, 90, 77, 0.9) 52%, rgba(163, 94, 44, 0.9));
+        color: #fbf8f2;
+        box-shadow: var(--shadow);
+      }
+      .hero::after {
+        content: "";
+        position: absolute;
+        inset: auto -8% -28% auto;
+        width: 280px;
+        height: 280px;
+        border-radius: 50%;
+        background: rgba(255, 244, 220, 0.12);
+        filter: blur(10px);
+      }
+      .hero small {
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .hero h2 {
+        max-width: 920px;
+        margin: 14px 0 10px;
+        font-family: var(--font-serif);
+        font-size: clamp(34px, 5vw, 54px);
+        line-height: 1.08;
+      }
+      .hero p { max-width: 980px; margin: 0; color: rgba(251, 248, 242, 0.9); font-size: 17px; }
+
+      .hero-grid, .grid-3, .special-grid, .storage-grid, .tradeoff-grid, .talk-grid {
+        display: grid;
+        gap: 16px;
+      }
+      .hero-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 24px; }
+      .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .special-grid, .storage-grid, .tradeoff-grid, .talk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+      .hero-card, .card, .timeline-card, .detail-panel, .module-detail, details {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--panel-strong);
+      }
+      .hero-card { padding: 16px; background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.12); }
+      .hero-card .label { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(251, 248, 242, 0.7); }
+      .hero-card strong { display: block; margin-top: 8px; font-size: 18px; }
+      .hero-card span { display: block; margin-top: 8px; color: rgba(251, 248, 242, 0.82); line-height: 1.58; font-size: 14px; }
+      .card, .timeline-card, .detail-panel, .module-detail { padding: 18px; }
+      .card h4, .timeline-card h4 { margin: 0 0 10px; font-size: 22px; }
+      .card ul, .card ol, .detail-panel ul, .detail-panel ol, .module-detail ul, .module-detail ol { margin: 10px 0 0 18px; padding: 0; }
+
+      .toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 12;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        margin: 18px 0 22px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: rgba(255, 250, 243, 0.9);
+        backdrop-filter: blur(14px);
+        box-shadow: 0 10px 28px rgba(31, 43, 36, 0.08);
+      }
+      .toolbar .title { margin-right: auto; font-weight: 700; }
+
+      .btn, .runtime-node, .flow-step, .module-item {
+        appearance: none;
+        font: inherit;
+        cursor: pointer;
+      }
+      .btn {
+        border: 1px solid var(--line-strong);
+        background: #fffaf3;
+        color: var(--ink);
+        padding: 10px 14px;
+        border-radius: 999px;
+      }
+      .btn.active, .flow-step.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+      section { margin-bottom: 20px; padding: 24px; }
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+        margin-bottom: 18px;
+      }
+      .section-head h3 {
+        margin: 0;
+        font-family: var(--font-serif);
+        font-size: clamp(28px, 3vw, 38px);
+        line-height: 1.15;
+      }
+
+      .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(31, 107, 87, 0.08);
+        color: var(--accent);
+        font-size: 13px;
+      }
+
+      .note-strong, .evidence-list {
+        margin-top: 14px;
+        padding: 16px 18px;
+        border-radius: 16px;
+      }
+      .note-strong { border-left: 4px solid var(--accent-2); background: rgba(163, 94, 44, 0.08); line-height: 1.78; }
+      .evidence-list { background: rgba(31, 107, 87, 0.06); }
+      .evidence-list strong { display: block; margin-bottom: 8px; }
+      .evidence-list ul { margin: 0 0 0 18px; }
+
+      .runtime-map { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 12px; }
+      .runtime-node {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: linear-gradient(180deg, #fffaf2, #f8f0e4);
+      }
+      .runtime-node.active, .module-item.active { border-color: rgba(31, 107, 87, 0.42); box-shadow: 0 16px 36px rgba(31, 43, 36, 0.11); }
+      .runtime-node .index { color: var(--accent-2); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+      .runtime-node strong { display: block; margin-top: 8px; font-size: 18px; }
+      .runtime-node span { display: block; margin-top: 8px; color: var(--muted); line-height: 1.6; }
+
+      .detail-panel h4, .module-detail h4 { margin: 0 0 10px; font-size: 26px; }
+      .flow-nav { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+      .flow-step {
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line-strong);
+        background: #fffaf3;
+      }
+      .timeline .meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: rgba(31, 107, 87, 0.08);
+        color: var(--accent);
+        font-size: 12px;
+      }
+      .micro-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .micro {
+        padding: 12px;
+        border-radius: 14px;
+        background: rgba(31, 107, 87, 0.06);
+        border: 1px solid rgba(31, 107, 87, 0.12);
+      }
+      .micro strong { display: block; margin-bottom: 6px; font-size: 14px; }
+      .micro span { color: var(--muted); line-height: 1.6; font-size: 14px; }
+
+      .modules-layout { display: grid; grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.3fr); gap: 16px; }
+      .module-list { display: grid; gap: 12px; }
+      .module-item {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: #fffaf3;
+      }
+      .module-item strong { display: block; margin-bottom: 8px; font-size: 18px; }
+      .module-item span { display: block; color: var(--muted); line-height: 1.65; }
+      .module-detail .subhead {
+        margin: 18px 0 10px;
+        color: var(--accent);
+        font-size: 13px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      code {
+        padding: 2px 6px;
+        border-radius: 8px;
+        background: rgba(31, 43, 36, 0.08);
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 0.95em;
+      }
+
+      details { padding: 0 14px; }
+      details + details { margin-top: 12px; }
+      summary { cursor: pointer; padding: 14px 0; font-weight: 700; }
+      details > div { padding: 0 0 14px; }
+
+      .footer-box {
+        padding: 22px;
+        border-radius: 22px;
+        background: linear-gradient(135deg, rgba(31, 107, 87, 0.1), rgba(163, 94, 44, 0.09));
+        border: 1px solid var(--line);
+        line-height: 1.8;
+      }
+
+      .detail-only.hidden, .evidence-only.hidden { display: none !important; }
+
+      @media (max-width: 1220px) {
+        .page { grid-template-columns: 1fr; }
+        .sidebar { position: relative; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+        .hero-grid, .runtime-map, .grid-3, .special-grid, .storage-grid, .tradeoff-grid, .talk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .modules-layout { grid-template-columns: 1fr; }
+      }
+
+      @media (max-width: 760px) {
+        .main { padding: 16px 16px 40px; }
+        section, .hero { padding: 18px; border-radius: 22px; }
+        .hero-grid, .grid-3, .runtime-map, .special-grid, .storage-grid, .tradeoff-grid, .talk-grid, .micro-grid { grid-template-columns: 1fr; }
+        .section-head { display: block; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <aside class="sidebar">
+        <div class="brand">
+          <small>Based On Real OpenClaw</small>
+          <h1>OpenClaw 运行机制详解</h1>
+          <p>
+            这份说明严格以 <code>learning proj/openclaw</code> 的文档与源码为依据，目标是把运行时如何接入 LLM、管理记忆、工具、会话、channel、资源、循环与子代理，讲成一条完整、可追踪的数据流。
+          </p>
+        </div>
+        <nav class="toc" id="toc">
+          <div class="toc-title">目录</div>
+          <a href="#intro">1. 先建立整体图</a>
+          <a href="#runtime">2. 运行时总装图</a>
+          <a href="#message-flow">3. 一条消息怎么跑完</a>
+          <a href="#modules">4. 关键板块逐个拆开</a>
+          <a href="#special">5. 特殊流程</a>
+          <a href="#storage">6. 数据和文件落点</a>
+          <a href="#tradeoff">7. 运行时设计取舍</a>
+          <a href="#talk-track">8. 给老板的讲解话术</a>
+        </nav>
+        <div class="sidebar-note">
+          推荐讲法：先讲 Gateway，再讲 sessionKey，再讲 agent loop，最后讲 tools、memory、subagent、cron、channel 这些能力如何接到同一条链上。
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="hero">
+          <small>OpenClaw Runtime Walkthrough</small>
+          <h2>把 OpenClaw 还原成一条真实运行链，而不是一堆名词</h2>
+          <p>
+            从第一性原理看，OpenClaw 要解决的是：外部世界不断产生消息、事件、定时任务和设备动作，系统必须把这些输入归到正确的 agent 和正确的会话里，再把需要的上下文、工具和资源装配好，交给模型执行，最后把结果持久化并送回对应位置。
+          </p>
+          <div class="hero-grid">
+            <div class="hero-card"><span class="label">控制中心</span><strong>Gateway</strong><span>统一接收客户端、channel、node 与 cron。</span></div>
+            <div class="hero-card"><span class="label">状态边界</span><strong>Session / sessionKey</strong><span>决定历史归属、串行边界和持久化边界。</span></div>
+            <div class="hero-card"><span class="label">执行内核</span><strong>Agent Loop</strong><span>把输入变成模型推理、工具动作与最终回复。</span></div>
+            <div class="hero-card"><span class="label">可扩能力</span><strong>Tools / Plugins / Channels / Nodes</strong><span>这些不是附件，而是运行时装配的一部分。</span></div>
+          </div>
+        </header>
+
+        <div class="toolbar">
+          <div class="title">阅读开关</div>
+          <button class="btn active" id="toggle-details" type="button">显示深入解释</button>
+          <button class="btn active" id="toggle-evidence" type="button">显示证据位置</button>
+          <button class="btn" id="expand-all" type="button">展开全部折叠项</button>
+          <button class="btn" id="collapse-all" type="button">收起全部折叠项</button>
+        </div>
+
+        <section id="intro">
+          <div class="section-head">
+            <div>
+              <small>Intro</small>
+              <h3>先把“系统到底在干什么”说直白</h3>
+              <p>
+                如果一开始就按 LLM、memory、tool、session、channel 逐项解释，听的人很容易只记住名词，反而看不见主线。OpenClaw 的主线其实很清楚：先接住输入，再决定归属，再执行一次 run，最后把结果和状态都落回系统。
+              </p>
+            </div>
+            <div class="pill-row">
+              <span class="pill">由浅入深</span>
+              <span class="pill">不做类比</span>
+              <span class="pill">以源码为准</span>
+            </div>
+          </div>
+
+          <div class="grid-3">
+            <div class="card">
+              <h4>第一层：输入从哪里来</h4>
+              <p>输入可以来自 CLI、Web UI、WebChat、macOS app，也可以来自 Discord、Slack、Telegram 这类 channel，还可以来自 node 设备和 cron 定时任务。它们形式不同，但都必须进入 Gateway。</p>
+            </div>
+            <div class="card">
+              <h4>第二层：怎么知道交给谁</h4>
+              <p>OpenClaw 不会直接把消息丢给某个模型，而是先根据来源上下文计算路由，得到 <code>agentId</code> 与 <code>sessionKey</code>。这一步决定后面会使用哪段历史和哪套资源。</p>
+            </div>
+            <div class="card">
+              <h4>第三层：真正跑起来靠什么</h4>
+              <p>当路由和会话确定后，才会进入 agent loop。loop 会装配模型、工具、记忆、工作区和技能快照，然后开始一次完整执行，并把输出与状态同步写回。</p>
+            </div>
+          </div>
+
+          <div class="note-strong">
+            一个适合汇报时直接说出口的总句式是：
+            OpenClaw 不是“一个套了提示词的聊天模型”，而是“一个本地控制平面 + 会话状态系统 + agent 执行内核”。模型只是执行环节的一部分，不是整个系统。
+          </div>
+
+          <div class="evidence-list evidence-only">
+            <strong>证据位置</strong>
+            <ul>
+              <li><code>learning proj/openclaw/README.md:128-149</code> 把 Gateway、multi-channel、multi-agent、Pi agent runtime、session model 并列为核心能力。</li>
+              <li><code>learning proj/openclaw/docs/concepts/architecture.md:12-18</code> 说明客户端和节点都连到同一个 Gateway。</li>
+              <li><code>learning proj/openclaw/docs/concepts/agent-loop.md:10-12</code> 定义真实执行链是 intake 到 persistence 的整条路径。</li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="runtime">
+          <div class="section-head">
+            <div>
+              <small>Runtime Map</small>
+              <h3>运行时总装图：重要板块怎样拼起来</h3>
+              <p>
+                下面这 8 个节点不是平铺罗列，而是按系统真实执行顺序排出来的。点击任意节点，可以看它解决什么问题、输入输出是什么，以及它和前后板块怎样衔接。
+              </p>
+            </div>
+          </div>
+          <div class="runtime-map" id="runtime-map"></div>
+          <div class="detail-panel" id="runtime-map-detail"></div>
+        </section>
+
+        <section id="message-flow">
+          <div class="section-head">
+            <div>
+              <small>Data Flow</small>
+              <h3>一条消息怎么跑完：从输入到回复的完整路径</h3>
+              <p>
+                这一节不按功能讲，而按时间顺序讲。你可以把它理解为一次标准 agent run 的解剖图。点击步骤切换视角，可以把所有板块放回同一条链里理解。
+              </p>
+            </div>
+          </div>
+          <div class="flow-nav" id="flow-nav"></div>
+          <div class="timeline" id="flow-detail"></div>
+        </section>
+
+        <section id="modules">
+          <div class="section-head">
+            <div>
+              <small>Core Modules</small>
+              <h3>关键板块逐个拆开，但始终放在同一条运行链里理解</h3>
+              <p>
+                对只会写 Python 脚本的人来说，真正难的不是一行代码，而是“为什么系统需要这一层”。下面每个板块都回答四件事：它解决什么问题、输入是什么、输出是什么、怎么接到上下游。
+              </p>
+            </div>
+          </div>
+          <div class="modules-layout">
+            <div class="module-list" id="module-list"></div>
+            <div class="module-detail" id="module-detail"></div>
+          </div>
+        </section>
+
+        <section id="special">
+          <div class="section-head">
+            <div>
+              <small>Special Flows</small>
+              <h3>特殊流程：为什么 cron、subagent、sessions_send、channel 不是外挂</h3>
+              <p>
+                它们看起来像附加功能，但实际上都是统一运行时的特殊入口或特殊分支。理解这一点，才能把 OpenClaw 看成一个整体系统，而不是功能拼盘。
+              </p>
+            </div>
+          </div>
+
+          <div class="special-grid">
+            <div class="card">
+              <h4>定时任务：cron</h4>
+              <p>cron 的本质不是“定时跑脚本”，而是“在某个时间点为系统生成新的 agent 输入”。到点后，Gateway 的 CronService 触发 job，再进入标准 agent run 链。</p>
+              <p class="detail-only">这说明运行时设计很统一：无论输入来自人、来自设备、还是来自时间调度，最后都要转成一次规范化 run。</p>
+              <div class="evidence-list evidence-only">
+                <strong>证据位置</strong>
+                <ul>
+                  <li><code>src/gateway/server.impl.ts:94-116</code> Gateway 启动时组装 cron service。</li>
+                  <li><code>src/cron/service.ts:7-60</code> CronService 暴露 start、list、add、run、wake 等能力。</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="card">
+              <h4>子代理：subagent</h4>
+              <p>subagent 的本质不是线程，也不是普通函数调用，而是“从当前 run 派生一个独立会话”。子代理有自己的 sessionKey、自己的 token 消耗、自己的完成状态，结束后再把结果通知回父会话。</p>
+              <p class="detail-only">这样设计的好处是边界清楚：主会话与子会话不会互相污染，子任务可以并行，也能独立记录和清理。</p>
+              <div class="evidence-list evidence-only">
+                <strong>证据位置</strong>
+                <ul>
+                  <li><code>docs/tools/subagents.md:12-13</code> 子代理运行在自己的 session 中。</li>
+                  <li><code>src/agents/tools/sessions-spawn-tool.ts:82-85</code> 明确是 spawn isolated session。</li>
+                  <li><code>src/agents/subagent-registry.ts:155-220</code> 维护状态并回写 session 信息。</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="card">
+              <h4>会话间通信：sessions_send</h4>
+              <p>一个 agent 想把任务交给另一个 session，并不是直接修改对方历史，而是通过 Gateway 再发起一个新的 <code>agent</code> run。也就是说，会话间通信仍然走统一控制平面和权限校验。</p>
+              <p class="detail-only">这能避免任意 session 越权访问别人的上下文，也能保证所有 run 都接受相同的可见性和策略约束。</p>
+              <div class="evidence-list evidence-only">
+                <strong>证据位置</strong>
+                <ul>
+                  <li><code>src/agents/tools/sessions-send-tool.ts:35-63</code> 最终通过 <code>callGateway({ method: "agent" })</code> 发起 run。</li>
+                  <li><code>src/agents/tools/sessions-send-tool.ts:83-131</code> 做跨 agent 策略校验。</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="card">
+              <h4>Channel 监听器</h4>
+              <p>Discord、Slack、Telegram 监听器并不直接调用模型。它们负责接住外部事件、提取路由上下文，再把输入归并成 OpenClaw 内部的会话和 run。</p>
+              <p class="detail-only">也就是说，channel 不只是“接入插件”，它是现实世界进入运行时的入口层。</p>
+              <div class="evidence-list evidence-only">
+                <strong>证据位置</strong>
+                <ul>
+                  <li><code>extensions/discord/src/monitor/listeners.ts:13-15</code> 监听器依赖 <code>resolveAgentRoute</code>。</li>
+                  <li><code>docs/concepts/architecture.md:12-18</code> 所有 messaging surface 都统一由 Gateway 拥有。</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="note-strong detail-only">
+            判断某个能力是不是运行时本体，有一个很简单的标准：
+            只要它最终会创建、定位、串行化或回送一次 agent run，它就属于运行时本体，而不是外围附属功能。cron、subagent、sessions_send、channel 都符合这个标准。
+          </div>
+        </section>
+
+        <section id="storage">
+          <div class="section-head">
+            <div>
+              <small>Persistence</small>
+              <h3>数据和文件落点：系统把状态写到哪里</h3>
+              <p>
+                想真正讲明白运行时，必须把“进程里一时存在的东西”和“写盘后能恢复的事实”区分开。OpenClaw 的很多关键设计，都是围绕“哪些东西必须落盘”来做的。
+              </p>
+            </div>
+          </div>
+
+          <div class="storage-grid">
+            <div class="card">
+              <h4>会话索引</h4>
+              <p>Gateway 是 session 的唯一真实来源。每个 agent 都有自己的 session store，典型路径是 <code>~/.openclaw/agents/&lt;agentId&gt;/sessions/sessions.json</code>。这里存的是 sessionKey 到元数据的映射，不是全文历史。</p>
+              <div class="evidence-list evidence-only"><strong>证据位置</strong><ul><li><code>docs/concepts/session.md:57-69</code></li></ul></div>
+            </div>
+
+            <div class="card">
+              <h4>会话全文转录</h4>
+              <p>每个 session 的消息历史以 transcript 形式持久化，典型文件是 <code>~/.openclaw/agents/&lt;agentId&gt;/sessions/&lt;SessionId&gt;.jsonl</code>。模型要继续对话，靠的是这份历史，而不是靠进程内存。</p>
+            </div>
+
+            <div class="card">
+              <h4>记忆文件</h4>
+              <p>OpenClaw 明确把 memory 定义为工作区里的 Markdown。短期日记常写在 <code>memory/YYYY-MM-DD.md</code>，长期稳定事实写在 <code>MEMORY.md</code>。这说明记忆是可见、可编辑、可审计的系统事实。</p>
+              <div class="evidence-list evidence-only"><strong>证据位置</strong><ul><li><code>docs/concepts/memory.md:11-28</code></li></ul></div>
+            </div>
+
+            <div class="card">
+              <h4>记忆索引</h4>
+              <p>记忆源头是 Markdown，但为了让 agent 做语义检索，系统会建立 memory index manager，管理 embedding provider、向量与关键词检索、文件监控和增量同步。</p>
+              <div class="evidence-list evidence-only"><strong>证据位置</strong><ul><li><code>src/memory/manager.ts:80-144</code></li></ul></div>
+            </div>
+
+            <div class="card">
+              <h4>技能快照</h4>
+              <p>新 session 启动时，技能会构建 snapshot 并写回 session entry。这样后续运行就知道这段会话当时看到的技能集合是什么，避免上下文漂移。</p>
+              <div class="evidence-list evidence-only"><strong>证据位置</strong><ul><li><code>src/agents/agent-command.ts:908-938</code></li></ul></div>
+            </div>
+
+            <div class="card">
+              <h4>子代理状态</h4>
+              <p>子代理状态也不是只留在内存里。registry 会把运行记录持久化，并把 startedAt、endedAt、runtimeMs、status 等信息回写到对应 session entry。</p>
+              <div class="evidence-list evidence-only"><strong>证据位置</strong><ul><li><code>src/agents/subagent-registry.ts:177-220</code></li></ul></div>
+            </div>
+          </div>
+
+          <div class="note-strong detail-only">
+            对老板来说，这一节特别重要：OpenClaw 许多看起来“智能”的行为，本质上都是靠明确状态持久化来保证可恢复、可解释、可继续，不是靠进程里偷偷留着一些变量。
+          </div>
+        </section>
+
+        <section id="tradeoff">
+          <div class="section-head">
+            <div>
+              <small>Design Choices</small>
+              <h3>运行时设计取舍：为什么 OpenClaw 要做成这样</h3>
+              <p>真正理解一个系统，不只是知道它怎么做，还要知道它为什么不换一种更简单的做法。下面这些取舍，几乎决定了整个运行时的形状。</p>
+            </div>
+          </div>
+
+          <div class="tradeoff-grid">
+            <div class="card">
+              <h4>为什么要有 Gateway</h4>
+              <p>如果没有 Gateway，每个 UI、每个 channel、每个 node 都要自己维护连接、状态、权限和 session，这会导致状态分裂。OpenClaw 把 Gateway 设成唯一控制平面，就是为了让“谁在说话、说到哪了、该用哪个 agent、结果发回哪里”只有一个地方说了算。</p>
+            </div>
+            <div class="card">
+              <h4>为什么 run 要按 session 串行</h4>
+              <p>同一个会话如果同时跑两个 loop，就会出现工具冲突、历史顺序错乱、token 统计不准、最终状态不一致。OpenClaw 明确把每个 session 当成一个串行执行通道，这是为了保证一致性。</p>
+              <div class="evidence-list evidence-only"><strong>证据位置</strong><ul><li><code>docs/concepts/agent-loop.md:31-35,45-49</code></li></ul></div>
+            </div>
+            <div class="card">
+              <h4>为什么 memory 要落到 Markdown</h4>
+              <p>因为要让记忆成为用户和 agent 都能审计、编辑、迁移的事实，而不是模型内部不可见的隐含状态。这样 memory 才能被搜、被读、被修改，也才能跨运行恢复。</p>
+            </div>
+            <div class="card">
+              <h4>为什么 tools 不能全部放开</h4>
+              <p>工具不是越多越好。OpenClaw 有 catalog、profile、session visibility、agent-to-agent policy，这说明它把工具看成运行时权限面，而不是普通函数库。工具一旦能跨 session、跨 agent、连设备，就必须受控。</p>
+              <div class="evidence-list evidence-only"><strong>证据位置</strong><ul><li><code>src/agents/tool-catalog.ts:27-220</code></li><li><code>src/agents/tools/sessions-send-tool.ts:83-131</code></li></ul></div>
+            </div>
+          </div>
+
+          <details class="detail-only" open>
+            <summary>更深入一点：为什么 OpenClaw 的模块看起来很多</summary>
+            <div>因为它把几个通常会混在一起的问题硬拆开了。路由只负责“落到谁”；session 只负责“历史和边界”；loop 只负责“这次 run 如何执行”；tool 管理只负责“这次 run 能用什么能力”；memory 只负责“哪些信息可跨轮保留”；channel 只负责“外部输入如何进来”。模块多，理解成本上升，但边界更稳定。</div>
+          </details>
+          <details class="detail-only">
+            <summary>更深入一点：为什么 channel、UI、cron 都能接到同一内核</summary>
+            <div>因为 OpenClaw 在输入层做了统一抽象。无论输入来自手工消息、网页、Discord 事件还是定时器，本质上都要被还原成一次规范化 run 请求，带上 agentId、sessionKey、消息内容和上下文。入口统一，后面的运行链就能复用。</div>
+          </details>
+        </section>
+
+        <section id="talk-track">
+          <div class="section-head">
+            <div>
+              <small>Talk Track</small>
+              <h3>给老板讲时可以怎么说</h3>
+              <p>下面这部分不是再讲新知识，而是帮你把前面的内容压缩成适合口头汇报的表达方式。可以直接照这个顺序讲。</p>
+            </div>
+          </div>
+
+          <div class="talk-grid">
+            <div class="card">
+              <h4>一句话版</h4>
+              <p>OpenClaw 的运行时可以理解成一个本地控制平面。它把多种输入统一接进来，用路由和 session 把上下文边界分清，再把模型、工具、记忆、工作区等资源装配成一次 agent run，最后把结果流式返回并写入持久化存储。</p>
+            </div>
+            <div class="card">
+              <h4>三句话版</h4>
+              <ol>
+                <li>第一句：所有入口最后都进 Gateway，所以状态不会散在各处。</li>
+                <li>第二句：sessionKey 决定这次输入属于哪个上下文，也是串行执行和持久化的边界。</li>
+                <li>第三句：agent loop 会把模型、工具、记忆、资源装好，执行一次完整 run，并把结果再送回原来的地方。</li>
+              </ol>
+            </div>
+            <div class="card">
+              <h4>老板最该理解的点</h4>
+              <ul>
+                <li>LLM 不是整个系统，LLM 只是 loop 中的推理引擎。</li>
+                <li>Memory 不是“模型自己记住了”，而是写入工作区文件并可检索。</li>
+                <li>Session 不是聊天窗口概念，而是运行时状态边界。</li>
+                <li>Tool、channel、cron、subagent 都不是外挂，而是统一运行时的接口层。</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h4>如果老板问“为什么这么复杂”</h4>
+              <p>因为 OpenClaw 不是只做单轮问答，而是要长期运行、接多个入口、支持多 agent、支持设备和自动化，还要保证状态一致、能恢复、能审计、能扩展。复杂度主要来自状态管理，而不是来自提示词。</p>
+            </div>
+          </div>
+
+          <div class="footer-box" style="margin-top: 16px;">
+            整体结论：OpenClaw 的核心不是某个“很聪明的 prompt”，而是一套把外部输入、会话边界、模型执行、工具能力、持久化状态和回送链路组织在一起的运行时。向老板解释它，最有效的方式不是一项项介绍功能，而是沿着“输入进入 Gateway，落到 session，进入 loop，调用工具，写回状态，再把结果送出”这条链讲。
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const runtimeNodes = [
+        {
+          id: "n1",
+          index: "01",
+          title: "入口层：clients / channels / nodes / cron",
+          brief: "系统先要接住外部输入。",
+          lead:
+            "OpenClaw 的第一步不是调用模型，而是接收输入。这个输入可能来自 CLI、Web UI、WebChat、macOS app，也可能来自 Discord、Slack、Telegram 这类 channel，还可能来自 node 设备事件和 cron 定时触发。它们形式不同，但都需要统一进入 Gateway。",
+          points: [
+            "这一步解决的是“输入从哪里进入系统”的问题。",
+            "如果这一层不统一，后续 session、权限、日志、回放都会分裂。",
+            "因此 OpenClaw 明确让 Gateway 拥有所有 messaging surface 和 control-plane 连接。"
+          ],
+          evidence: [
+            "README.md:128-149",
+            "docs/concepts/architecture.md:12-18",
+            "src/gateway/server.impl.ts:87-116"
+          ]
+        },
+        {
+          id: "n2",
+          index: "02",
+          title: "控制平面：Gateway",
+          brief: "统一处理请求、事件、校验、分发。",
+          lead:
+            "Gateway 是 OpenClaw 的中心控制平面。它负责接 WebSocket 请求、校验 method、做权限判断、做写操作限流、把请求分发到各类 handler，再把响应和事件推回客户端。它不是简单消息转发器，而是系统级状态入口。",
+          points: [
+            "Gateway 统一拥有 sessions、channels、cron、config、models、agent run 等方法。",
+            "所有外部入口最终都要通过 Gateway 的 method/handler 体系进入后端逻辑。",
+            "这保证了后续状态管理和可观测性只有一个中心。"
+          ],
+          evidence: [
+            "src/gateway/server-methods.ts:68-156",
+            "docs/concepts/architecture.md:27-38"
+          ]
+        },
+        {
+          id: "n3",
+          index: "03",
+          title: "路由层：agentId + sessionKey",
+          brief: "先决定交给谁，再决定写到哪段历史里。",
+          lead:
+            "输入进入 Gateway 后，下一件关键事不是生成回答，而是路由。系统要根据 channel、accountId、peer、guild、team、thread 等信息，决定这次输入属于哪个 agent，以及应该归入哪个 sessionKey。这个 sessionKey 同时决定历史边界、并发边界和持久化边界。",
+          points: [
+            "route 的输出至少包括 agentId、sessionKey、mainSessionKey、lastRoutePolicy。",
+            "sessionKey 不是装饰字段，而是整个运行时的主键之一。",
+            "不同的 DM scope、群聊、线程、子代理、cron 都会映射成不同 key 形态。"
+          ],
+          evidence: [
+            "src/routing/resolve-route.ts:39-75,91-112",
+            "src/sessions/session-key-utils.ts:12-132",
+            "docs/concepts/session.md:10-18,57-69"
+          ]
+        },
+        {
+          id: "n4",
+          index: "04",
+          title: "会话层：session store + transcript",
+          brief: "会话状态和全文历史必须落盘。",
+          lead:
+            "一旦 sessionKey 确定，OpenClaw 会去维护该 session 的元数据和 transcript。session store 记录这个 key 当前对应哪个 sessionId、上次更新时间、token 统计、状态、来源等；transcript 记录全文消息历史。后续每次继续对话，都依赖这份持久化状态。",
+          points: [
+            "Gateway 被定义为 session state 的 source of truth。",
+            "UI 不直接靠本地文件猜测状态，而是向 Gateway 查询。",
+            "这层让系统能恢复、能追踪、能维护，也让 agent loop 能拿到可靠上下文。"
+          ],
+          evidence: [
+            "docs/concepts/session.md:57-76",
+            "src/agents/agent-command.ts:1122-1147"
+          ]
+        },
+        {
+          id: "n5",
+          index: "05",
+          title: "装配层：model / tools / memory / skills / workspace",
+          brief: "真正执行前，先把资源配齐。",
+          lead:
+            "OpenClaw 在真正跑模型前，会把这次 run 需要的资源装起来：模型选择、thinking 默认值、auth profile、workspace、技能快照、记忆工具、工具目录、系统提示词上下文。这一步决定 agent 此刻看到什么、能做什么、写到哪里。",
+          points: [
+            "模型不是写死的，会结合默认配置、allowlist、session override 和显式 override 解析。",
+            "技能会构建 snapshot 并跟 session 绑定，避免会话期间上下文漂移。",
+            "memory 通过插件和工具挂入运行时，而不是硬编码在模型内部。"
+          ],
+          evidence: [
+            "src/agents/agent-command.ts:908-1121",
+            "src/agents/tool-catalog.ts:27-220",
+            "extensions/memory-core/index.ts:28-60",
+            "extensions/openai/index.ts:8-18"
+          ]
+        },
+        {
+          id: "n6",
+          index: "06",
+          title: "执行层：agent loop",
+          brief: "开始一次真实 run。",
+          lead:
+            "这一步就是 OpenClaw 文档里定义的 authoritative path。run 会经历 intake、context assembly、model inference、tool execution、streaming replies、persistence。期间会产出 lifecycle 事件、assistant delta、tool stream、usage 信息，并由 session lane 保证顺序一致。",
+          points: [
+            "同一 session 的 run 会被串行化，避免状态冲突。",
+            "模型输出不是一次性返回，而是事件流。",
+            "如果超时、失败、回退，也是在这层收口。"
+          ],
+          evidence: [
+            "docs/concepts/agent-loop.md:10-18,25-42,45-58",
+            "src/gateway/server-methods/agent.ts:141-190",
+            "src/agents/pi-embedded-runner/run.ts:267-418"
+          ]
+        },
+        {
+          id: "n7",
+          index: "07",
+          title: "扩展分支：subagent / sessions_send / cron / nodes",
+          brief: "特殊能力本质上都是 run 的变体。",
+          lead:
+            "看起来像单独功能的子代理、定时任务、会话发送、设备命令，本质上都围绕 run 展开。它们要么创建新的 run，要么把结果路由到新的 session，要么在 run 过程中提供额外工具和外部能力。",
+          points: [
+            "subagent 产生独立 session，并在完成后 announce 回父会话。",
+            "sessions_send 通过 Gateway 再触发新的 agent run，而不是直接写别人历史。",
+            "cron 到点后也要触发 agent run。"
+          ],
+          evidence: [
+            "docs/tools/subagents.md:12-18,40-77",
+            "src/agents/tools/sessions-send-tool.ts:35-63,225-239",
+            "src/agents/tools/sessions-spawn-tool.ts:82-85"
+          ]
+        },
+        {
+          id: "n8",
+          index: "08",
+          title: "输出层：streaming + persistence + delivery",
+          brief: "结果既要发出去，也要留下来。",
+          lead:
+            "run 最终要同时完成两件事：对外，把 assistant/tool/lifecycle 流和最终结果送回客户端、channel 或父会话；对内，把状态、token、transcript、session entry 这些事实写回存储。OpenClaw 不是只求“答出来”，还要保证“答过什么、在哪答的、以后能不能接着跑”都清楚。",
+          points: [
+            "流式输出让前端或上层调用方能看到运行过程。",
+            "持久化让会话能延续、能审计、能恢复。",
+            "这两件事必须同时成立，系统才算真正完成一次 run。"
+          ],
+          evidence: [
+            "docs/concepts/architecture.md:57-76",
+            "docs/concepts/agent-loop.md:37-43",
+            "docs/concepts/session.md:57-69"
+          ]
+        }
+      ];
+
+      const flowSteps = [
+        {
+          id: "f1",
+          label: "1. 输入进入",
+          title: "外部输入进入 Gateway",
+          meta: "入口收口",
+          summary:
+            "假设 Discord 上有人发来一条消息。监听器先捕捉事件，提取 channel、accountId、peer、guild、thread 等信息，再把它转成 OpenClaw 能理解的系统输入。这个阶段先不讨论回答内容，只解决“把外部世界的事件接进系统”。",
+          micro: [
+            ["输入对象", "用户消息、UI 操作、定时器触发、设备事件"],
+            ["关键目标", "统一收口，而不是各走各路"],
+            ["输出结果", "一份可被路由和执行的规范化输入"]
+          ],
+          evidence: [
+            "docs/concepts/architecture.md:12-18",
+            "extensions/discord/src/monitor/listeners.ts:13-15"
+          ]
+        },
+        {
+          id: "f2",
+          label: "2. 计算路由",
+          title: "决定 agentId 与 sessionKey",
+          meta: "上下文边界",
+          summary:
+            "系统根据来源渠道和对端信息决定这次消息归哪个 agent 处理，并生成 sessionKey。这里的 sessionKey 非常关键，因为它不只是查历史用，还决定并发串行边界和后续持久化落点。换句话说，路由结果不仅告诉系统“谁来答”，还告诉系统“这次答复属于哪段连续历史”。",
+          micro: [
+            ["输入字段", "channel、accountId、peer、guildId、teamId、thread"],
+            ["核心产物", "agentId、sessionKey、mainSessionKey、lastRoutePolicy"],
+            ["决定效果", "历史边界、并发边界、回送边界"]
+          ],
+          evidence: [
+            "src/routing/resolve-route.ts:39-75,91-112",
+            "src/sessions/session-key-utils.ts:61-132"
+          ]
+        },
+        {
+          id: "f3",
+          label: "3. 建会话状态",
+          title: "读取或创建 session 元数据与 transcript",
+          meta: "状态落点",
+          summary:
+            "当 sessionKey 已知后，系统会读取对应 session entry。如果这是新会话，就创建 sessionId、写初始 entry，并准备 transcript 文件路径。如果是老会话，就继续使用已有状态。这里要强调：OpenClaw 的会话不是 UI 里看到的聊天框，而是一套落盘状态。",
+          micro: [
+            ["元数据", "sessionId、updatedAt、status、来源、token 统计"],
+            ["全文历史", "jsonl transcript"],
+            ["意义", "后续 loop 才有一致上下文"]
+          ],
+          evidence: [
+            "docs/concepts/session.md:57-69",
+            "src/agents/agent-command.ts:1122-1147"
+          ]
+        },
+        {
+          id: "f4",
+          label: "4. 装配执行环境",
+          title: "解析模型、技能、工具、工作目录、记忆",
+          meta: "运行时装配",
+          summary:
+            "OpenClaw 在进入模型之前，会准备这次 run 的所有依赖。它会确定 provider/model，处理 allowlist 和 override，计算 thinking 默认值，构建技能快照，准备 workspace，装载 tool catalog，并把记忆插件暴露出来。也就是先把 agent 的执行环境搭好，再开始执行。",
+          micro: [
+            ["模型", "默认配置 + allowlist + override 合并解析"],
+            ["技能", "skills snapshot 绑定到 session"],
+            ["工具与记忆", "tool catalog + memory plugin 挂入本次 run"]
+          ],
+          evidence: [
+            "src/agents/agent-command.ts:908-1121",
+            "src/agents/tool-catalog.ts:27-220",
+            "docs/concepts/memory.md:11-18,33-44"
+          ]
+        },
+        {
+          id: "f5",
+          label: "5. 进入 loop",
+          title: "agent loop 开始真实执行",
+          meta: "核心执行链",
+          summary:
+            "进入 loop 后，系统会按顺序进行上下文组装、模型推理、工具调用、输出流转和最终持久化。重要的是，这不是一次函数调用结束，而是一串事件。assistant token 流、tool 事件、lifecycle 事件会不断发出，直到 run 正常结束、报错或超时。",
+          micro: [
+            ["顺序控制", "session lane 串行化，避免冲突"],
+            ["事件桥接", "把底层 pi runtime 事件桥接到 OpenClaw stream"],
+            ["失败处理", "超时、中断、模型失败都在这里收口"]
+          ],
+          evidence: [
+            "docs/concepts/agent-loop.md:25-42,45-58",
+            "src/agents/pi-embedded-runner/run.ts:267-418"
+          ]
+        },
+        {
+          id: "f6",
+          label: "6. 工具与记忆参与",
+          title: "模型在 loop 中调工具，工具再触发系统动作",
+          meta: "能力执行",
+          summary:
+            "如果模型决定调用工具，比如 memory_search、sessions_send、sessions_spawn、browser、cron 等，那么工具并不是简单返回一个值。很多工具会进一步调用 Gateway、访问会话层、触发子代理或操作设备。也就是说，工具是 runtime 的动作接口。",
+          micro: [
+            ["memory_search", "查工作区索引后的记忆片段"],
+            ["sessions_send", "让另一段 session 发起新 run"],
+            ["sessions_spawn", "创建独立子会话并并行运行"]
+          ],
+          evidence: [
+            "extensions/memory-core/index.ts:28-60",
+            "src/agents/tools/sessions-send-tool.ts:35-63",
+            "src/agents/tools/sessions-spawn-tool.ts:82-85"
+          ]
+        },
+        {
+          id: "f7",
+          label: "7. 输出与持久化",
+          title: "结果回送，并把状态落盘",
+          meta: "系统闭环",
+          summary:
+            "run 结束时，系统一边把最终结果送回最初的请求者，一边更新 transcript、token 统计、session 状态，以及必要的子代理状态、记忆文件等。这样下一次输入到来时，系统不是从零开始，而是接着上一轮事实继续运行。",
+          micro: [
+            ["对外", "CLI、UI、channel 或父会话收到结果"],
+            ["对内", "transcript、session entry、memory 等被更新"],
+            ["闭环结果", "系统可恢复、可继续、可审计"]
+          ],
+          evidence: [
+            "docs/concepts/architecture.md:72-76",
+            "docs/concepts/session.md:57-69",
+            "src/agents/subagent-registry.ts:177-220"
+          ]
+        }
+      ];
+
+      const modules = [
+        {
+          id: "m1",
+          label: "Gateway 控制平面",
+          short: "系统中心，统一接请求、做校验、调 handler。",
+          title: "Gateway：OpenClaw 的唯一控制平面",
+          lead:
+            "Gateway 是最先要讲清楚的板块，因为其他部分大多都围着它转。它统一暴露 WebSocket API，统一接入 channel、client、node、cron，也统一管理 session、config、模型目录和 agent run。",
+          why: [
+            "如果没有中心控制平面，多入口系统的状态一定会分裂。",
+            "Gateway 让系统拥有统一的权限校验、请求分发、事件广播和状态来源。",
+            "对汇报对象来说，可以把它理解为 OpenClaw 的总入口与总协调器。"
+          ],
+          io: [
+            "输入：各种 method 请求、channel 事件、设备连接、定时任务。",
+            "输出：handler 调用、agent 流事件、状态响应、系统广播。"
+          ],
+          join: [
+            "上游接 clients、channels、nodes。",
+            "下游把请求交给 routing、session、agent runtime、cron、models 等子系统。"
+          ],
+          evidence: [
+            "src/gateway/server.impl.ts:87-116",
+            "src/gateway/server-methods.ts:68-156",
+            "docs/concepts/architecture.md:27-38"
+          ]
+        },
+        {
+          id: "m2",
+          label: "Channel 与路由",
+          short: "把外部消息归到正确 agent 和正确 session。",
+          title: "Channel 与 Routing：把现实世界事件归并成内部会话",
+          lead:
+            "OpenClaw 的 channel 层不是直接回消息，而是负责把外部平台事件翻译成内部运行时输入。路由层再用 channel、account、peer、guild、team、thread 等信息，推导 agentId 和 sessionKey。",
+          why: [
+            "一个系统接多个平台时，最先要解决的是归属问题。",
+            "路由一旦算错，后面再强的模型也会用错上下文。",
+            "sessionKey 设计得细，是为了明确不同来源之间的上下文边界。"
+          ],
+          io: [
+            "输入：消息来源信息与平台上下文。",
+            "输出：agentId、sessionKey、mainSessionKey、lastRoutePolicy。"
+          ],
+          join: [
+            "上游来自 Discord、Slack、Telegram 等 listener。",
+            "下游进入 session 层与 agent run。"
+          ],
+          evidence: [
+            "src/routing/resolve-route.ts:39-75,91-112",
+            "extensions/discord/src/monitor/listeners.ts:13-15",
+            "docs/concepts/session.md:10-18"
+          ]
+        },
+        {
+          id: "m3",
+          label: "会话管理",
+          short: "定义历史边界、串行边界、持久化边界。",
+          title: "Session 管理：OpenClaw 的状态边界系统",
+          lead:
+            "会话管理不是简单维护一个聊天列表，而是在定义每条输入到底属于哪段历史、是否和别人共享上下文、是否需要独立串行执行，以及这些状态应该落盘到哪里。",
+          why: [
+            "只要系统涉及多人、多入口、多 agent，就必须明确会话边界。",
+            "sessionKey 是运行时的重要主键。",
+            "Gateway 被定义为 session 的 source of truth，说明这不是 UI 层概念。"
+          ],
+          io: [
+            "输入：agentId、来源上下文、sessionKey。",
+            "输出：session entry、sessionId、transcript 路径、状态更新。"
+          ],
+          join: [
+            "上游承接路由结果。",
+            "下游为 agent loop 提供历史和落盘位置。"
+          ],
+          evidence: [
+            "docs/concepts/session.md:57-76",
+            "src/sessions/session-key-utils.ts:61-132",
+            "src/agents/agent-command.ts:1122-1147"
+          ]
+        },
+        {
+          id: "m4",
+          label: "LLM 接入",
+          short: "模型解析、默认值、限制、鉴权并不简单。",
+          title: "LLM 接入：模型选择只是开始，真正要做的是运行时解析",
+          lead:
+            "很多人会以为 LLM 接入就是填一个 model 名字。OpenClaw 实际做得更多：它要先找默认模型，再看 agent allowlist，再看 session 是否保存了 override，再处理显式 override，再校验 auth profile 与 thinking 默认值，最后才形成这次 run 真正使用的 provider 和 model。",
+          why: [
+            "多 provider、多模型、多 agent、多权限场景下，模型选择必须可控。",
+            "会话级 override 说明模型不是静态配置，而是运行时状态的一部分。",
+            "thinking、context window guard、failover 这些都属于实际执行约束。"
+          ],
+          io: [
+            "输入：配置、session entry、显式参数、模型目录。",
+            "输出：本次 run 的 provider、model、thinking、auth profile 与上下文限制。"
+          ],
+          join: [
+            "上游来自 agent command 的 run 参数。",
+            "下游交给 embedded pi runtime 去真正调用模型。"
+          ],
+          evidence: [
+            "src/agents/agent-command.ts:958-1121",
+            "src/agents/pi-embedded-runner/run.ts:376-418",
+            "extensions/openai/index.ts:8-18"
+          ]
+        },
+        {
+          id: "m5",
+          label: "记忆板块",
+          short: "记忆是文件 + 检索，不是神秘内部状态。",
+          title: "Memory：记忆在 OpenClaw 里是文件系统事实",
+          lead:
+            "OpenClaw 对 memory 的定义很直接：记忆本体是工作区 Markdown 文件。系统再通过 memory plugin 和 memory tools，把这些文件变成可搜索、可读取、可在运行时使用的上下文。模型并不会凭空永久记住东西；要保留，就要写盘。",
+          why: [
+            "让记忆成为用户可见、可编辑、可迁移的事实。",
+            "把“记住什么”从模型内部状态拿出来，变成系统状态。",
+            "为长期运行和恢复提供基础。"
+          ],
+          io: [
+            "输入：工作区 Markdown、embedding provider、memory 查询请求。",
+            "输出：检索结果、目标文件内容、更新后的 memory 文件。"
+          ],
+          join: [
+            "上游由 memory-core 插件和工具目录把能力暴露给 agent。",
+            "下游在 loop 中被模型调用。"
+          ],
+          evidence: [
+            "docs/concepts/memory.md:11-44,54-79",
+            "src/memory/manager.ts:80-144,149-220",
+            "extensions/memory-core/index.ts:28-60"
+          ]
+        },
+        {
+          id: "m6",
+          label: "工具管理",
+          short: "工具集合、分组、权限和可见性一起决定 agent 能力面。",
+          title: "Tool 管理：能力不是静态堆砌，而是运行时授权面",
+          lead:
+            "OpenClaw 把工具按 section 和 profile 管理，里面既有文件、运行时、web，也有 memory、sessions、nodes、automation、agents。工具管理的关键不只是“有哪些工具”，而是“在什么场景下允许哪些工具、能看到哪些 session、能不能跨 agent 发送”。",
+          why: [
+            "工具一旦涉及跨会话、跨设备、跨浏览器，必须受控。",
+            "不同 agent 和不同运行模式需要不同工具面。",
+            "这层决定了模型的实际可行动范围。"
+          ],
+          io: [
+            "输入：配置、tool profile、当前 session 上下文。",
+            "输出：本次 run 的工具列表和可见性限制。"
+          ],
+          join: [
+            "上游在 agent 启动时装配。",
+            "下游在 loop 中由模型调用。"
+          ],
+          evidence: [
+            "src/agents/tool-catalog.ts:27-220",
+            "src/agents/tools/sessions-send-tool.ts:83-131,225-239"
+          ]
+        },
+        {
+          id: "m7",
+          label: "Agent Loop",
+          short: "输入变动作与结果的真实执行路径。",
+          title: "Agent Loop：系统最核心的执行链",
+          lead:
+            "agent loop 是最接近 OpenClaw 真正在工作的地方。它把 intake、context assembly、model inference、tool execution、streaming replies、persistence 串成一条完整路径。所有严肃的运行时问题，最后基本都会落到这一层。",
+          why: [
+            "只有 loop 才能把上游状态和下游动作接起来。",
+            "真正的流式事件、工具调用、超时控制、结束态收口都在这层。",
+            "理解 loop 就等于理解系统如何把消息变成动作与回复。"
+          ],
+          io: [
+            "输入：消息、session、workspace、model、tools、prompt 上下文。",
+            "输出：assistant/tool/lifecycle stream、最终结果、usage、持久化状态。"
+          ],
+          join: [
+            "上游承接 Gateway、session 与 runtime 装配。",
+            "下游回写 transcript、session store，并向外输出结果流。"
+          ],
+          evidence: [
+            "docs/concepts/agent-loop.md:10-18,25-42",
+            "src/gateway/server-methods/agent.ts:141-190",
+            "src/agents/pi-embedded-runner/run.ts:267-418"
+          ]
+        },
+        {
+          id: "m8",
+          label: "资源管理",
+          short: "工作区、sandbox、队列、上下文窗口都属于资源层。",
+          title: "资源管理：让一次 run 不只是能跑，而是可控地跑",
+          lead:
+            "资源管理在 OpenClaw 里不是单独一个类名，而是散在多个运行时组件里。workspace 解析、sandbox 工作目录、session lane、global lane、context window guard、timeout、auth profile 都属于资源管理范畴。它们共同决定一次 run 能消耗什么、在哪运行、排队方式如何、何时中止。",
+          why: [
+            "长期运行的 agent 如果没有资源边界，很快就会不稳定。",
+            "上下文窗口、队列和超时控制都直接影响可靠性。",
+            "这层是系统从“能演示”走向“能长期跑”的关键。"
+          ],
+          io: [
+            "输入：配置、agentId、workspaceDir、queue 策略、模型限制。",
+            "输出：运行目录、串行策略、context window 约束、timeout。"
+          ],
+          join: [
+            "上游来自 Gateway 和 agent command 配置。",
+            "下游作用于 embedded runtime、tool 执行和持久化。"
+          ],
+          evidence: [
+            "docs/concepts/agent-loop.md:45-58",
+            "src/agents/pi-embedded-runner/run.ts:391-418"
+          ]
+        },
+        {
+          id: "m9",
+          label: "Subagent 与多 agent",
+          short: "多 agent 不是共享大脑，而是隔离会话与工作区。",
+          title: "Subagent 与多 Agent：通过隔离 session 实现协作",
+          lead:
+            "OpenClaw 的多 agent 不是把多个提示词混在一起，而是让每个 agent 有自己的 workspace、agentDir、session store、auth profile。subagent 再在此基础上创建新的独立 session。换句话说，它的多 agent 协作是靠隔离边界和消息传递实现的。",
+          why: [
+            "只有先隔离，协作才不会污染上下文。",
+            "子代理独立消耗 token、独立记录状态，便于并行和审计。",
+            "这为更复杂的编排留下了基础。"
+          ],
+          io: [
+            "输入：父 run 的任务、spawn 参数、agentId、workspace。",
+            "输出：子 session、子 run、announce 回父会话。"
+          ],
+          join: [
+            "上游来自 sessions_spawn 或 subagent 命令。",
+            "下游仍然走标准 agent loop，只是跑在新的 session 上。"
+          ],
+          evidence: [
+            "docs/tools/subagents.md:12-18,40-77",
+            "src/agents/subagent-registry.ts:67-139,177-220"
+          ]
+        },
+        {
+          id: "m10",
+          label: "Cron 与自动化",
+          short: "定时输入最终也进入标准 run。",
+          title: "Cron：自动化入口，但仍然受统一运行时控制",
+          lead:
+            "Cron 并不是在 OpenClaw 外面偷偷跑一段逻辑，而是由 Gateway 组装和管理的服务。到点后，它会生成新的执行请求，把任务推进统一 run 链。这样 cron 跑出来的东西也能拥有 session、历史、模型、工具、日志和可观测性。",
+          why: [
+            "自动化如果绕开主运行时，会造成状态孤岛。",
+            "cron 任务也需要可追踪、可恢复、可审计。",
+            "这能让“人驱动”和“时间驱动”走同一条链。"
+          ],
+          io: [
+            "输入：定时规则、job 配置。",
+            "输出：定时 run、状态查询、触发记录。"
+          ],
+          join: [
+            "上游在 Gateway 启动时注册 cron service。",
+            "下游到点后进入 agent run。"
+          ],
+          evidence: [
+            "src/gateway/server.impl.ts:94-116",
+            "src/cron/service.ts:7-60"
+          ]
+        }
+      ];
+
+      function syncVisibility() {
+        const showDetails = document.body.dataset.showDetails !== "false";
+        const showEvidence = document.body.dataset.showEvidence !== "false";
+        document.querySelectorAll(".detail-only").forEach(function (el) {
+          el.classList.toggle("hidden", !showDetails);
+        });
+        document.querySelectorAll(".evidence-only").forEach(function (el) {
+          el.classList.toggle("hidden", !showEvidence);
+        });
+      }
+
+      function renderRuntimeMap() {
+        const map = document.getElementById("runtime-map");
+        const detail = document.getElementById("runtime-map-detail");
+        map.innerHTML = runtimeNodes.map(function (node, index) {
+          return '<button class="runtime-node' + (index === 0 ? " active" : "") + '" data-runtime-id="' + node.id + '" type="button"><span class="index">' + node.index + '</span><strong>' + node.title + '</strong><span>' + node.brief + "</span></button>";
+        }).join("");
+
+        function paint(node) {
+          detail.innerHTML = "<h4>" + node.title + "</h4><p>" + node.lead + "</p><ol>" + node.points.map(function (item) {
+            return "<li>" + item + "</li>";
+          }).join("") + '</ol><div class="evidence-list evidence-only"><strong>证据位置</strong><ul>' + node.evidence.map(function (item) {
+            return "<li><code>" + item + "</code></li>";
+          }).join("") + "</ul></div>";
+          syncVisibility();
+        }
+
+        map.querySelectorAll("[data-runtime-id]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            const id = button.getAttribute("data-runtime-id");
+            const node = runtimeNodes.find(function (item) { return item.id === id; });
+            if (!node) return;
+            map.querySelectorAll("[data-runtime-id]").forEach(function (el) {
+              el.classList.toggle("active", el === button);
+            });
+            paint(node);
+          });
+        });
+
+        paint(runtimeNodes[0]);
+      }
+
+      function renderFlow() {
+        const nav = document.getElementById("flow-nav");
+        const detail = document.getElementById("flow-detail");
+        nav.innerHTML = flowSteps.map(function (step, index) {
+          return '<button class="flow-step' + (index === 0 ? " active" : "") + '" data-flow-id="' + step.id + '" type="button">' + step.label + "</button>";
+        }).join("");
+
+        function paint(step) {
+          detail.innerHTML = '<div class="timeline-card"><span class="meta">' + step.meta + "</span><h4>" + step.title + "</h4><p>" + step.summary + '</p><div class="micro-grid">' + step.micro.map(function (item) {
+            return '<div class="micro"><strong>' + item[0] + "</strong><span>" + item[1] + "</span></div>";
+          }).join("") + '</div><div class="evidence-list evidence-only"><strong>证据位置</strong><ul>' + step.evidence.map(function (item) {
+            return "<li><code>" + item + "</code></li>";
+          }).join("") + "</ul></div></div>";
+          syncVisibility();
+        }
+
+        nav.querySelectorAll("[data-flow-id]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            const id = button.getAttribute("data-flow-id");
+            const step = flowSteps.find(function (item) { return item.id === id; });
+            if (!step) return;
+            nav.querySelectorAll("[data-flow-id]").forEach(function (el) {
+              el.classList.toggle("active", el === button);
+            });
+            paint(step);
+          });
+        });
+
+        paint(flowSteps[0]);
+      }
+
+      function renderModules() {
+        const list = document.getElementById("module-list");
+        const detail = document.getElementById("module-detail");
+        list.innerHTML = modules.map(function (module, index) {
+          return '<button class="module-item' + (index === 0 ? " active" : "") + '" data-module-id="' + module.id + '" type="button"><strong>' + module.label + "</strong><span>" + module.short + "</span></button>";
+        }).join("");
+
+        function paint(module) {
+          detail.innerHTML = "<h4>" + module.title + '</h4><p class="lead">' + module.lead + '</p><div class="subhead">它解决什么问题</div><ul>' + module.why.map(function (item) {
+            return "<li>" + item + "</li>";
+          }).join("") + '</ul><div class="subhead">输入与输出</div><ul>' + module.io.map(function (item) {
+            return "<li>" + item + "</li>";
+          }).join("") + '</ul><div class="subhead">如何接到上下游</div><ul>' + module.join.map(function (item) {
+            return "<li>" + item + "</li>";
+          }).join("") + '</ul><div class="evidence-list evidence-only"><strong>证据位置</strong><ul>' + module.evidence.map(function (item) {
+            return "<li><code>" + item + "</code></li>";
+          }).join("") + "</ul></div>";
+          syncVisibility();
+        }
+
+        list.querySelectorAll("[data-module-id]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            const id = button.getAttribute("data-module-id");
+            const module = modules.find(function (item) { return item.id === id; });
+            if (!module) return;
+            list.querySelectorAll("[data-module-id]").forEach(function (el) {
+              el.classList.toggle("active", el === button);
+            });
+            paint(module);
+          });
+        });
+
+        paint(modules[0]);
+      }
+
+      function wireToolbar() {
+        const detailBtn = document.getElementById("toggle-details");
+        const evidenceBtn = document.getElementById("toggle-evidence");
+        const expandBtn = document.getElementById("expand-all");
+        const collapseBtn = document.getElementById("collapse-all");
+
+        detailBtn.addEventListener("click", function () {
+          const next = document.body.dataset.showDetails === "false";
+          document.body.dataset.showDetails = next ? "true" : "false";
+          detailBtn.classList.toggle("active", next);
+          detailBtn.textContent = next ? "显示深入解释" : "隐藏深入解释";
+          syncVisibility();
+        });
+
+        evidenceBtn.addEventListener("click", function () {
+          const next = document.body.dataset.showEvidence === "false";
+          document.body.dataset.showEvidence = next ? "true" : "false";
+          evidenceBtn.classList.toggle("active", next);
+          evidenceBtn.textContent = next ? "显示证据位置" : "隐藏证据位置";
+          syncVisibility();
+        });
+
+        expandBtn.addEventListener("click", function () {
+          document.querySelectorAll("details").forEach(function (el) { el.open = true; });
+        });
+        collapseBtn.addEventListener("click", function () {
+          document.querySelectorAll("details").forEach(function (el) { el.open = false; });
+        });
+      }
+
+      function wireTocHighlight() {
+        const links = Array.from(document.querySelectorAll("#toc a"));
+        const sections = links.map(function (link) {
+          const target = link.getAttribute("href");
+          return target ? document.querySelector(target) : null;
+        }).filter(Boolean);
+
+        const observer = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (!entry.isIntersecting) return;
+            const id = "#" + entry.target.id;
+            links.forEach(function (link) {
+              link.classList.toggle("active", link.getAttribute("href") === id);
+            });
+          });
+        }, { rootMargin: "-20% 0px -65% 0px", threshold: 0.01 });
+
+        sections.forEach(function (section) { observer.observe(section); });
+      }
+
+      document.body.dataset.showDetails = "true";
+      document.body.dataset.showEvidence = "true";
+      renderRuntimeMap();
+      renderFlow();
+      renderModules();
+      wireToolbar();
+      wireTocHighlight();
+      syncVisibility();
+    </script>
+  </body>
+</html>

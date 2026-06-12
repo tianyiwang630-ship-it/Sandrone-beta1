@@ -1,0 +1,166 @@
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+from typing import Mapping, MutableMapping
+
+
+RESERVED_RUNTIME_ENV_KEYS = {
+    "AGENT_ALPHA_ROOT",
+    "HOME",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "XDG_CONFIG_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_DATA_HOME",
+    "XDG_STATE_HOME",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "TMP",
+    "TEMP",
+    "PIP_CACHE_DIR",
+    "UV_CACHE_DIR",
+    "UV_TOOL_DIR",
+    "PYTHONUSERBASE",
+    "PYTHONPYCACHEPREFIX",
+    "HF_HOME",
+    "TRANSFORMERS_CACHE",
+    "PLAYWRIGHT_BROWSERS_PATH",
+    "DOTNET_CLI_HOME",
+    "CARGO_HOME",
+    "RUSTUP_HOME",
+    "VIRTUAL_ENV",
+    "PATH",
+}
+
+
+def ensure_runtime_directories(project_root: Path) -> None:
+    """Create agent-alpha's project-local runtime directory tree."""
+    root = Path(project_root)
+    for relative in [
+        "home",
+        "home/.agents/skills",
+        "home/.local",
+        "bin",
+        "userfile",
+        "skills",
+        "temp",
+        "cache",
+        "cache/pip",
+        "cache/uv",
+        "cache/python",
+        "cache/huggingface/transformers",
+        "cache/playwright",
+        "cache/cargo",
+        "cache/rustup",
+        "tools/uv",
+        "config/appdata",
+        "data/localappdata",
+        "state",
+        "state/browser",
+        "state/browser/profiles",
+        "state/browser/sessions",
+        "state/browser/sockets",
+        "state/browser/downloads",
+        "state/browser/runtime",
+    ]:
+        (root / relative).mkdir(parents=True, exist_ok=True)
+
+
+def apply_runtime_env(
+    project_root: Path,
+    *,
+    base_env: Mapping[str, str] | None = None,
+    target_env: MutableMapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Apply agent-alpha runtime env to a process env mapping and return it."""
+    root = Path(project_root)
+    ensure_runtime_directories(root)
+    env = build_runtime_env(root, base_env=base_env)
+    target = target_env if target_env is not None else os.environ
+    target.update(env)
+    return env
+
+
+def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Return environment variables that redirect normal user dirs into agent-alpha."""
+    root = Path(project_root).resolve()
+    home = root / "home"
+    venv = root / ".venv"
+    scripts_dir = venv / ("Scripts" if os.name == "nt" else "bin")
+    agent_bin_dir = root / "bin"
+    env = dict(base_env or os.environ)
+    env.update(_load_runtime_env_profile(root))
+
+    runtime_values = {
+        "AGENT_ALPHA_ROOT": root,
+        "HOME": home,
+        "USERPROFILE": home,
+        "XDG_CONFIG_HOME": root / "config",
+        "XDG_CACHE_HOME": root / "cache",
+        "XDG_DATA_HOME": root / "data",
+        "XDG_STATE_HOME": root / "state",
+        "APPDATA": root / "config" / "appdata",
+        "LOCALAPPDATA": root / "data" / "localappdata",
+        "TMP": root / "temp",
+        "TEMP": root / "temp",
+        "PIP_CACHE_DIR": root / "cache" / "pip",
+        "UV_CACHE_DIR": root / "cache" / "uv",
+        "UV_TOOL_DIR": root / "tools" / "uv",
+        "PYTHONUSERBASE": home / ".local",
+        "PYTHONPYCACHEPREFIX": root / "cache" / "python",
+        "HF_HOME": root / "cache" / "huggingface",
+        "TRANSFORMERS_CACHE": root / "cache" / "huggingface" / "transformers",
+        "PLAYWRIGHT_BROWSERS_PATH": root / "cache" / "playwright",
+        "DOTNET_CLI_HOME": home,
+        "CARGO_HOME": root / "cache" / "cargo",
+        "RUSTUP_HOME": root / "cache" / "rustup",
+        "VIRTUAL_ENV": venv,
+    }
+    env.update({key: str(value) for key, value in runtime_values.items()})
+
+    if os.name == "nt":
+        drive = root.drive or home.drive
+        env["HOMEDRIVE"] = drive
+        env["HOMEPATH"] = str(home)[len(drive) :] if drive and str(home).startswith(drive) else str(home)
+
+    old_path = env.get("PATH", "")
+    separator = os.pathsep
+    path_prefix_entries = [scripts_dir, agent_bin_dir, *_local_python_scripts_dirs(root)]
+    path_prefix = separator.join(str(path) for path in path_prefix_entries)
+    env["PATH"] = path_prefix if not old_path else f"{path_prefix}{separator}{old_path}"
+    return env
+
+
+def _local_python_scripts_dirs(project_root: Path) -> list[Path]:
+    local_dir = project_root / "home" / ".local"
+    if not local_dir.exists():
+        return []
+
+    return sorted(
+        scripts_dir
+        for scripts_dir in local_dir.glob("Python*/Scripts")
+        if scripts_dir.is_dir()
+    )
+
+
+def _load_runtime_env_profile(project_root: Path) -> dict[str, str]:
+    profile_path = Path(project_root) / "config" / "runtime_env.local.json"
+    if not profile_path.exists():
+        return {}
+
+    try:
+        data = json.loads(profile_path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    return {
+        str(key): str(value)
+        for key, value in data.items()
+        if key and value is not None and str(key).upper() not in RESERVED_RUNTIME_ENV_KEYS
+    }

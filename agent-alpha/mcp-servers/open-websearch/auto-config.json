@@ -1,0 +1,18 @@
+{
+  "_comment": "此文件由 MCP Scanner 自动生成，请勿手动编辑",
+  "name": "open-websearch",
+  "type": "stdio",
+  "command": "npx",
+  "args": [
+    "-y",
+    "open-websearch@latest"
+  ],
+  "env": {
+    "DEFAULT_SEARCH_ENGINE": "duckduckgo",
+    "ALLOWED_SEARCH_ENGINES": "baidu,bing,linuxdo,csdn,duckduckgo,exa,brave,juejin,startpage,sogou",
+    "MODE": "stdio"
+  },
+  "cwd": "D:\\files\\demo\\0312-newagent\\agent-alpha\\mcp-servers\\open-websearch",
+  "description": "Multi-engine web search. Allowed engines: baidu, bing, linuxdo, csdn, duckduckgo, exa, brave, juejin, startpage, sogou. Google is not supported.",
+  "source": "custom"
+}

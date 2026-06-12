@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw 与 nanobot 的 agent 实例化机制分析</title>
+  <style>
+    :root {
+      --bg: #f7f1e8;
+      --ink: #182126;
+      --muted: #57656d;
+      --paper: rgba(255, 252, 247, 0.88);
+      --paper-strong: #fffdfa;
+      --line: rgba(24, 33, 38, 0.12);
+      --teal: #165e63;
+      --teal-soft: rgba(22, 94, 99, 0.1);
+      --orange: #b35b2f;
+      --orange-soft: rgba(179, 91, 47, 0.12);
+      --shadow: 0 28px 70px rgba(47, 33, 18, 0.12);
+      --radius-xl: 30px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --content: 1220px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "Microsoft YaHei", serif;
+      line-height: 1.78;
+      background:
+        radial-gradient(circle at 10% 10%, rgba(179, 91, 47, 0.12), transparent 28%),
+        radial-gradient(circle at 92% 12%, rgba(22, 94, 99, 0.16), transparent 26%),
+        linear-gradient(180deg, #efe5d8 0%, #f7f1e8 42%, #fbf7f1 100%);
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .shell {
+      width: min(calc(100% - 32px), var(--content));
+      margin: 0 auto;
+      padding: 28px 0 80px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 46px 46px 40px;
+      border-radius: var(--radius-xl);
+      background:
+        linear-gradient(145deg, rgba(255, 253, 249, 0.96), rgba(250, 244, 235, 0.93)),
+        linear-gradient(125deg, rgba(22, 94, 99, 0.05), rgba(179, 91, 47, 0.05));
+      border: 1px solid rgba(255, 255, 255, 0.38);
+      box-shadow: var(--shadow);
+    }
+
+    .hero::before,
+    .hero::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      filter: blur(14px);
+      pointer-events: none;
+    }
+
+    .hero::before {
+      width: 220px;
+      height: 220px;
+      top: -70px;
+      right: -50px;
+      background: rgba(22, 94, 99, 0.14);
+    }
+
+    .hero::after {
+      width: 260px;
+      height: 260px;
+      left: -60px;
+      bottom: -90px;
+      background: rgba(179, 91, 47, 0.13);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.76);
+      border: 1px solid rgba(24, 33, 38, 0.08);
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      line-height: 1.14;
+      letter-spacing: -0.03em;
+    }
+
+    .hero h1 {
+      margin-top: 18px;
+      font-size: clamp(2.2rem, 5vw, 4.4rem);
+      max-width: 900px;
+    }
+
+    .hero p {
+      margin: 18px 0 0;
+      max-width: 900px;
+      color: #324048;
+      font-size: 1.04rem;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 18px;
+      margin-top: 28px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .card,
+    .panel,
+    .matrix,
+    .quote,
+    .timeline {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 16px 34px rgba(43, 31, 18, 0.06);
+      backdrop-filter: blur(12px);
+    }
+
+    .card,
+    .panel,
+    .timeline,
+    .quote {
+      padding: 22px 22px 20px;
+    }
+
+    .card h2,
+    .panel h2,
+    .matrix h2,
+    .timeline h2 {
+      font-size: 1.18rem;
+      margin-bottom: 12px;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .chip {
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(24, 33, 38, 0.1);
+      background: #fff;
+      font-size: 0.92rem;
+    }
+
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .toc a {
+      display: block;
+      padding: 14px 15px;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(24, 33, 38, 0.08);
+      background: rgba(255, 255, 255, 0.7);
+      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+      font-size: 0.95rem;
+    }
+
+    .toc a:hover {
+      transform: translateY(-2px);
+      border-color: rgba(22, 94, 99, 0.26);
+      background: rgba(255, 255, 255, 0.94);
+    }
+
+    section {
+      margin-top: 28px;
+    }
+
+    .section-head {
+      margin-bottom: 12px;
+    }
+
+    .section-kicker {
+      color: var(--teal);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.78rem;
+      margin-bottom: 8px;
+    }
+
+    .columns {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 16px;
+    }
+
+    .lane {
+      position: relative;
+      padding: 22px 22px 18px 28px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: var(--paper);
+      overflow: hidden;
+    }
+
+    .lane::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 10px;
+    }
+
+    .lane.nanobot::before {
+      background: linear-gradient(180deg, #b35b2f, #e59969);
+    }
+
+    .lane.openclaw::before {
+      background: linear-gradient(180deg, #165e63, #3d8e93);
+    }
+
+    .lane h3 {
+      font-size: 1.5rem;
+      margin-bottom: 10px;
+    }
+
+    .lane p {
+      margin: 0 0 12px;
+      color: #324048;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    li + li {
+      margin-top: 6px;
+    }
+
+    .code-list {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px dashed rgba(24, 33, 38, 0.12);
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      font-size: 0.85rem;
+      line-height: 1.7;
+      color: #37454e;
+      word-break: break-word;
+    }
+
+    .matrix {
+      overflow: hidden;
+    }
+
+    .matrix header {
+      padding: 22px 22px 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 14px 18px;
+      vertical-align: top;
+      border-top: 1px solid var(--line);
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.44);
+    }
+
+    .signal {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      border: 1px solid rgba(24, 33, 38, 0.08);
+      background: rgba(255, 255, 255, 0.78);
+    }
+
+    .signal strong {
+      font-weight: 700;
+    }
+
+    .signal.nanobot strong {
+      color: var(--orange);
+    }
+
+    .signal.openclaw strong {
+      color: var(--teal);
+    }
+
+    .timeline-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .step {
+      padding: 16px 16px 14px;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(24, 33, 38, 0.1);
+      background: rgba(255, 255, 255, 0.78);
+    }
+
+    .step .num {
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .quote {
+      position: relative;
+      padding-left: 28px;
+    }
+
+    .quote::before {
+      content: "“";
+      position: absolute;
+      left: 14px;
+      top: 10px;
+      font-size: 2.2rem;
+      color: rgba(22, 94, 99, 0.3);
+      line-height: 1;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 980px) {
+      .hero-grid,
+      .columns,
+      .timeline-grid,
+      .toc {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        padding: 30px 24px 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="eyebrow">Instance Design · Workspace · Identity · Session</div>
+      <h1>OpenClaw 与 nanobot 的 agent 实例化机制，到底差在哪</h1>
+      <p>这份分析只盯住一个主题：一个 agent 在系统里是怎么“被定义、被选中、被赋予工作空间、被装配人格、被延续状态”的。结论先说：nanobot 更像“配置驱动的单实例壳”，openclaw 更像“具名 agent 节点系统”。</p>
+
+      <div class="hero-grid">
+        <div class="card">
+          <h2>一句话结论</h2>
+          <p><strong>nanobot</strong> 先把 “config + workspace” 跑顺，重点是轻量实例；<strong>openclaw</strong> 先把 agent 变成正式配置实体，再给它独立的 workspace、agentDir、identity、sessions，重点是长期稳定编排。</p>
+          <div class="chips">
+            <span class="chip">nanobot：轻、快、单实例友好</span>
+            <span class="chip">openclaw：重、稳、多 agent 友好</span>
+            <span class="chip">对 agent-alpha：先学 nanobot，再补 openclaw</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>这次看的不是</h2>
+          <p>不是模型聪不聪明，也不是功能多少，而是 agent 实例的工程边界：谁决定它是谁、它在哪工作、它的状态放哪、子 agent 算不算新的实例。</p>
+          <div class="chips">
+            <span class="signal nanobot"><strong>workspace</strong> 是 nanobot 的主边界</span>
+            <span class="signal openclaw"><strong>agentId + workspace + agentDir</strong> 是 openclaw 的主边界</span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="toc">
+        <a href="#nanobot">nanobot 方案</a>
+        <a href="#openclaw">openclaw 方案</a>
+        <a href="#diff">核心差异</a>
+        <a href="#borrow">该借什么</a>
+      </nav>
+    </section>
+
+    <section id="nanobot">
+      <div class="section-head">
+        <div class="section-kicker">Route A</div>
+        <h2>nanobot：配置驱动的单实例壳</h2>
+      </div>
+      <div class="lane nanobot">
+        <p>nanobot 的实例，不是一个显式的 `AgentSpec`。它更像“选中一个配置文件，再把 workspace 灌进 AgentLoop”。实例边界主要来自 <strong>config</strong> 和 <strong>workspace</strong>。</p>
+        <ul>
+          <li>`agents.defaults.workspace` 是实例最关键的空间边界。</li>
+          <li>CLI 用 `--config` 选择实例，用 `--workspace` 做一次性覆盖。</li>
+          <li>workspace 会自动补齐 `AGENTS.md`、`SOUL.md`、`USER.md`、`TOOLS.md`、`memory/`、`skills/`。</li>
+          <li>`ContextBuilder` 会从 workspace 根目录直接读取这些文档，拼成 system prompt。</li>
+          <li>子 agent 共享同一个 workspace，本质更像后台 worker，不是正式子实例。</li>
+        </ul>
+        <div class="code-list">
+          `config/schema.py:30-56`<br>
+          `cli/commands.py:359-375, 414-444`<br>
+          `config/paths.py:11-40`<br>
+          `utils/helpers.py:173-203`<br>
+          `agent/context.py:19-54, 109-145`<br>
+          `agent/loop.py:50-113`<br>
+          `agent/subagent.py:22-79, 91-218`
+        </div>
+      </div>
+    </section>
+
+    <section id="openclaw">
+      <div class="section-head">
+        <div class="section-kicker">Route B</div>
+        <h2>openclaw：具名 agent 节点系统</h2>
+      </div>
+      <div class="lane openclaw">
+        <p>openclaw 的实例不是“顺手传一个 workspace”，而是配置里的正式 agent 实体。它先有 <strong>agentId</strong>，再有 `<strong>workspace</strong>`、`<strong>agentDir</strong>`、`<strong>sessions</strong>`、`<strong>identity</strong>`，最后才是 runtime 调度。</p>
+        <ul>
+          <li>agent 在配置里有独立条目：`id / name / workspace / agentDir / model / identity / tools / subagents / runtime`。</li>
+          <li>系统会通过 `agentId / sessionKey / bindings / default agent` 解析当前实例。</li>
+          <li>`workspace` 和 `agentDir` 是分开的，多个 agent 不能共享 `agentDir`。</li>
+          <li>workspace bootstrap 更完整，包含 `IDENTITY.md`、`HEARTBEAT.md`、`BOOTSTRAP.md` 等。</li>
+          <li>session 默认按 `agentId` 隔离，落到 `agents/&lt;agentId&gt;/sessions/`。</li>
+          <li>子 agent 不是后台线程，而是真正新的 session 实例，带 `spawnedBy / spawnedWorkspaceDir / spawnDepth / status` 等元数据。</li>
+        </ul>
+        <div class="code-list">
+          `config/types.agents.ts:61-95`<br>
+          `agents/agent-scope.ts:46-84, 256-342`<br>
+          `config/agent-dirs.ts:59-110`<br>
+          `agents/workspace.ts:327-547`<br>
+          `agents/identity-file.ts:5-107`<br>
+          `agents/system-prompt.ts:498-626`<br>
+          `config/sessions/paths.ts:8-35, 281-296`<br>
+          `config/sessions/types.ts:76-102`<br>
+          `agents/tools/sessions-spawn-tool.ts:23-212`<br>
+          `agents/spawned-context.ts:59-83`
+        </div>
+      </div>
+    </section>
+
+    <section id="diff" class="columns">
+      <div class="matrix">
+        <header>
+          <div class="section-kicker">Comparison</div>
+          <h2>实例化核心差异</h2>
+        </header>
+        <table>
+          <thead>
+            <tr>
+              <th>维度</th>
+              <th>nanobot</th>
+              <th>openclaw</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>实例入口</td>
+              <td>`config + --workspace`</td>
+              <td>`agentId + sessionKey + bindings`</td>
+            </tr>
+            <tr>
+              <td>实例定义方式</td>
+              <td>默认实例为主，运行时覆盖</td>
+              <td>agent 是配置一级对象</td>
+            </tr>
+            <tr>
+              <td>人格装配</td>
+              <td>workspace 根目录文档整体注入</td>
+              <td>workspace 文档 + identity 结构化层</td>
+            </tr>
+            <tr>
+              <td>状态边界</td>
+              <td>主要围绕 workspace</td>
+              <td>workspace、agentDir、sessions 三层拆开</td>
+            </tr>
+            <tr>
+              <td>子 agent</td>
+              <td>共享 workspace 的后台执行体</td>
+              <td>新的子 session / 子实例</td>
+            </tr>
+            <tr>
+              <td>适合阶段</td>
+              <td>单实例标准化</td>
+              <td>多 agent 长期演进</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="stack">
+        <div class="quote">
+          <h2>把两者翻译成一句人话</h2>
+          <p>nanobot 像是“给每个实例一张办公桌，再把规则贴在墙上”；openclaw 像是“先建组织架构，再给每个 agent 独立办公室、档案柜、工牌和会话流水”。</p>
+        </div>
+
+        <div class="panel">
+          <h2>哪边更像你现在需要的</h2>
+          <p>如果你现在就想把 `agent-alpha` 从“能跑”推进到“边界清楚”，更该先借 nanobot 的实例壳；如果你下一步要真正做多 agent 编排、角色隔离、子 agent 生命周期，那就要继续往 openclaw 的方向补。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="borrow" class="timeline">
+      <div class="section-kicker">Recommendation</div>
+      <h2>对 agent-alpha 最值得借的顺序</h2>
+      <div class="timeline-grid">
+        <article class="step">
+          <div class="num">Step 1</div>
+          <h3>先学 nanobot</h3>
+          <p>把实例最少收成：`config/profile + workspace + bootstrap docs + session scope`。先把“输入工作路径、自动加载人格文档”彻底做稳。</p>
+        </article>
+        <article class="step">
+          <div class="num">Step 2</div>
+          <h3>再学 openclaw</h3>
+          <p>补上 `agentId`、`agentDir`、`IDENTITY.md`、per-agent sessions，让实例成为系统中的正式对象，而不是一段临时运行状态。</p>
+        </article>
+        <article class="step">
+          <div class="num">Step 3</div>
+          <h3>最后做编排</h3>
+          <p>让子 agent 变成真正的新实例：有 `spawnedWorkspace`、`parent_session`、`spawnDepth`、`status`，而不是共享父工作区的后台线程。</p>
+        </article>
+      </div>
+      <p class="footer-note">最稳的路线不是“选一个抄到底”，而是先借 nanobot 把单实例做标准，再借 openclaw 把实例做成编排系统里的正式节点。</p>
+    </section>
+  </main>
+</body>
+</html>

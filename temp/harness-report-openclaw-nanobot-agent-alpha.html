@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Harness Engineering 对比报告</title>
+  <style>
+    :root {
+      --bg: #efe5d5;
+      --paper: rgba(255, 251, 245, 0.93);
+      --ink: #201a16;
+      --muted: #6c6155;
+      --line: rgba(76, 56, 39, 0.12);
+      --accent: #9b4428;
+      --accent-soft: rgba(155, 68, 40, 0.08);
+      --navy: #234b64;
+      --navy-soft: rgba(35, 75, 100, 0.08);
+      --forest: #4f6644;
+      --forest-soft: rgba(79, 102, 68, 0.08);
+      --gold: #a7771f;
+      --gold-soft: rgba(167, 119, 31, 0.1);
+      --danger: #8c3333;
+      --danger-soft: rgba(140, 51, 51, 0.1);
+      --shadow: 0 22px 46px rgba(56, 40, 26, 0.12);
+      --radius-lg: 28px;
+      --radius-md: 20px;
+      --radius-sm: 14px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(167, 119, 31, 0.18), transparent 26%),
+        radial-gradient(circle at top right, rgba(35, 75, 100, 0.15), transparent 24%),
+        linear-gradient(180deg, #f5eee2 0%, #e3d4c1 100%);
+      color: var(--ink);
+      font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", "Georgia", serif;
+      line-height: 1.72;
+    }
+
+    .shell {
+      width: min(1180px, calc(100vw - 28px));
+      margin: 18px auto 48px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 10px;
+      z-index: 20;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 18px;
+      padding: 14px 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(76, 56, 39, 0.08);
+      background: rgba(255, 252, 248, 0.82);
+      backdrop-filter: blur(18px);
+    }
+
+    .topbar strong {
+      font-size: 14px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .topbar nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .topbar a {
+      text-decoration: none;
+      color: var(--navy);
+      background: var(--navy-soft);
+      padding: 7px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+    }
+
+    .page {
+      position: relative;
+      margin-bottom: 22px;
+      padding: 42px 44px 48px;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(76, 56, 39, 0.1);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 251, 245, 0.98)),
+        repeating-linear-gradient(180deg, transparent 0, transparent 32px, rgba(76, 56, 39, 0.025) 32px, rgba(76, 56, 39, 0.025) 33px);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      page-break-after: always;
+    }
+
+    .page:last-child { page-break-after: auto; }
+
+    .page::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(135deg, rgba(155, 68, 40, 0.07), transparent 28%),
+        linear-gradient(320deg, rgba(35, 75, 100, 0.05), transparent 24%);
+    }
+
+    .page-no {
+      position: absolute;
+      right: 34px;
+      top: 22px;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+    }
+
+    .eyebrow, .tag, .badge, .rating {
+      display: inline-block;
+      padding: 6px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow { background: var(--accent-soft); color: var(--accent); }
+    .tag { background: var(--gold-soft); color: var(--gold); margin-bottom: 12px; }
+    .badge { background: rgba(255,255,255,0.92); border: 1px solid rgba(76,56,39,0.08); color: var(--muted); }
+    .rating.strong { background: var(--navy-soft); color: var(--navy); }
+    .rating.good { background: var(--forest-soft); color: var(--forest); }
+    .rating.middle { background: var(--gold-soft); color: var(--gold); }
+    .rating.risk { background: var(--danger-soft); color: var(--danger); }
+
+    h1, h2, h3, h4, p, ul, table, .grid, .callout, .meta {
+      position: relative;
+      z-index: 1;
+    }
+
+    h1, h2, h3, h4 { margin: 0; line-height: 1.16; }
+    h1 { margin-top: 16px; max-width: 920px; font-size: clamp(40px, 5vw, 62px); letter-spacing: -0.04em; }
+    h2 { margin-top: 18px; font-size: clamp(28px, 3vw, 36px); letter-spacing: -0.03em; }
+    h3 { font-size: 23px; }
+    h4 { font-size: 17px; }
+    p { margin: 0; font-size: 16px; }
+
+    .lead { margin-top: 18px; max-width: 860px; font-size: 20px; color: #352c24; }
+    .section-intro { margin-top: 12px; max-width: 860px; color: #3b322a; }
+
+    .meta, .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 18px;
+      margin-top: 22px;
+    }
+
+    .hero { grid-template-columns: 1.18fr 0.82fr; margin-top: 28px; }
+    .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .card, .panel {
+      padding: 20px 22px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+      background: rgba(255, 253, 249, 0.88);
+    }
+
+    .hero-note { background: linear-gradient(180deg, rgba(155, 68, 40, 0.08), rgba(155, 68, 40, 0.03)), rgba(255,253,249,0.88); }
+    .openclaw { background: linear-gradient(180deg, rgba(35,75,100,0.08), rgba(35,75,100,0.03)), rgba(255,253,249,0.88); }
+    .nanobot { background: linear-gradient(180deg, rgba(79,102,68,0.08), rgba(79,102,68,0.03)), rgba(255,253,249,0.88); }
+    .alpha { background: linear-gradient(180deg, rgba(155,68,40,0.08), rgba(155,68,40,0.03)), rgba(255,253,249,0.88); }
+
+    .kicker {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .big {
+      font-size: clamp(42px, 5vw, 58px);
+      line-height: 0.96;
+      letter-spacing: -0.05em;
+      margin-bottom: 12px;
+    }
+
+    .callout {
+      margin-top: 18px;
+      padding: 16px 18px;
+      border-left: 4px solid var(--accent);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      background: rgba(155, 68, 40, 0.06);
+    }
+
+    .tone-openclaw { color: var(--navy); font-weight: 700; }
+    .tone-nanobot { color: var(--forest); font-weight: 700; }
+    .tone-alpha { color: var(--accent); font-weight: 700; }
+
+    ul { margin: 12px 0 0 18px; padding: 0; }
+    li { margin-bottom: 8px; }
+
+    table {
+      width: 100%;
+      margin-top: 22px;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 18px;
+      background: rgba(255, 253, 249, 0.88);
+      border: 1px solid var(--line);
+    }
+
+    thead { background: rgba(35, 75, 100, 0.08); }
+
+    th, td {
+      padding: 14px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid rgba(76, 56, 39, 0.08);
+      font-size: 14px;
+    }
+
+    th {
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    .footnote {
+      margin-top: 20px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 980px) {
+      .topbar { position: static; border-radius: 24px; }
+      .page { padding: 34px 22px 38px; }
+      .page-no { right: 22px; }
+      .hero, .cols-2, .cols-3, .cols-4 { grid-template-columns: 1fr; }
+      table, thead, tbody, tr, th, td { display: block; }
+      thead { display: none; }
+      tr { border-bottom: 1px solid rgba(76,56,39,0.12); }
+      td { padding: 10px 14px; }
+      td::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 4px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+    }
+
+    @media print {
+      body { background: white; }
+      .shell { width: 100%; margin: 0; }
+      .topbar { display: none; }
+      .page { margin: 0 0 14px; border: none; border-radius: 0; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar">
+      <strong>Harness Engineering 对比报告</strong>
+      <nav>
+        <a href="#cover">封面</a>
+        <a href="#method">方法</a>
+        <a href="#matrix">矩阵</a>
+        <a href="#alpha">agent-alpha</a>
+        <a href="#roadmap">建议路线</a>
+      </nav>
+    </div>
+
+    <section class="page" id="cover">
+      <div class="page-no">Page 01</div>
+      <div class="eyebrow">Report Summary</div>
+      <h1>从 Harness Engineering 角度，对比 OpenClaw、nanobot 与 agent-alpha</h1>
+      <p class="lead">
+        这份报告不比较“模型谁更聪明”，而是比较三个项目作为 agent 外壳工程时，谁更像平台、谁更像骨架、谁更适合你当前这条“从旧项目简化并走向多 agent 编排”的路线。
+      </p>
+      <div class="meta">
+        <span class="badge">日期：2026-04-09</span>
+        <span class="badge">视角：Harness Engineering</span>
+        <span class="badge">形式：汇报型正式评审材料</span>
+        <span class="badge">对象：OpenClaw / nanobot / agent-alpha</span>
+      </div>
+
+      <div class="grid hero">
+        <div class="panel hero-note">
+          <span class="kicker">一句话结论</span>
+          <div class="big">最值得借鉴的是 nanobot，最不该整体照搬的是 OpenClaw。</div>
+          <p>
+            <span class="tone-openclaw">OpenClaw</span> 的强项是“平台级控制面与生命周期工程”；
+            <span class="tone-nanobot">nanobot</span> 的强项是“轻量但闭环的 agent harness”；
+            <span class="tone-alpha">agent-alpha</span> 已经有不错的 coding-agent 内核，但目前更像“可运行 runtime”，还没完全长成“可长期演进的工程外壳”。
+          </p>
+          <div class="chips">
+            <span class="badge">OpenClaw：平台能力最强</span>
+            <span class="badge">nanobot：简化路线最贴合</span>
+            <span class="badge">agent-alpha：最接近真实落地点</span>
+          </div>
+          <div class="callout">
+            对你现在最重要的问题，不是“谁做得最强”，而是“哪一套 harness 思路能让 agent-alpha 在不重新变重的前提下，逐步走向更稳、更清晰、更多 agent 编排”。
+          </div>
+        </div>
+
+        <div class="panel">
+          <span class="kicker">本报告回答什么</span>
+          <ul>
+            <li>三个项目在 harness engineering 上分别处于什么层级。</li>
+            <li>它们在入口、配置、会话、工具加载、生命周期、测试策略上的差异。</li>
+            <li>为什么 nanobot 最适合作为你当前阶段的直接参考样板。</li>
+            <li>为什么 OpenClaw 应该“选择性借鉴”，而不是整体模仿。</li>
+            <li>agent-alpha 下一步最该补哪几层外壳。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="method">
+      <div class="page-no">Page 02</div>
+      <div class="eyebrow">Evaluation Method</div>
+      <h2>比较方法与评价维度</h2>
+      <p class="section-intro">
+        这里的“harness engineering”可以理解为：一个 agent 项目作为工程外壳，是否能被稳定地启动、配置、扩展、隔离、恢复、测试与演进。换句话说，比的是“车架和底盘”，不是“发动机参数表”。
+      </p>
+
+      <div class="grid cols-3">
+        <div class="card">
+          <span class="kicker">维度 1</span>
+          <h3>运行编排</h3>
+          <p>看入口是否清楚，主循环是否稳定，工具与子 agent 的调度是不是围绕明确的运行时来组织。</p>
+        </div>
+        <div class="card">
+          <span class="kicker">维度 2</span>
+          <h3>工程支撑</h3>
+          <p>看配置、路径、日志、权限、会话、恢复、健康检查、部署入口这些外围工程是否成体系。</p>
+        </div>
+        <div class="card">
+          <span class="kicker">维度 3</span>
+          <h3>可演进性</h3>
+          <p>看未来做多 agent、按工作目录运行、自动识别人设文档、扩展更多能力时，是否容易落地而不失控。</p>
+        </div>
+      </div>
+
+      <table aria-label="评价标准说明">
+        <thead>
+          <tr>
+            <th>评价项</th>
+            <th>重点看什么</th>
+            <th>如果做得弱，会发生什么</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-label="评价项">入口与生命周期</td>
+            <td data-label="重点看什么">是否有清楚的启动、停止、重启、恢复和运行模式区分。</td>
+            <td data-label="如果做得弱，会发生什么">项目能跑，但一到中断、重启、长时间运行就开始变脆。</td>
+          </tr>
+          <tr>
+            <td data-label="评价项">配置与路径模型</td>
+            <td data-label="重点看什么">配置是否从代码常量走向实例化配置，路径是否围绕工作区或 agent 实例组织。</td>
+            <td data-label="如果做得弱，会发生什么">一做多实例、多 agent 或环境切换，就容易互相污染。</td>
+          </tr>
+          <tr>
+            <td data-label="评价项">上下文与身份装配</td>
+            <td data-label="重点看什么">AGENTS.md、SOUL.md、skills、memory 等是否围绕工作目录自动装配。</td>
+            <td data-label="如果做得弱，会发生什么">人格、规则、技能会停留在“项目级共享”，不利于编排。</td>
+          </tr>
+          <tr>
+            <td data-label="评价项">状态与会话</td>
+            <td data-label="重点看什么">会话如何存、如何恢复、如何隔离，是否支持长时间运行与历史维护。</td>
+            <td data-label="如果做得弱，会发生什么">上下文污染、恢复失败、历史不可追溯。</td>
+          </tr>
+          <tr>
+            <td data-label="评价项">测试护栏</td>
+            <td data-label="重点看什么">测试是否覆盖“工程外壳最容易坏”的地方，而不是只测几个工具函数。</td>
+            <td data-label="如果做得弱，会发生什么">表面能跑，迭代时却很容易回退或打碎已有流程。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="footnote">
+        注：这份报告基于关键骨架文件与目录结构的静态比对，不包含运行压测结论。
+      </p>
+    </section>
+
+    <section class="page">
+      <div class="page-no">Page 03</div>
+      <div class="eyebrow">Project Positioning</div>
+      <h2>三个项目各自像什么</h2>
+      <p class="section-intro">
+        这三者并不处于同一层级。如果不先区分“平台”“骨架”“当前运行时”这三个角色，很容易把结论做偏。
+      </p>
+
+      <div class="grid cols-3">
+        <div class="card openclaw">
+          <span class="tag">Platform-Scale Harness</span>
+          <h3>OpenClaw</h3>
+          <p>更像一个完整平台，而不是一个“单 agent 项目”。它已经有控制面、gateway、daemon、插件、channel、CLI 命令树、onboarding 和运维外壳。</p>
+          <p class="rating strong">定位：平台级外壳</p>
+          <ul>
+            <li>优势在“控制面完整”，不是在“代码少”。</li>
+            <li>适合学习边界设计、生命周期治理、插件契约、命令系统。</li>
+            <li>不适合作为当前阶段的整体模仿对象，否则很容易把项目重新做重。</li>
+          </ul>
+        </div>
+
+        <div class="card nanobot">
+          <span class="tag">Lightweight Closed Loop</span>
+          <h3>nanobot</h3>
+          <p>像是从 OpenClaw 中提炼出来的一套轻量骨架。它保留了会话、配置、路径、频道、cron、subagent 等外壳要件，但体量小得多。</p>
+          <p class="rating good">定位：轻量闭环骨架</p>
+          <ul>
+            <li>最适合研究“如何做小，但不散”。</li>
+            <li>对工作区、人设文档、上下文装配比较友好。</li>
+            <li>很适合作为 agent-alpha 的直接借鉴对象。</li>
+          </ul>
+        </div>
+
+        <div class="card alpha">
+          <span class="tag">Coding Runtime in Transition</span>
+          <h3>agent-alpha</h3>
+          <p>更像一个已经具备 coding-agent 实战能力的运行时核心：有 MCP、skill、tool loader、权限、session snapshot，但还没把外围外壳彻底做扎实。</p>
+          <p class="rating middle">定位：可运行 runtime</p>
+          <ul>
+            <li>核心能力并不弱，甚至很接近你的真实需求。</li>
+            <li>问题主要不在“不会做事”，而在“怎么更稳、更清晰、更可编排”。</li>
+            <li>后续最该补的是外壳层，而不是继续堆能力点。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout">
+        如果把 OpenClaw 比作一座机场，nanobot 更像一座结构紧凑但流程完整的小型航站楼，而 agent-alpha 现在更像一架已经能飞、但地面保障体系还没补齐的飞机。
+      </div>
+    </section>
+
+    <section class="page" id="matrix">
+      <div class="page-no">Page 04</div>
+      <div class="eyebrow">Comparison Matrix</div>
+      <h2>核心对比矩阵</h2>
+      <p class="section-intro">
+        这张矩阵适合最快速地看全貌。它不是“绝对评分”，而是为了帮助判断：哪个项目更适合拿来做当前阶段的参考样板。
+      </p>
+
+      <table aria-label="核心对比矩阵">
+        <thead>
+          <tr>
+            <th>维度</th>
+            <th>OpenClaw</th>
+            <th>nanobot</th>
+            <th>agent-alpha</th>
+            <th>判断</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-label="维度">入口与命令面</td>
+            <td data-label="OpenClaw">命令树完整，setup / onboard / gateway / agent / agents / doctor 等层次清楚。</td>
+            <td data-label="nanobot">CLI 相对轻，但已形成统一入口。</td>
+            <td data-label="agent-alpha">目前以单 CLI 运行与会话恢复为主，命令面较窄。</td>
+            <td data-label="判断">OpenClaw 最成熟，nanobot 足够，agent-alpha 还需拆层。</td>
+          </tr>
+          <tr>
+            <td data-label="维度">配置与路径模型</td>
+            <td data-label="OpenClaw">偏平台配置与实例化管理，适合多模式运行。</td>
+            <td data-label="nanobot">围绕实例目录和 workspace 组织，比较轻巧。</td>
+            <td data-label="agent-alpha">仍有不少项目根目录绑定与代码常量。</td>
+            <td data-label="判断">nanobot 的简洁度最适合你当前阶段借鉴。</td>
+          </tr>
+          <tr>
+            <td data-label="维度">工作区与人格文档</td>
+            <td data-label="OpenClaw">支持 agent/workspace 级隔离，但体系较重。</td>
+            <td data-label="nanobot">工作区中的 AGENTS.md、SOUL.md、USER.md、TOOLS.md 装配很自然。</td>
+            <td data-label="agent-alpha">已支持读首工作区的 AGENTS.md、SOUL.md，但还不够实例化。</td>
+            <td data-label="判断">nanobot 对你的目标启发最大。</td>
+          </tr>
+          <tr>
+            <td data-label="维度">会话与状态管理</td>
+            <td data-label="OpenClaw">平台级 session 与路由体系，治理能力强。</td>
+            <td data-label="nanobot">JSONL 会话 + memory/consolidation，轻量但闭环。</td>
+            <td data-label="agent-alpha">有 session snapshot，但长时状态模型还偏薄。</td>
+            <td data-label="判断">nanobot 是最容易借到手的范本。</td>
+          </tr>
+          <tr>
+            <td data-label="维度">生命周期与运维</td>
+            <td data-label="OpenClaw">强，包含 gateway run loop、daemon lifecycle、restart/drain 等。</td>
+            <td data-label="nanobot">中等，够用但不平台化。</td>
+            <td data-label="agent-alpha">偏弱，更多是可运行而不是可治理。</td>
+            <td data-label="判断">这里要向 OpenClaw 选学，不要全学。</td>
+          </tr>
+          <tr>
+            <td data-label="维度">工具与扩展模型</td>
+            <td data-label="OpenClaw">插件与契约很强，边界清楚，但体量大。</td>
+            <td data-label="nanobot">动态注册够轻，扩展成本低。</td>
+            <td data-label="agent-alpha">tool loader + MCP 自动发现不错，但仍偏项目级组织。</td>
+            <td data-label="判断">agent-alpha 已有基础，关键是继续解耦与实例化。</td>
+          </tr>
+          <tr>
+            <td data-label="维度">测试护栏</td>
+            <td data-label="OpenClaw">覆盖面极广，平台边界、契约、CLI、生命周期都测。</td>
+            <td data-label="nanobot">围绕 loop、config、channel、cron、provider 做了较实用的护栏。</td>
+            <td data-label="agent-alpha">已有核心模块测试，但还缺更强的 harness 级闭环测试。</td>
+            <td data-label="判断">agent-alpha 应该学 nanobot 的实用测试组织方式。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="grid cols-4">
+        <div class="card">
+          <span class="kicker">适合作为上限参考</span>
+          <h3>OpenClaw</h3>
+          <p>用来理解“完整平台应当如何治理”。</p>
+        </div>
+        <div class="card">
+          <span class="kicker">适合作为当前范本</span>
+          <h3>nanobot</h3>
+          <p>用来理解“如何把外壳做轻、做闭环、做得容易改”。</p>
+        </div>
+        <div class="card">
+          <span class="kicker">适合作为实际落地点</span>
+          <h3>agent-alpha</h3>
+          <p>用来承接你现有 coding-agent 能力并继续演化。</p>
+        </div>
+        <div class="card">
+          <span class="kicker">总体判断</span>
+          <h3>借中间层，不抄最重层</h3>
+          <p>当前最优策略不是“抄最强”，而是“借最贴合当前阶段的骨架”。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="page">
+      <div class="page-no">Page 05</div>
+      <div class="eyebrow">Deep Dive</div>
+      <h2>逐项分析：谁强在什么地方</h2>
+      <p class="section-intro">
+        下面的分析会更细一些，适合在“结论大体明白以后”继续往下看，帮助判断 agent-alpha 具体要学什么、不学什么。
+      </p>
+
+      <div class="grid cols-2">
+        <div class="panel">
+          <span class="kicker">一、入口与主控层</span>
+          <h3>OpenClaw：最像完整产品外壳</h3>
+          <p>
+            OpenClaw 的命令树是系统化设计的，不是把几个脚本揉在一起。它有 setup、onboard、gateway、agent、agents、status、doctor、backup 这些分层命令，说明它已经把“用户如何进入系统”和“系统如何被运维”当成一等公民。
+          </p>
+          <p>
+            对 harness engineering 来说，这意味着它不只是能跑，而是知道怎么被安装、怎么被诊断、怎么被远程调用、怎么承接不同运行模式。
+          </p>
+        </div>
+
+        <div class="panel">
+          <span class="kicker">对比结论</span>
+          <h3>nanobot 与 agent-alpha 还停留在轻量入口</h3>
+          <p>
+            nanobot 已经有统一 CLI，所以不散；但它不是平台级命令面。agent-alpha 目前则更偏向“直接跑 agent”，CLI 里混合了不少会话和工作区管理职责。这种结构在项目早期很正常，但一旦要接更多运行模式，会先感到吃力的是 CLI，而不是模型。
+          </p>
+        </div>
+      </div>
+
+      <div class="grid cols-2">
+        <div class="panel">
+          <span class="kicker">二、配置与路径组织</span>
+          <h3>nanobot：最适合借的点</h3>
+          <p>
+            nanobot 的一个重要优点，是很多运行时目录都从“当前配置上下文”推导出来，例如 data、logs、cron、workspace。这让它天然更容易支持多实例与独立工作区，不需要把很多路径硬写在项目根上。
+          </p>
+          <p>
+            对你来说，这正好对应你的目标：每个 agent 类可以输入工作路径，并自动识别对应的人格文档与上下文资源。
+          </p>
+        </div>
+
+        <div class="panel">
+          <span class="kicker">对比结论</span>
+          <h3>agent-alpha 现在最大的结构性短板之一</h3>
+          <p>
+            agent-alpha 虽然已经引入 workspaces，但仍有明显的“项目根目录中心化”痕迹。比如 skills、mcp-servers、一些系统配置仍然默认从项目根取。这样做在单实例阶段没问题，可一旦进入多 agent 编排，就会面临共享资源边界不清的问题。
+          </p>
+        </div>
+      </div>
+
+      <div class="grid cols-2">
+        <div class="panel">
+          <span class="kicker">三、工作区与人格装配</span>
+          <h3>nanobot 的启发比 OpenClaw 更直接</h3>
+          <p>
+            nanobot 会把工作区中的 AGENTS.md、SOUL.md、USER.md、TOOLS.md 作为系统提示的重要组成部分。这件事非常贴近你的目标，因为你明确提出：希望每一个 agent 类都能输入工作路径，并自动识别 agent 人格 md 文档，便于多 agent 编排。
+          </p>
+        </div>
+
+        <div class="panel">
+          <span class="kicker">对比结论</span>
+          <h3>agent-alpha 已经起步，但还没彻底“实例化”</h3>
+          <p>
+            目前 agent-alpha 已经会读取首工作区的 AGENTS.md 与 SOUL.md，这说明方向是对的。但它还只是“把文件读进来”，还没有进一步把 identity、skills、memory、tool scope、private config 组合成一个明确的 agent instance contract。
+          </p>
+        </div>
+      </div>
+
+      <div class="grid cols-2">
+        <div class="panel">
+          <span class="kicker">四、会话、记忆与状态</span>
+          <h3>OpenClaw 强在治理，nanobot 强在轻量闭环</h3>
+          <p>
+            OpenClaw 的 session 与 routing 更偏平台治理能力；nanobot 则用比较小的实现，把会话保存、历史裁剪、memory/consolidation 这些关键环节做成闭环。这种“够用且好改”的状态模型，对你的当前阶段反而更有价值。
+          </p>
+        </div>
+
+        <div class="panel">
+          <span class="kicker">对比结论</span>
+          <h3>agent-alpha 目前更偏 snapshot，而不是完整状态体系</h3>
+          <p>
+            agent-alpha 已经有 session snapshot 和 CLI 恢复，这是好事。但整体上更像“为了恢复当前对话而保存”，而不是围绕长时间运行、隔离、演进建立完整状态系统。也就是说，它更像恢复功能，而不是状态架构。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="alpha">
+      <div class="page-no">Page 06</div>
+      <div class="eyebrow">Risk And Opportunity</div>
+      <h2>重点对象：agent-alpha 现在最像什么，最缺什么</h2>
+      <p class="section-intro">
+        这一页只谈 agent-alpha。因为对你来说，真正有价值的不是“别人多强”，而是“当前手里这套东西，最该怎么往前推”。
+      </p>
+
+      <div class="grid cols-2">
+        <div class="panel">
+          <span class="kicker">已有优势</span>
+          <h3>它的内核并不弱</h3>
+          <ul>
+            <li>已经有面向 coding agent 的核心骨架：tool loader、MCP 自动发现、skills、权限、session snapshot。</li>
+            <li>已经有多工作区的雏形，不是完全写死单目录。</li>
+            <li>已经开始支持从工作区读取 AGENTS.md、SOUL.md，这非常接近你的人格自动识别目标。</li>
+            <li>测试并不是空白，说明它具备继续重构的安全基础。</li>
+          </ul>
+          <p class="rating good">结论：可演进基础是有的</p>
+        </div>
+
+        <div class="panel">
+          <span class="kicker">主要短板</span>
+          <h3>外壳层仍然不够“实例化”</h3>
+          <ul>
+            <li>配置仍偏代码常量化，而不是面向实例与环境的配置模型。</li>
+            <li>项目根目录仍承担太多共享资源角色，未来容易形成耦合。</li>
+            <li>CLI 中混入较多工作区和恢复逻辑，后续接入 API 或 orchestrator 时会先卡在边界不清。</li>
+            <li>总线、cron、生命周期治理还偏薄，更像占位能力而不是真正的运行时治理层。</li>
+          </ul>
+          <p class="rating middle">结论：问题主要在工程外壳，不在 agent 核心</p>
+        </div>
+      </div>
+
+      <div class="grid cols-3">
+        <div class="card">
+          <span class="kicker">风险 1</span>
+          <h3>过早平台化</h3>
+          <p>
+            如果现在直接向 OpenClaw 靠齐，先做大而全的 gateway、控制面、复杂插件系统，项目很可能会先进入“框架建设期”，而不是“需求驱动的简化期”。
+          </p>
+          <p class="rating risk">高风险</p>
+        </div>
+        <div class="card">
+          <span class="kicker">风险 2</span>
+          <h3>继续项目根目录中心化</h3>
+          <p>
+            如果 workspaces 只是“允许传一个目录”，但 skills、persona、memory、mcp 仍主要围绕项目根，那么多 agent 编排只会停留在表层。
+          </p>
+          <p class="rating risk">高风险</p>
+        </div>
+        <div class="card">
+          <span class="kicker">机会</span>
+          <h3>先把实例边界做对</h3>
+          <p>
+            一旦 agent-alpha 先把 agent instance contract 做清楚，后面不管接 FastAPI、调度器、多 agent orchestration 还是 UI，都有稳定基座可以接。
+          </p>
+          <p class="rating good">高价值机会</p>
+        </div>
+      </div>
+
+      <table aria-label="agent-alpha 应学什么">
+        <thead>
+          <tr>
+            <th>来源</th>
+            <th>最值得借的东西</th>
+            <th>为什么值得借</th>
+            <th>不建议照搬的部分</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-label="来源">nanobot</td>
+            <td data-label="最值得借的东西">工作区中心化、人格文件装配、轻量 session/memory 闭环、简洁配置路径模型</td>
+            <td data-label="为什么值得借">最贴合“把旧项目简化并保持可扩展”的目标</td>
+            <td data-label="不建议照搬的部分">主循环内部过于集中时，后面会影响更复杂编排</td>
+          </tr>
+          <tr>
+            <td data-label="来源">OpenClaw</td>
+            <td data-label="最值得借的东西">生命周期治理、命令层分层、restart/drain 思想、插件契约意识</td>
+            <td data-label="为什么值得借">能帮助你避免以后一做大就散架</td>
+            <td data-label="不建议照搬的部分">大 gateway、重平台控制面、过于完整的产品壳</td>
+          </tr>
+          <tr>
+            <td data-label="来源">agent-alpha 自身</td>
+            <td data-label="最值得借的东西">MCP 与 coding-agent 方向积累、现有工具系统、已有测试与权限思路</td>
+            <td data-label="为什么值得借">这是你最贴近真实需求的资产，不应该推倒重来</td>
+            <td data-label="不建议照搬的部分">继续让项目根目录承担过多运行时职责</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        最适合 agent-alpha 的路线，不是“朝 OpenClaw 扩张”，而是“以 nanobot 的轻量骨架为参考，把现有 coding-agent 核心重新挂到更清楚的实例外壳上”。
+      </div>
+    </section>
+
+    <section class="page" id="roadmap">
+      <div class="page-no">Page 07</div>
+      <div class="eyebrow">Recommended Path</div>
+      <h2>对 agent-alpha 的建议路线：先补外壳，再补编排</h2>
+      <p class="section-intro">
+        下面这条路线不是“终极架构”，而是更适合你当前阶段的推进顺序。重点是先解决最容易影响后续扩展的结构问题。
+      </p>
+
+      <div class="grid cols-3">
+        <div class="card">
+          <span class="kicker">阶段 1</span>
+          <h3>先做 agent instance contract</h3>
+          <p>
+            定义“一个 agent 实例到底由什么组成”：workspace、identity docs、skills、memory、mcp sources、private config、session store、logs。
+          </p>
+          <ul>
+            <li>目标是让“输入工作路径，自动识别人格文档”成为正式能力，而不是散落逻辑。</li>
+            <li>这一层做对后，多 agent 编排才有真正的承载对象。</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="kicker">阶段 2</span>
+          <h3>拆 CLI 与运行时边界</h3>
+          <p>
+            把 CLI 的交互逻辑、session 恢复、workspace 管理，从核心 runtime 中进一步剥离，让 runtime 能同时服务 CLI、FastAPI 接口与未来的 orchestrator。
+          </p>
+          <ul>
+            <li>这一步会直接改善后端接口设计空间。</li>
+            <li>也会降低以后引入多种入口时的耦合成本。</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="kicker">阶段 3</span>
+          <h3>补生命周期与编排层</h3>
+          <p>
+            再向 OpenClaw 选学：健康检查、运行状态、重启恢复、任务排队、中断处理、多 agent orchestration。
+          </p>
+          <ul>
+            <li>这时借 OpenClaw 才不会显得“太重”。</li>
+            <li>因为底下已经先有清楚的 agent 实例边界了。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="grid cols-3">
+        <div class="card">
+          <span class="kicker">优先级最高</span>
+          <h3>实例边界</h3>
+          <p>先回答“这个 agent 是谁、住在哪、读什么、写什么、跟谁隔离”。</p>
+        </div>
+        <div class="card">
+          <span class="kicker">优先级中等</span>
+          <h3>运行入口分层</h3>
+          <p>让 CLI、API、cron、subagent 编排都能挂在同一个核心 runtime 上。</p>
+        </div>
+        <div class="card">
+          <span class="kicker">优先级靠后</span>
+          <h3>平台能力补全</h3>
+          <p>健康检查、运维工具、重启治理这些该做，但不该先做成平台壳。</p>
+        </div>
+      </div>
+
+      <div class="grid cols-2">
+        <div class="panel">
+          <span class="kicker">最终判断</span>
+          <h3>你现在最该学的是“nanobot 的轻骨架”，而不是“OpenClaw 的重控制面”</h3>
+          <p>
+            因为你当前任务不是从零搭一个产品平台，而是从既有项目中减冗余、清边界、提模块化、提鲁棒性，并把工作区和人格识别能力做扎实。
+          </p>
+        </div>
+        <div class="panel">
+          <span class="kicker">收束成一句话</span>
+          <h3>先从“能跑”走到“能稳、能隔离、能编排”</h3>
+          <p>
+            OpenClaw 适合学“做大以后怎么不失控”，nanobot 适合学“做小以后怎么不散”，而 agent-alpha 现在最需要的，是把自己从“能跑”推进到“能稳、能隔离、能编排”。
+          </p>
+        </div>
+      </div>
+
+      <p class="footnote">
+        这份 HTML 适合浏览器查看、截图汇报和后续转 PDF。如果你愿意，我下一步可以继续补一版“带代码证据索引”的增强版。
+      </p>
+    </section>
+  </div>
+</body>
+</html>

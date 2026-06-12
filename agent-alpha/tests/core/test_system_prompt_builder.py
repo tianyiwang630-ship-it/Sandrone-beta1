@@ -1,0 +1,88 @@
+from pathlib import Path
+import sys
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+
+from agent.core.system_prompt_builder import build_system_prompt
+
+
+def test_system_prompt_includes_runtime_paths_skills_mcp_and_prompt_docs():
+    workspace_root = Path("D:/demo/workspaces/agent-a")
+    logs_dir = Path("D:/demo/workspace/logs")
+    skills_dir = Path("D:/demo/project/skills")
+    agent_home_skills_dir = Path("D:/demo/project/home/.agents/skills")
+    mcp_servers_dir = Path("D:/demo/project/mcp-servers")
+    mcp_registry_path = mcp_servers_dir / "registry.json"
+
+    prompt = build_system_prompt(
+        workspace_root=workspace_root,
+        logs_dir=logs_dir,
+        skills_dir=skills_dir,
+        agent_home_skills_dir=agent_home_skills_dir,
+        mcp_servers_dir=mcp_servers_dir,
+        mcp_registry_path=mcp_registry_path,
+        task_id="task-1",
+        skill_summaries=[
+            {
+                "name": "pdf",
+                "description": "Process PDF files",
+                "path": str(skills_dir / "pdf" / "SKILL.md"),
+            },
+            {"name": "review", "description": "Review code changes"},
+        ],
+        prompt_documents=[
+            {
+                "name": "AGENTS.md",
+                "path": str(workspace_root / "AGENTS.md"),
+                "content": "Follow the session rules.",
+            },
+            {
+                "name": "SOUL.md",
+                "path": str(workspace_root / "SOUL.md"),
+                "content": "You are a calm research agent.",
+            },
+        ],
+    )
+
+    assert "task-1" in prompt
+    assert "## Workspace" in prompt
+    assert "## Additional Workspaces" not in prompt
+    assert "## System Resource Paths" in prompt
+    assert "## Runtime Records" in prompt
+    assert str(workspace_root) in prompt
+    assert str(logs_dir) in prompt
+    assert str(skills_dir) in prompt
+    assert str(agent_home_skills_dir) in prompt
+    assert str(mcp_servers_dir) in prompt
+    assert str(mcp_registry_path) in prompt
+    assert "AGENTS.md and SOUL.md are only loaded from the workspace root" in prompt
+    assert "multiple workspaces" not in prompt
+    assert "System resource paths are primarily for reading and reference" in prompt
+    assert "agent-alpha runtime directories" in prompt
+    assert "AGENT_ALPHA_ROOT" in prompt
+    assert "HOME" in prompt
+    assert "agent-alpha/.venv" in prompt
+    assert "agent-alpha/bin" in prompt
+    assert "runtime_env.local.json" in prompt
+    assert "environment variables that should persist" in prompt
+    assert "tokens, cookies, API keys, auth headers, proxies" in prompt
+    assert "not path policy" in prompt
+    assert "## Bash Runtime" in prompt
+    assert "General CLI commands are allowed" in prompt
+    assert "do not explicitly write outside agent-alpha" in prompt
+    assert "Do not install skill bodies into ~/.claude/skills" in prompt
+    assert "Recommended skill install directory" in prompt
+    assert "Logs are runtime records" in prompt
+    assert "Skills available:" in prompt
+    assert "- pdf: Process PDF files" in prompt
+    assert str(skills_dir / "pdf" / "SKILL.md") in prompt
+    assert "- review: Review code changes" in prompt
+    assert "load_skill" in prompt
+    assert "AGENTS.md" in prompt
+    assert "Follow the session rules." in prompt
+    assert "SOUL.md" in prompt
+    assert "You are a calm research agent." in prompt

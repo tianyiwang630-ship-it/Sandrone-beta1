@@ -1,0 +1,100 @@
+# Findings
+
+## 2026-04-11
+
+- 已确认本次输出目标：详细 Markdown，放到 `temp/改进方向`。
+- `openclaw` 是大型 monorepo，包含 `.agent`、`.agents`、`apps`、`packages`、`src`、`skills` 等目录，推测其多 agent 机制会分布在 CLI、gateway、agent runtime、skills 系统中。
+- `learn-claude-code` 结构更轻，核心目录包括 `agents/`、`skills/`、`web/`，很可能更接近“多 agent workflow 教学实现”。
+- `CLI-Anything` 相关结论与本次任务无直接冲突，不需要写入本报告正文，除非作为对比案例短暂引用。
+- `openclaw` 的代码搜索结果显示，多 agent 相关能力集中在 `src/agents/tools/`、`src/acp/`、`src/gateway/`、`src/routing/` 一带，关键词包括 `subagents`、`sessions_spawn`、`gateway`、`session key`、`spawnedBy`。
+- `openclaw` 的多 agent 很明显不是“单纯多进程 demo”，而是建立在网关、会话存储、会话解析、权限与路由之上的运行时系统。
+- `learn-claude-code` 的 README 已经明确给出演进路径：
+  - `s04` 子 agent 隔离上下文
+  - `s07` 文件式任务图
+  - `s08` 后台任务
+  - `s09` agent 团队
+  - `s11` 自主领取任务
+  - `s12` worktree 与 task 绑定隔离
+- 从 README 的表述看，`learn-claude-code` 把多 agent 机制定义为“在单 agent loop 外层增加 harness 机制”，而不是把多 agent 当成复杂调度框架来做。
+- `openclaw` 的 CLI 入口是统一装配出来的：
+  - `build-program.ts` 先创建上下文，再注册全部命令。
+  - `register.agent.ts` 暴露两层能力：
+    - `agent`：通过 gateway 或 local embedded runtime 跑一个 turn
+    - `agents`：管理隔离 agent（workspace、auth、routing、identity）
+- 这说明 `openclaw` 的“多 agent”首先是控制面概念，不只是运行时临时 fork。
+- `openclaw` 的 gateway run loop 具备明显的长生命周期服务特征：
+  - 端口锁
+  - drain 中的 active tasks / embedded runs
+  - in-process restart 与 full process restart
+  - shutdown/restart 信号协调
+- `openclaw` 的 `subagent-registry.ts` 说明子 agent 不是一次性匿名线程：
+  - 有全局 run registry
+  - 有持久化恢复
+  - 有 orphan recovery
+  - 有 announce/retry/cleanup/lifecycle hooks
+  - 会把 timing/status 写回 session store
+- 初步判断：`openclaw` 的多 agent 不是“模型自己开分身”，而是“session 化的受管子运行单元”。
+- `openclaw` 的 `sessions_spawn` 工具是多 agent 的正式入口之一：
+  - 统一暴露 `runtime=subagent|acp`
+  - 支持 `mode=run|session`
+  - 明确规定子 agent 自动继承父 workspace
+  - thread-bound persistent session 需要显式 thread 绑定
+- `openclaw` 的 `subagent-spawn.ts` 说明 spawn 不是简单 fork：
+  - 校验 agent id / thinking / model / timeout / depth
+  - 处理 attachment materialization
+  - 处理 sandbox 继承或强制要求
+  - 处理 session store 预登记与失败回收
+  - 处理 thread binding 与 completion announce
+- `openclaw` 的工作区模型不是单纯 cwd：
+  - 默认工作区位于 `~/.openclaw/workspace`
+  - 识别 `AGENTS.md`、`SOUL.md`、`TOOLS.md`、`IDENTITY.md`、`USER.md`、`HEARTBEAT.md`、`BOOTSTRAP.md`、`MEMORY.md`
+  - 有 workspace setup state 与 bootstrap seed 机制
+  - 有 boundary-safe 读取和文件缓存
+- `openclaw` 的 agent 编排是“routing 先决”：
+  - `resolve-route.ts` 先根据 channel/account/peer/guild/team/roles 解析路由到 agent
+  - session key 不是临时 id，而是整个 agent 运行和会话存储的主索引
+- `learn-claude-code s04`：子 agent = fresh `messages=[]`，共享文件系统、不共享对话历史，执行完只回 summary。
+- `learn-claude-code s07`：任务系统 = `.tasks/*.json` 文件板，保存依赖图，让目标跨 context compression 持续存在。
+- `learn-claude-code s09`：agent team = 持久化命名 teammate + 每人一个 JSONL inbox + 每人一个 thread 跑独立 loop。
+- `learn-claude-code s12`：worktree 不只是 git 技巧，而是明确把 task 当控制平面、worktree 当执行平面，并用 task_id 绑定二者。
+- `learn-claude-code s11`：自主协作不是复杂 scheduler，而是“工作相结束后进入 idle phase，定期轮询 inbox + task board，发现可做事项就自领并恢复工作”。
+- `learn-claude-code` 的 identity re-injection 很朴素但关键：压缩上下文后，用一个 `<identity>` block 把 teammate 的身份重新塞回消息流，避免“忘记自己是谁”。
+- `learn-claude-code s_full` 证明其总体架构是“一个 loop + 一堆轻量机制的叠加”，而不是把 loop 本身改写成复杂 orchestrator。
+- `openclaw` 在长期运行基础设施上明显更重：
+  - `heartbeat-runner.ts` 会按 agent 维度解析 heartbeat 配置、工作区、session、delivery target，并尽量避免无意义 heartbeat 污染 transcript。
+  - `cron/isolated-agent/run.ts` 会为 cron 任务解析 agentId、workspace、agentDir、model、sessionKey、delivery policy，并以“隔离 agent turn”方式执行。
+- 这说明 `openclaw` 的多 agent 不是孤立功能，而是嵌在“always-on assistant”基础设施里：
+  - gateway 长生命周期
+  - sessions 是统一索引
+  - routing 决定 agent 入口
+  - subagent/cron/heartbeat 共享 session 与 delivery 语义
+- `learn-claude-code` 自己在 README 里也明确承认定位：
+  - 它教的是 `use-and-discard` 的 Claude Code 风格 harness
+  - `OpenClaw` 则被它视为“在同一 agent core 上继续加 heartbeat + cron + IM + memory + soul”的姐妹路线
+
+## 2026-04-13
+
+- 本轮研究范围已经收紧为：`Anthropic` 官方文档为主，官方博客为辅，不看第三方二手解读。
+- 当前目标不是泛泛了解 Claude，而是抓出与 `harness engineering` 最相关的官方主张，再映射到 `agent-alpha`。
+- 这次要特别关注 4 个判断面：
+  - `Claude Code` 被 Anthropic 定义成什么样的工程系统
+  - 官方如何处理 tools / approvals / sandbox / working directory
+  - 官方如何定义 subagents / delegation / parallel work
+  - 官方如何看待长期运行、自动化、后台工作流
+- 初步结论已经非常清楚：Anthropic 官方路线是“先把单 agent harness 做成强约束执行系统”，然后再叠加 subagents、hooks、memory、automation，而不是先做大规模 agent society。
+- 官方材料中最值得借鉴的不是某一个 UI 或命令，而是分层思路：
+  - `CLAUDE.md` 负责长期上下文
+  - `settings` 负责运行配置
+  - `slash commands` 负责工作流模板
+  - `subagents` 负责专长 worker
+  - `hooks` 负责确定性生命周期控制
+- 这对 `agent-alpha` 的直接启发是：
+  - 上下文层必须拆分
+  - 权限体系必须前置
+  - `hooks` 应该比 `cron` 更早
+  - simple subagent 先做“专长 worker”，不要直接跳群体智能
+- 重点补读 `Managed agents` 后，结论进一步加强：
+  - Anthropic 不是围绕“进程对象”设计 agent 系统，而是围绕 `session + harness + sandbox` 三层稳定接口。
+  - `session` 被定义成持久化 event log，而不是模型上下文窗口。
+  - `harness` 和 `sandbox` 应该解耦，任一层失败都应可替换、可恢复。
+  - 对 `agent-alpha` 来说，`session/event architecture` 的优先级应上调到非常靠前。

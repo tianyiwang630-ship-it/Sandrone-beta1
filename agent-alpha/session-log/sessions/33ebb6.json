@@ -1,0 +1,21 @@
+{
+  "session_id": "33ebb6",
+  "kind": "interactive",
+  "workspace": "D:\\files\\demo\\0312-newagent\\agent-alpha\\workspace",
+  "history": [
+    {
+      "role": "user",
+      "content": "你有哪些skill"
+    },
+    {
+      "role": "assistant",
+      "content": "以下是我目前可用的 **Skills（技能）**：\n\n| 技能名称 | 功能简介 |\n|---------|---------|\n| **calculator** | Python 数学计算器，支持加减乘除、乘方等运算 |\n| **docx** | Word 文档（.docx）的创建、编辑、分析，支持修订、批注、格式保留 |\n| **pdf** | PDF 操作：文本/表格提取、创建、合并/拆分、表单填写 |\n| **pptx** | PPT 演示文稿的创建、编辑、分析，支持布局、备注、批注 |\n| **skill-creator** | 创建新技能或更新已有技能的引导工具 |\n| **install-alpha-skill** | 从本地文件夹、GitHub 仓库等安装第三方技能到 agent-alpha |\n| **agent-reach** | 互联网搜索与浏览，支持 Twitter/X、Reddit、YouTube、GitHub、小红书、B站、抖音、微博、微信文章、知乎、播客、LinkedIn 等 17 个平台，以及通用网页搜索 |\n\n---\n\n需要我加载某个技能的完整说明，或者直接帮你做点什么吗？😊"
+    }
+  ],
+  "metadata": {
+    "project_root": "D:\\files\\demo\\0312-newagent\\agent-alpha"
+  },
+  "events": [],
+  "created_at": "2026-06-08T12:58:48.073415",
+  "updated_at": "2026-06-08T12:59:09.571553"
+}

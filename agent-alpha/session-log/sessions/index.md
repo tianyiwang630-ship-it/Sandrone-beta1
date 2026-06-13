@@ -47,3 +47,5 @@
 | 3b6179 | 06-12 16:44 | 15 | workspace | session-log/logs/2026-06-12_20-41-49_session_3b6179.json | 你有哪些skill |
 | 3b6179 | 06-12 16:44 | 16 | workspace | session-log/logs/2026-06-12_22-09-24_session_3b6179.json | 你有哪些skill |
 | 3b6179 | 06-12 16:44 | 13 | workspace | session-log/logs/2026-06-13_14-24-39_session_3b6179.json | ## 任务时间线 - 用户询问可用 skill，列出内置及已安装的 agent-reach 等 skill - 用户要求用 agent-reach 获取 Elon Musk 最近 5 条推文   -  |
+| ccf1fa | 06-13 16:00 | 1 | workspace | session-log/logs/2026-06-13_16-00-09_session_ccf1fa.json | 白话解读一下5. V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction and PlanningAssran  |
+| f59b09 | 06-13 16:00 | 1 | workspace | session-log/logs/2026-06-13_16-00-29_session_f59b09.json | 白话解读一下9. Genie: Generative Interactive EnvironmentsBruce et al., 2024，写md文档 |

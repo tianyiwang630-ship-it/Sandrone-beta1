@@ -8,6 +8,7 @@ from typing import Mapping, MutableMapping
 
 RESERVED_RUNTIME_ENV_KEYS = {
     "AGENT_ALPHA_ROOT",
+    "AGENT_ALPHA_RUNTIME_PROFILE_KEYS",
     "HOME",
     "USERPROFILE",
     "HOMEDRIVE",
@@ -33,7 +34,23 @@ RESERVED_RUNTIME_ENV_KEYS = {
     "RUSTUP_HOME",
     "VIRTUAL_ENV",
     "PATH",
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "PYTHONNOUSERSITE",
+    "CONDA_PREFIX",
+    "CONDA_DEFAULT_ENV",
+    "CONDA_PROMPT_MODIFIER",
 }
+
+PYTHON_ENCODING_ENV_KEYS = {"PYTHONUTF8", "PYTHONIOENCODING"}
+HOST_PYTHON_ENV_KEYS = {
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "CONDA_PREFIX",
+    "CONDA_DEFAULT_ENV",
+    "CONDA_PROMPT_MODIFIER",
+}
+RUNTIME_PROFILE_KEYS_ENV = "AGENT_ALPHA_RUNTIME_PROFILE_KEYS"
 
 
 def ensure_runtime_directories(project_root: Path) -> None:
@@ -80,6 +97,7 @@ def apply_runtime_env(
     ensure_runtime_directories(root)
     env = build_runtime_env(root, base_env=base_env)
     target = target_env if target_env is not None else os.environ
+    _remove_previous_profile_keys(target, os_name=_runtime_os_name())
     target.update(env)
     return env
 
@@ -89,13 +107,20 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
     root = Path(project_root).resolve()
     home = root / "home"
     venv = root / ".venv"
-    scripts_dir = venv / ("Scripts" if os.name == "nt" else "bin")
+    os_name = _runtime_os_name()
+    scripts_dir = venv / ("Scripts" if os_name == "nt" else "bin")
     agent_bin_dir = root / "bin"
-    env = dict(base_env or os.environ)
-    env.update(_load_runtime_env_profile(root))
+    env = _normalize_runtime_env(base_env or os.environ, os_name=os_name)
+    _remove_previous_profile_keys(env, os_name=os_name)
+    for key in HOST_PYTHON_ENV_KEYS | PYTHON_ENCODING_ENV_KEYS:
+        _pop_env_key(env, key, os_name=os_name)
+    profile = _load_runtime_env_profile(root)
+    profile_keys = {key.upper() for key in profile}
+    env.update(profile)
 
     runtime_values = {
         "AGENT_ALPHA_ROOT": root,
+        RUNTIME_PROFILE_KEYS_ENV: json.dumps(sorted(profile), ensure_ascii=True),
         "HOME": home,
         "USERPROFILE": home,
         "XDG_CONFIG_HOME": root / "config",
@@ -118,13 +143,18 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
         "CARGO_HOME": root / "cache" / "cargo",
         "RUSTUP_HOME": root / "cache" / "rustup",
         "VIRTUAL_ENV": venv,
+        "PYTHONNOUSERSITE": "1",
     }
     env.update({key: str(value) for key, value in runtime_values.items()})
 
-    if os.name == "nt":
+    if os_name == "nt":
         drive = root.drive or home.drive
         env["HOMEDRIVE"] = drive
         env["HOMEPATH"] = str(home)[len(drive) :] if drive and str(home).startswith(drive) else str(home)
+        if "PYTHONUTF8" not in profile_keys:
+            env["PYTHONUTF8"] = "1"
+        if "PYTHONIOENCODING" not in profile_keys:
+            env["PYTHONIOENCODING"] = "utf-8"
 
     old_path = env.get("PATH", "")
     separator = os.pathsep
@@ -132,6 +162,57 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
     path_prefix = separator.join(str(path) for path in path_prefix_entries)
     env["PATH"] = path_prefix if not old_path else f"{path_prefix}{separator}{old_path}"
     return env
+
+
+def _runtime_os_name() -> str:
+    return os.name
+
+
+def _normalize_runtime_env(env: Mapping[str, str], *, os_name: str) -> dict[str, str]:
+    normalized: dict[str, str] = {}
+    canonical_keys = RESERVED_RUNTIME_ENV_KEYS | PYTHON_ENCODING_ENV_KEYS
+    for key, value in env.items():
+        text_key = str(key)
+        upper_key = text_key.upper()
+        if os_name == "nt" and upper_key in canonical_keys:
+            normalized[upper_key] = str(value)
+        else:
+            normalized[text_key] = str(value)
+    return normalized
+
+
+def _pop_env_key(env: MutableMapping[str, str], key: str, *, os_name: str) -> None:
+    if os_name == "nt":
+        upper_key = key.upper()
+        for existing in list(env):
+            if existing.upper() == upper_key:
+                env.pop(existing, None)
+        return
+    env.pop(key, None)
+
+
+def _remove_previous_profile_keys(env: MutableMapping[str, str], *, os_name: str) -> None:
+    raw_keys = _get_env_value(env, RUNTIME_PROFILE_KEYS_ENV, os_name=os_name)
+    if raw_keys:
+        try:
+            keys = json.loads(raw_keys)
+        except Exception:
+            keys = []
+        if isinstance(keys, list):
+            for key in keys:
+                if isinstance(key, str):
+                    _pop_env_key(env, key, os_name=os_name)
+    _pop_env_key(env, RUNTIME_PROFILE_KEYS_ENV, os_name=os_name)
+
+
+def _get_env_value(env: Mapping[str, str], key: str, *, os_name: str) -> str | None:
+    if os_name == "nt":
+        upper_key = key.upper()
+        for existing, value in env.items():
+            if existing.upper() == upper_key:
+                return value
+        return None
+    return env.get(key)
 
 
 def _local_python_scripts_dirs(project_root: Path) -> list[Path]:
@@ -159,8 +240,14 @@ def _load_runtime_env_profile(project_root: Path) -> dict[str, str]:
     if not isinstance(data, dict):
         return {}
 
-    return {
-        str(key): str(value)
-        for key, value in data.items()
-        if key and value is not None and str(key).upper() not in RESERVED_RUNTIME_ENV_KEYS
-    }
+    result: dict[str, str] = {}
+    for key, value in data.items():
+        key_text = str(key)
+        upper_key = key_text.upper()
+        if not key_text or value is None or upper_key in RESERVED_RUNTIME_ENV_KEYS:
+            continue
+        if upper_key in PYTHON_ENCODING_ENV_KEYS:
+            result[upper_key] = str(value)
+        else:
+            result[key_text] = str(value)
+    return result

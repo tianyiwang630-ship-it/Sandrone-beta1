@@ -69,6 +69,24 @@ def test_bash_allows_pip_install_bound_to_alpha_venv():
     assert result.action == "write"
 
 
+def test_bash_allows_relative_alpha_venv_python_from_project_root():
+    result = _guard().check_tool_call(
+        "bash",
+        {"command": ".venv/Scripts/python.exe -m pytest"},
+    )
+
+    assert result.decision == "allow"
+
+
+def test_bash_allows_relative_alpha_venv_python_with_dotdot_segments():
+    result = _guard().check_tool_call(
+        "bash",
+        {"command": ".venv/Scripts/../Scripts/python.exe -m pytest"},
+    )
+
+    assert result.decision == "allow"
+
+
 def test_bash_allows_alpha_venv_module_command_with_stderr_redirect():
     result = _guard().check_tool_call(
         "bash",
@@ -87,6 +105,116 @@ def test_bash_denies_external_python_module_command_with_guidance():
 
     assert result.decision == "deny"
     assert "agent-alpha/.venv" in (result.guidance or "")
+
+
+def test_bash_denies_windows_py_launcher():
+    result = _guard().check_tool_call("bash", {"command": "py -m pytest"})
+
+    assert result.decision == "deny"
+    assert "agent-alpha/.venv" in (result.guidance or "")
+
+
+def test_bash_denies_external_python_script_even_with_quoted_path():
+    result = _guard().check_tool_call(
+        "bash",
+        {"command": '"C:/Python312/python.exe" "D:/demo/agent-alpha/workspace/job.py"'},
+    )
+
+    assert result.decision == "deny"
+    assert "agent-alpha/.venv" in (result.guidance or "")
+
+
+def test_bash_allows_explicit_posix_venv_python3_script():
+    result = _guard().check_tool_call(
+        "bash",
+        {"command": 'D:/demo/agent-alpha/.venv/bin/python3 "D:/demo/agent-alpha/workspace/job.py"'},
+    )
+
+    assert result.decision == "allow"
+
+
+def test_bash_allows_absolute_macos_style_venv_python3():
+    guard = SandboxGuard(
+        project_root=Path("/Users/demo/agent-alpha"),
+        workspace_root=Path("/Users/demo/agent-alpha/workspace"),
+    )
+
+    result = guard.check_tool_call(
+        "bash",
+        {"command": "/Users/demo/agent-alpha/.venv/bin/python3 -m pytest"},
+    )
+
+    assert result.decision == "allow"
+
+
+def test_bash_denies_absolute_macos_system_python3():
+    guard = SandboxGuard(
+        project_root=Path("/Users/demo/agent-alpha"),
+        workspace_root=Path("/Users/demo/agent-alpha/workspace"),
+    )
+
+    result = guard.check_tool_call(
+        "bash",
+        {"command": "/usr/bin/python3 -m pytest"},
+    )
+
+    assert result.decision == "deny"
+    assert "agent-alpha/.venv" in (result.guidance or "")
+
+
+def test_bash_denies_other_agent_venv_python_for_current_agent():
+    guard = SandboxGuard(
+        project_root=Path("D:/demo/agent-alpha-a"),
+        workspace_root=Path("D:/demo/agent-alpha-a/workspace"),
+    )
+
+    result = guard.check_tool_call(
+        "bash",
+        {"command": "D:/demo/agent-alpha-b/.venv/Scripts/python.exe -m pytest"},
+    )
+
+    assert result.decision == "deny"
+    assert "agent-alpha/.venv" in (result.guidance or "")
+
+
+def test_bash_denies_conda_run_python_bypass():
+    result = _guard().check_tool_call(
+        "bash",
+        {"command": "conda run -n other python -m pytest"},
+    )
+
+    assert result.decision == "deny"
+    assert "agent-alpha/.venv" in (result.guidance or "")
+
+
+def test_bash_denies_uv_run_with_external_python():
+    result = _guard().check_tool_call(
+        "bash",
+        {"command": "uv run --python C:/OtherPython/python.exe script.py"},
+    )
+
+    assert result.decision == "deny"
+    assert "agent-alpha/.venv" in (result.guidance or "")
+
+
+def test_bash_denies_uv_run_with_non_python_inside_alpha_venv():
+    result = _guard().check_tool_call(
+        "bash",
+        {"command": "uv run --python D:/demo/agent-alpha/.venv/Scripts/not-python.exe script.py"},
+    )
+
+    assert result.decision == "deny"
+    assert "agent-alpha/.venv" in (result.guidance or "")
+
+
+def test_bash_denies_inline_path_override_before_python():
+    result = _guard().check_tool_call(
+        "bash",
+        {"command": "export PATH=/usr/bin:$PATH && python3 -m pytest"},
+    )
+
+    assert result.decision == "deny"
+    assert "PATH" in (result.guidance or "")
 
 
 def test_bash_allows_alpha_venv_cli_command():
@@ -350,6 +478,7 @@ def test_tool_loader_returns_guidance_for_denied_bash():
 
     assert result["error"] == "Sandbox denied"
     assert "guidance" in result
+    assert "allowed write roots" in result["guidance"]
 
 
 def test_tool_loader_allows_project_command_bash_without_prompt():

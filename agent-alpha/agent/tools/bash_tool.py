@@ -6,11 +6,13 @@ import subprocess
 import platform
 import os
 import re
+import shlex
 import threading
 import time
 from pathlib import Path
 from typing import Dict, Any, List
 
+from agent.core.command_path_extractor import classify_python_launcher_scope, command_uses_python_launcher
 from agent.core.runtime_paths import build_runtime_env, ensure_runtime_directories
 from agent.tools.base_tool import BaseTool
 from agent.tools.process_utils import subprocess_group_kwargs, terminate_process_tree
@@ -217,7 +219,7 @@ class BashTool(BaseTool):
             self._join_output_readers(reader_threads)
             stdout, stderr = self._truncate_output("".join(stdout_parts), "".join(stderr_parts))
 
-            return {
+            result = {
                 "success": proc.returncode == 0,
                 "stdout": stdout,
                 "stderr": stderr,
@@ -225,6 +227,10 @@ class BashTool(BaseTool):
                 "command": command,
                 "working_dir": str(cwd),
             }
+            guidance = self._python_alias_guidance(stdout, stderr)
+            if guidance:
+                result["guidance"] = guidance
+            return result
 
         except Exception as e:
             return {
@@ -256,6 +262,10 @@ class BashTool(BaseTool):
         misplaced_path_error = self._detect_project_root_prefixed_runtime_path(command, cwd)
         if misplaced_path_error:
             return self._working_dir_error(misplaced_path_error, command)
+
+        python_error = self._validate_alpha_python(command)
+        if python_error:
+            return self._working_dir_error(python_error, command)
 
         return {
             "success": True,
@@ -351,7 +361,7 @@ class BashTool(BaseTool):
         return rest, target
 
     def _working_dir_error(self, message: str, command: str) -> Dict[str, Any]:
-        return {
+        result = {
             "success": False,
             "error": message,
             "stdout": "",
@@ -359,6 +369,68 @@ class BashTool(BaseTool):
             "returncode": None,
             "command": command,
         }
+        if "agent-alpha .venv Python" in message:
+            result["guidance"] = self._alpha_python_guidance()
+        return result
+
+    def _validate_alpha_python(self, command: str) -> str | None:
+        if not command_uses_python_launcher(command):
+            return None
+
+        scope = classify_python_launcher_scope(command, project_root=self.project_root)
+        if scope == "deny":
+            return "Python commands must use agent-alpha .venv Python."
+
+        launcher = self._resolve_alpha_python_launcher(command)
+        if launcher is None or not launcher.exists():
+            return "Missing agent-alpha .venv Python; Python commands will not fall back to host Python."
+        return None
+
+    def _resolve_alpha_python_launcher(self, command: str) -> Path | None:
+        try:
+            tokens = shlex.split(command, posix=False)
+        except ValueError:
+            return None
+        tokens = [self._strip_quotes(token) for token in tokens if token and token not in {"2>&1", "1>&2"}]
+        if not tokens:
+            return None
+
+        executable = tokens[0]
+        if "/" in executable or "\\" in executable or executable.lower().endswith((".exe", ".cmd", ".bat")):
+            path = Path(executable)
+            if not path.is_absolute():
+                path = self.project_root / path
+            return path.resolve()
+
+        launcher = executable.lower()
+        scripts_dir = self.project_root / ".venv" / ("Scripts" if os.name == "nt" else "bin")
+        if os.name == "nt":
+            candidates = [scripts_dir / launcher, scripts_dir / f"{launcher}.exe"]
+            if launcher == "python":
+                candidates.insert(0, scripts_dir / "python.exe")
+            if launcher == "python3":
+                candidates.insert(0, scripts_dir / "python3.exe")
+        else:
+            candidates = [scripts_dir / launcher]
+
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate.resolve()
+        return candidates[0].resolve() if candidates else None
+
+    def _strip_quotes(self, value: str) -> str:
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            return value[1:-1]
+        return value
+
+    def _alpha_python_guidance(self) -> str:
+        windows_python = self.project_root / ".venv" / "Scripts" / "python.exe"
+        posix_python = self.project_root / ".venv" / "bin" / "python"
+        return (
+            "Use agent-alpha .venv Python only. "
+            f"Windows: {windows_python}; macOS/Linux: {posix_python}. "
+            "Do not use py, conda run, external Python paths, or command-local PATH overrides."
+        )
 
     def _start_output_readers(
         self,
@@ -412,6 +484,12 @@ class BashTool(BaseTool):
             stderr = stderr[:max_output_length] + f"\n... (错误输出过长，已截断)"
 
         return stdout, stderr
+
+    def _python_alias_guidance(self, stdout: str, stderr: str) -> str | None:
+        combined = f"{stdout}\n{stderr}"
+        if "Python was not found" in combined and "Microsoft Store" in combined:
+            return self._alpha_python_guidance()
+        return None
 
 
 # ============================================

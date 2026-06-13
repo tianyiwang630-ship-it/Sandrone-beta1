@@ -122,6 +122,53 @@ def extract_general_write_paths(command: str) -> list[Path]:
     )
 
 
+def classify_python_launcher_scope(command: str, *, project_root: Path) -> str:
+    """Return allowed_alpha_venv, deny, or none for direct Python launcher usage."""
+    tokens = _split_command(command)
+    if not tokens:
+        return "none"
+
+    lowered = [token.lower() for token in tokens]
+    if _has_inline_path_override(command) and any(_is_python_launcher_name(token) for token in tokens):
+        return "deny"
+
+    first = lowered[0]
+    if first == "conda" and "run" in lowered and any(_is_python_launcher_name(token) for token in tokens):
+        return "deny"
+
+    if first == "uv" and len(lowered) >= 2 and lowered[1] == "run" and "--python" in lowered:
+        index = lowered.index("--python")
+        if index + 1 >= len(tokens):
+            return "deny"
+        return "allowed_alpha_venv" if _is_venv_python(tokens[index + 1], project_root=project_root) else "deny"
+
+    executable = tokens[0]
+    if _is_windows_py_launcher(executable):
+        return "deny"
+
+    if not _is_python_launcher_name(executable):
+        return "none"
+
+    if _is_path_like_executable(executable):
+        return "allowed_alpha_venv" if _is_venv_python(executable, project_root=project_root) else "deny"
+
+    return "allowed_alpha_venv"
+
+
+def command_uses_python_launcher(command: str) -> bool:
+    tokens = _split_command(command)
+    if not tokens:
+        return False
+    lowered = [token.lower() for token in tokens]
+    if _has_inline_path_override(command) and any(_is_python_launcher_name(token) for token in tokens):
+        return True
+    if lowered[0] == "conda" and "run" in lowered and any(_is_python_launcher_name(token) for token in tokens):
+        return True
+    if len(lowered) >= 2 and lowered[0] == "uv" and lowered[1] == "run" and "--python" in lowered:
+        return True
+    return _is_python_launcher_name(tokens[0])
+
+
 def is_external_executable_invocation(command: str, *, project_root: Path, workspace_root: Path) -> bool:
     """Return True when the command directly invokes an executable outside alpha/workspace."""
     tokens = _split_command(command)
@@ -177,7 +224,7 @@ def classify_package_install_scope(command: str, *, project_root: Path) -> str:
         return "allowed_alpha_venv"
 
     if _is_python_pip_install(tokens):
-        return "allowed_alpha_venv" if _is_bare_python(tokens[0]) or _is_venv_python(tokens[0], project_root=project_root) else "deny"
+        return "allowed_alpha_venv" if _is_allowed_python_launcher(tokens[0], project_root=project_root) else "deny"
 
     return "ask"
 
@@ -192,7 +239,7 @@ def classify_alpha_venv_command_scope(command: str, *, project_root: Path) -> st
     lowered = [token.lower() for token in tokens]
 
     if _is_python_module_command(tokens):
-        if _is_bare_python(executable) or _is_venv_python(executable, project_root=project_root):
+        if _is_allowed_python_launcher(executable, project_root=project_root):
             return "allowed_alpha_venv"
         if _is_path_like_executable(executable):
             return "deny"
@@ -418,9 +465,28 @@ def _is_bare_python(token: str) -> bool:
     return token.lower() in {"python", "python3", "py"}
 
 
+def _is_allowed_python_launcher(token: str, *, project_root: Path) -> bool:
+    if _is_windows_py_launcher(token):
+        return False
+    if _is_path_like_executable(token):
+        return _is_venv_python(token, project_root=project_root)
+    return _is_python_launcher_name(token)
+
+
+def _is_python_launcher_name(token: str) -> bool:
+    name = Path(_strip_quotes(token)).name.lower()
+    return name in {"python", "python.exe", "python3", "python3.exe", "py", "py.exe"}
+
+
+def _is_windows_py_launcher(token: str) -> bool:
+    return Path(_strip_quotes(token)).name.lower() in {"py", "py.exe"}
+
+
 def _is_venv_python(token: str, *, project_root: Path) -> bool:
     try:
-        python_path = Path(token).resolve()
+        python_path = _resolve_executable_path(token, project_root=project_root)
+        if not _is_python_executable_path(python_path):
+            return False
         venv_path = Path(project_root).resolve() / ".venv"
         python_path.relative_to(venv_path)
         return True
@@ -430,7 +496,7 @@ def _is_venv_python(token: str, *, project_root: Path) -> bool:
 
 def _is_venv_python_or_cli(token: str, *, project_root: Path) -> bool:
     try:
-        executable_path = Path(token).resolve()
+        executable_path = _resolve_executable_path(token, project_root=project_root)
         venv_path = Path(project_root).resolve() / ".venv"
         executable_path.relative_to(venv_path)
         return True
@@ -441,6 +507,25 @@ def _is_venv_python_or_cli(token: str, *, project_root: Path) -> bool:
 def _is_path_like_executable(token: str) -> bool:
     lowered = token.lower()
     return "/" in token or "\\" in token or lowered.endswith((".exe", ".cmd", ".bat", ".ps1"))
+
+
+def _resolve_executable_path(token: str, *, project_root: Path) -> Path:
+    path = Path(_strip_quotes(token))
+    if not path.is_absolute():
+        path = Path(project_root) / path
+    return path.resolve()
+
+
+def _is_python_executable_path(path: Path) -> bool:
+    return path.name.lower() in {"python", "python.exe", "python3", "python3.exe"}
+
+
+def _has_inline_path_override(command: str) -> bool:
+    return bool(
+        re.search(r"(^|\s)(?:export\s+)?PATH\s*=", command, flags=re.IGNORECASE)
+        or re.search(r"\$env:PATH\s*=", command, flags=re.IGNORECASE)
+        or re.search(r"(^|\s)set\s+PATH\s*=", command, flags=re.IGNORECASE)
+    )
 
 
 def _classify_uv_pip_install(tokens: list[str], *, project_root: Path) -> str:

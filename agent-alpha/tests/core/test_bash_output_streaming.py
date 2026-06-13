@@ -12,6 +12,7 @@ from agent.tools.bash_tool import BashTool
 
 def _cmd_tool(monkeypatch, tmp_path, timeout=2):
     monkeypatch.setattr(BashTool, "_detect_shell", lambda self: setattr(self, "shell", "cmd"))
+    monkeypatch.setattr(BashTool, "_validate_alpha_python", lambda self, command: None)
     return BashTool(project_root=tmp_path, timeout=timeout)
 
 

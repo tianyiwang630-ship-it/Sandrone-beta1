@@ -1,0 +1,22 @@
+{
+  "profiles": {
+    "default": {
+      "name": "default",
+      "kind": "persistent",
+      "description": "",
+      "profile_dir": "state/browser/profiles/default/user-data",
+      "state_file": "state/browser/profiles/default/state.json",
+      "created_at": "2026-06-13T07:58:18.415187+00:00",
+      "last_used_at": null
+    },
+    "work": {
+      "name": "work",
+      "kind": "persistent",
+      "description": "",
+      "profile_dir": "state/browser/profiles/work/user-data",
+      "state_file": "state/browser/profiles/work/state.json",
+      "created_at": "2026-06-13T07:58:18.417187+00:00",
+      "last_used_at": "2026-06-13T07:58:18.422189+00:00"
+    }
+  }
+}

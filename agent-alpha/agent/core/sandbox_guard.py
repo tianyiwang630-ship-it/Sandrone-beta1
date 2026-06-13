@@ -7,6 +7,7 @@ from agent.core.command_path_extractor import (
     classify_alpha_venv_command_scope,
     classify_bash_command,
     classify_package_install_scope,
+    classify_python_launcher_scope,
     explain_alpha_venv_command_guidance,
     explain_parseable_mutation_forms,
     extract_bash_paths,
@@ -32,7 +33,7 @@ class SandboxGuard:
 
     def check_tool_call(self, tool_name: str, arguments: Dict[str, Any]) -> SandboxCheckResult:
         if tool_name == "bash":
-            return self._check_bash_command(arguments.get("command", ""))
+            return self._check_bash_command(arguments.get("command", ""), arguments.get("working_dir"))
 
         if tool_name not in self.FILE_TOOL_ACTIONS:
             return SandboxCheckResult(
@@ -81,7 +82,7 @@ class SandboxGuard:
             guidance=guidance,
         )
 
-    def _check_bash_command(self, command: str) -> SandboxCheckResult:
+    def _check_bash_command(self, command: str, working_dir: str | None = None) -> SandboxCheckResult:
         category = classify_bash_command(command)
 
         if category == "dangerous":
@@ -91,6 +92,19 @@ class SandboxGuard:
                 zone="unknown",
                 reason="Dangerous system-level bash commands are not allowed",
                 guidance="Disallowed examples include sudo, format, mkfs, diskpart, shutdown, reboot, and destructive permission changes.",
+            )
+
+        python_scope = classify_python_launcher_scope(command, project_root=self.project_root)
+        if python_scope == "deny":
+            return SandboxCheckResult(
+                decision="deny",
+                action="read",
+                zone="outside",
+                reason="Python commands must use agent-alpha's virtual environment",
+                guidance=(
+                    f"{explain_alpha_venv_command_guidance(self.project_root)} "
+                    "Do not override PATH, use the Windows py launcher, conda run, uv --python with external interpreters, or external Python paths."
+                ),
             )
 
         if category == "package_install":
@@ -192,7 +206,11 @@ class SandboxGuard:
                     action=action,
                     zone="unknown",
                     reason="This bash command could not be parsed safely",
-                    guidance=explain_parseable_mutation_forms() if category == "path_mutation" else "Use simple read-only commands with explicit paths when accessing files.",
+                    guidance=(
+                        f"{explain_parseable_mutation_forms()} {self._write_path_guidance([], working_dir=working_dir)}"
+                        if category == "path_mutation"
+                        else "Use simple read-only commands with explicit paths when accessing files."
+                    ),
                 )
 
             action, paths = extracted
@@ -220,7 +238,11 @@ class SandboxGuard:
                     action=action,
                     zone=next(zone for decision, zone in decisions if decision == "deny"),
                     reason="The bash command targets a path outside the allowed workspace or project boundaries",
-                    guidance=explain_parseable_mutation_forms() if category == "path_mutation" else None,
+                    guidance=(
+                        f"{explain_parseable_mutation_forms()} {self._write_path_guidance(paths, working_dir=working_dir)}"
+                        if category == "path_mutation"
+                        else None
+                    ),
                 )
 
             if any(decision == "ask" for decision, _zone in decisions):
@@ -256,7 +278,7 @@ class SandboxGuard:
                     action="write",
                     zone=next(zone for decision, zone in decisions if decision == "deny"),
                     reason="The bash command appears to write to a path outside the allowed workspace or project boundaries",
-                    guidance="Write files inside the current workspace or inside agent-alpha. Use agent-alpha/temp for temporary output.",
+                    guidance=self._write_path_guidance(general_write_paths, working_dir=working_dir),
                 )
             if any(decision == "ask" for decision, _zone in decisions):
                 return SandboxCheckResult(
@@ -291,6 +313,46 @@ class SandboxGuard:
             zone="unknown",
             reason="General shell command is allowed because it does not match dangerous commands or explicit external file writes",
         )
+
+    def _write_path_guidance(self, paths: list[Path], *, working_dir: str | None = None) -> str:
+        cwd = self._resolve_working_dir_for_guidance(working_dir)
+        allowed_roots = [self.workspace_root, self.project_root / "temp"]
+        if cwd == self.project_root:
+            recommended = "temp/..."
+        else:
+            try:
+                cwd.relative_to(self.workspace_root)
+                recommended = "a path relative to the current workspace, or an explicit path under agent-alpha/temp"
+            except ValueError:
+                recommended = "temp/... or workspace/..."
+
+        path_bits = []
+        for path in paths:
+            try:
+                resolved = path.resolve()
+            except Exception:
+                resolved = path
+            path_bits.append(f"{path} -> {resolved}")
+        detected = "; ".join(path_bits) if path_bits else "none safely parsed"
+        roots = ", ".join(str(root) for root in allowed_roots)
+        return (
+            f"Detected write paths: {detected}. Current cwd: {cwd}. "
+            f"allowed write roots: {roots}. Recommended target: {recommended}. "
+            "Because bash starts inside agent-alpha, use temp/... instead of agent-alpha/temp/... for temporary files."
+        )
+
+    def _resolve_working_dir_for_guidance(self, working_dir: str | None) -> Path:
+        if not working_dir:
+            return self.project_root
+        try:
+            path = Path(working_dir)
+            if not path.is_absolute():
+                path = self.project_root / path
+            resolved = path.resolve()
+            resolved.relative_to(self.project_root)
+            return resolved
+        except Exception:
+            return self.project_root
 
     def _extract_path(self, arguments: Dict[str, Any]) -> Path | None:
         raw_path = arguments.get("file_path")

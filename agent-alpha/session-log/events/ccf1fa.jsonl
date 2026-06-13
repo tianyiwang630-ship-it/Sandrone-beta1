@@ -1,0 +1,412 @@
+{
+  "ts": "2026-06-13T16:01:35",
+  "seq": 1,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "user",
+    "content": "白话解读一下5. V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction and PlanningAssran et al., 2025 这篇论文，写md文档"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:01:39",
+  "seq": 2,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "assistant",
+    "content": "好的，我先搜一下这篇论文的详细信息，然后用「白话」的方式给你讲清楚。",
+    "tool_calls": [
+      {
+        "id": "call_00_jfPGsfRBwzggv6rA8H951768",
+        "type": "function",
+        "function": {
+          "name": "mcp__open-websearch__search",
+          "arguments": "{\"query\": \"V-JEPA 2 Self-Supervised Video Models Enable Understanding Prediction and Planning Assran 2025\", \"limit\": 10}"
+        }
+      },
+      {
+        "id": "call_01_sEGnprgQSmY4EzU8luyj1669",
+        "type": "function",
+        "function": {
+          "name": "mcp__open-websearch__search",
+          "arguments": "{\"query\": \"V-JEPA 2 paper Yann LeCun video joint embedding predictive architecture\", \"limit\": 10}"
+        }
+      }
+    ],
+    "reasoning_content": "The user wants me to read a paper about V-JEPA 2 and explain it in plain language (白话), then write it as a markdown document. Let me first search for this paper to understand what it's about, then use the ljg-paper skill or ljg-plain skill to help structure the explanation.\n\nLet me search for the paper first."
+  }
+}
+
+{
+  "ts": "2026-06-13T16:01:41",
+  "seq": 3,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_00_jfPGsfRBwzggv6rA8H951768",
+    "content": "{\n  \"query\": \"V-JEPA 2 Self-Supervised Video Models Enable Understanding Prediction and Planning Assran 2025\",\n  \"engines\": [\n    \"duckduckgo\"\n  ],\n  \"totalResults\": 10,\n  \"results\": [\n    {\n      \"title\": \"[2506.09985] V-JEPA 2: Self-Supervised Video Models Enable ...\",\n      \"url\": \"https://arxiv.org/abs/2506.09985\",\n      \"description\": \"A major challenge for modern AI is to learn to understand the world and learn to act largely by observation. This paper explores a <b>self-supervised</b> approach that combines internet-scale <b>video</b> data with a small amount of interaction data (robot trajectories), to develop <b>models</b> capable of <b>understanding</b>, predicting, and <b>planning</b> in the physical world. We first pre-train an action-free joint ...\",\n      \"source\": \"arxiv.org\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"GitHub - facebookresearch/vjepa2: PyTorch code and models for VJEPA2 ...\",\n      \"url\": \"https://github.com/facebookresearch/vjepa2\",\n      \"description\": \"<b>V-JEPA</b> <b>2</b>: <b>Self-Supervised</b> <b>Video</b> <b>Models</b> <b>Enable</b> <b>Understanding</b>, <b>Prediction</b> <b>and</b> <b>Planning</b>\",\n      \"source\": \"github.com\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"(PDF) V-JEPA 2: Self-Supervised Video Models Enable Understanding ...\",\n      \"url\": \"https://www.researchgate.net/publication/392597575_V-JEPA_2_Self-Supervised_Video_Models_Enable_Understanding_Prediction_and_Planning\",\n      \"description\": \"Finally, we show how <b>self-supervised</b> learning can be applied to robotic <b>planning</b> tasks by post-training a latent action-conditioned world <b>model</b>, <b>V-JEPA</b> 2-AC, using less than 62 hours of unlabeled ...\",\n      \"source\": \"www.researchgate.net\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction ...\",\n      \"url\": \"https://ui.adsabs.harvard.edu/abs/2025arXiv250609985A/abstract\",\n      \"description\": \"A major challenge for modern AI is to learn to understand the world and learn to act largely by observation. This paper explores a <b>self-supervised</b> approach that combines internet-scale <b>video</b> data with a small amount of interaction data (robot trajectories), to develop <b>models</b> capable of <b>understanding</b>, predicting, and <b>planning</b> in the physical world. We first pre-train an action-free joint ...\",\n      \"source\": \"ui.adsabs.harvard.edu\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"Introducing V-JEPA 2: Meta&#x27;s Self-Supervised Video World Model for ...\",\n      \"url\": \"https://rits.shanghai.nyu.edu/ai/introducing-v-jepa-2-metas-self-supervised-video-world-model-for-understanding-prediction-and-planning/\",\n      \"description\": \"<b>V-JEPA</b> <b>2</b> learns by embedding both past and future <b>video</b> frames into a shared latent space, then predicting future embeddings from past contexts. This <b>self-supervised</b> objective encourages the <b>model</b> to capture high-level semantics like object motion and interactions.\",\n      \"source\": \"rits.shanghai.nyu.edu\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"Introducing V-JEPA 2\",\n      \"url\": \"https://ai.meta.com/research/vjepa/\",\n      \"description\": \"A <b>self-supervised</b> foundation world <b>model</b> <b>Video</b> Joint Embedding Predictive Architecture <b>2</b> (<b>V-JEPA</b> <b>2</b>) is the first world <b>model</b> trained on <b>video</b> that achieves state-of-the-art visual <b>understanding</b> <b>and</b> <b>prediction</b>, enabling zero-shot robot control in new environments.\",\n      \"source\": \"ai.meta.com\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction ...\",\n      \"url\": \"https://www.semanticscholar.org/paper/V-JEPA-2:-Self-Supervised-Video-Models-Enable-and-Assran-Bardes/b202faf38efbffcb26470c702e1140b047d6f6e7\",\n      \"description\": \"This work demonstrates how <b>self-supervised</b> learning from web-scale data and a small amount of robot interaction data can yield a world <b>model</b> capable of <b>planning</b> in the physical world. A major challenge for modern AI is to learn to understand the world and learn to act largely by observation. This paper explores a <b>self-supervised</b> approach that combines internet-scale <b>video</b> data with a small ...\",\n      \"source\": \"www.semanticscholar.org\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction ...\",\n      \"url\": \"https://paperswithcode.co/paper/2506.09985\",\n      \"description\": \"A major challenge for modern AI is to learn to understand the world and learn to act largely by observation. This paper explores a <b>self-supervised</b> approach that combines internet-scale <b>video</b> data with a small amount of interaction data (robot trajectories), to develop <b>models</b> capable of <b>understanding</b>, predicting, and <b>planning</b> in the physical world. We first p…\",\n      \"source\": \"paperswithcode.co\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction ...\",\n      \"url\": \"https://www.alphaxiv.org/overview/2506.09985v1\",\n      \"description\": \"FAIR at Meta developed <b>V-JEPA</b> <b>2</b>, a <b>self-supervised</b> <b>video</b> <b>model</b> that learns a general world <b>model</b> from over 1 million hours of internet <b>video</b>, then adapts this <b>model</b> with a small amount of unlabeled robot data to <b>enable</b> zero-shot robot control and strong performance in <b>video</b> <b>understanding</b> <b>and</b> <b>prediction</b> tasks. The <b>model</b> achieves 80% success for pick-<b>and</b>-place tasks with a cup in novel ...\",\n      \"source\": \"www.alphaxiv.org\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"Paper page - V-JEPA 2: Self-Supervised Video Models Enable ...\",\n      \"url\": \"https://huggingface.co/papers/2506.09985\",\n      \"description\": \"Join the discussion on this paper page <b>V-JEPA</b> <b>2</b>: <b>Self-Supervised</b> <b>Video</b> <b>Models</b> <b>Enable</b> <b>Understanding</b>, <b>Prediction</b> <b>and</b> <b>Planning</b>\",\n      \"source\": \"huggingface.co\",\n      \"engine\": \"duckduckgo\"\n    }\n  ],\n  \"partialFailures\": []\n}"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:01:44",
+  "seq": 4,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_01_sEGnprgQSmY4EzU8luyj1669",
+    "content": "{\n  \"query\": \"V-JEPA 2 paper Yann LeCun video joint embedding predictive architecture\",\n  \"engines\": [\n    \"duckduckgo\"\n  ],\n  \"totalResults\": 10,\n  \"results\": [\n    {\n      \"title\": \"[2506.09985] V-JEPA 2: Self-Supervised Video Models Enable ...\",\n      \"url\": \"https://arxiv.org/abs/2506.09985\",\n      \"description\": \"We first pre-train an action-free <b>joint-embedding-predictive</b> <b>architecture</b>, <b>V-JEPA</b> <b>2</b>, on a <b>video</b> and image dataset comprising over 1 million hours of internet <b>video</b>.\",\n      \"source\": \"arxiv.org\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"V-JEPA: Video Joint Embedding Predictive Architecture\",\n      \"url\": \"https://github.com/facebookresearch/jepa\",\n      \"description\": \"Official PyTorch codebase for the <b>video</b> <b>joint-embedding</b> <b>predictive</b> <b>architecture</b>, <b>V-JEPA</b>, a method for self-supervised learning of visual representations from <b>video</b>. Meta AI Research, FAIR Adrien Bardes, Quentin Garrido, Jean Ponce, Xinlei Chen, Michael Rabbat, <b>Yann</b> <b>LeCun</b>, Mahmoud Assran*, Nicolas Ballas* [Blog] [<b>Paper</b>] [Yannic Kilcher&#x27;s <b>Video</b>] <b>V-JEPA</b> models are trained by passively watching ...\",\n      \"source\": \"github.com\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"V-JEPA: The next step toward advanced machine intelligence\",\n      \"url\": \"https://ai.meta.com/blog/v-jepa-yann-lecun-ai-model-video-joint-embedding-predictive-architecture/\",\n      \"description\": \"We&#x27;re releasing the <b>Video</b> <b>Joint</b> <b>Embedding</b> <b>Predictive</b> <b>Architecture</b> (<b>V-JEPA</b>) model, a crucial step in advancing machine intelligence with a more grounded understanding of the world.\",\n      \"source\": \"ai.meta.com\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"Introducing V-JEPA 2: Meta&#x27;s Self-Supervised Video World Model for ...\",\n      \"url\": \"https://rits.shanghai.nyu.edu/ai/introducing-v-jepa-2-metas-self-supervised-video-world-model-for-understanding-prediction-and-planning/\",\n      \"description\": \"Meta&#x27;s FAIR research team has just released <b>V-JEPA</b> <b>2</b>, a cutting-edge world model trained on large-scale <b>video</b> data that enables AI agents to understand, predict, and even plan in the physical world. Building on the original <b>JEPA</b> (<b>Joint</b> <b>Embedding</b> <b>Predictive</b> <b>Architecture</b>) framework, <b>V-JEPA</b> <b>2</b> is pretrained on over 1 million hours of internet <b>video</b> and 1 million images, learning rich spatio ...\",\n      \"source\": \"rits.shanghai.nyu.edu\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"Deep Dive into Yann LeCun&#x27;s JEPA | Rohit Bandaru\",\n      \"url\": \"https://rohitbandaru.github.io/blog/JEPA-Deep-Dive/\",\n      \"description\": \"He also proposes a new <b>architecture</b> for a <b>predictive</b> world model: <b>Joint</b> <b>Embedding</b> <b>Predictive</b> <b>Architecture</b> (<b>JEPA</b>). This blog post will dive deep into <b>Yann&#x27;s</b> vision for AI, the <b>JEPA</b> <b>architecture</b>, current research, and energy-based models.\",\n      \"source\": \"rohitbandaru.github.io\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"V-JEPA 2 - AI Wiki\",\n      \"url\": \"https://aiwiki.ai/wiki/v_jepa_2\",\n      \"description\": \"<b>V-JEPA</b> <b>2</b> (<b>Video</b> <b>Joint</b> <b>Embedding</b> <b>Predictive</b> <b>Architecture</b> <b>2</b>) is an open-source <b>video</b> world model developed by Meta AI and released on June 11, 2025. The model is the second iteration of the <b>V-JEPA</b> line and the most prominent published embodiment of <b>Yann</b> <b>LeCun</b> &#x27;s <b>Joint</b> <b>Embedding</b> <b>Predictive</b> <b>Architecture</b> (<b>JEPA</b>) paradigm for autonomous machine ...\",\n      \"source\": \"aiwiki.ai\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"V-JEPA 2 — Grokipedia\",\n      \"url\": \"https://grokipedia.com/page/V-JEPA_2\",\n      \"description\": \"<b>V-JEPA</b> <b>2</b>, or <b>Video</b> <b>Joint</b> <b>Embedding</b> <b>Predictive</b> <b>Architecture</b> <b>2</b>, is a 1.2 billion-parameter self-supervised world model developed by Meta AI for processing and predicting <b>video</b> data, introduced on June 11, 2025, as an advancement in non-generative AI <b>architectures</b> that enable state-of-the-art visual understanding and physical reasoning without relying on explicit pixel generation. [1] [<b>2</b> ...\",\n      \"source\": \"grokipedia.com\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"From V-JEPA 2 and GPT 5 to Hybrid AGI Architecture\",\n      \"url\": \"https://champaignmagazine.com/2025/06/12/from-v-jepa-2-and-gpt-5-to-hybrid-agi-architecture/\",\n      \"description\": \"<b>V-JEPA</b> (<b>Video</b> <b>Joint</b> <b>Embedding</b> <b>Predictive</b> <b>Architecture</b>) <b>2</b> builds on the original object-centric, <b>predictive</b>, and modality-flexible framework proposed by <b>Yann</b> <b>LeCun</b> and colleagues.\",\n      \"source\": \"champaignmagazine.com\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"(PDF) V-JEPA 2: Self-Supervised Video Models Enable Understanding ...\",\n      \"url\": \"https://www.researchgate.net/publication/392597575_V-JEPA_2_Self-Supervised_Video_Models_Enable_Understanding_Prediction_and_Planning\",\n      \"description\": \"We first pre-train an action-free <b>joint-embedding-predictive</b> <b>architecture</b>, <b>V-JEPA</b> <b>2</b>, on a <b>video</b> and image dataset comprising over 1 million hours of internet <b>video</b>.\",\n      \"source\": \"www.researchgate.net\",\n      \"engine\": \"duckduckgo\"\n    },\n    {\n      \"title\": \"Meta Releases V-JEPA 2: New Breakthroughs in Video Understanding and ...\",\n      \"url\": \"https://www.aibase.com/news/18845\",\n      \"description\": \"Meta AI research team has once again made a breakthrough in the field of artificial intelligence, officially releasing the new <b>video</b> understanding model — <b>V-JEPA2</b> (<b>Video</b> <b>Joint</b> <b>Embedding</b> <b>Predictive</b> Architecture2) on June 11, 2025. Led by Meta&#x27;s chief AI scientist <b>Yann</b> <b>LeCun</b>, this model, through its innovative self-supervised learning technology and zero-shot robotic control capabilities ...\",\n      \"source\": \"www.aibase.com\",\n      \"engine\": \"duckduckgo\"\n    }\n  ],\n  \"partialFailures\": []\n}"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:01:46",
+  "seq": 5,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "assistant",
+    "content": "让我抓取论文原文和几篇解读文章，把这篇论文吃透。",
+    "tool_calls": [
+      {
+        "id": "call_00_zDLXuagBP0TUMfDrfoce8795",
+        "type": "function",
+        "function": {
+          "name": "mcp__open-websearch__fetchWebContent",
+          "arguments": "{\"url\": \"https://arxiv.org/abs/2506.09985\", \"maxChars\": 5000}"
+        }
+      },
+      {
+        "id": "call_01_ERsQomLn5gy0DABiWgLZ5200",
+        "type": "function",
+        "function": {
+          "name": "mcp__open-websearch__fetchWebContent",
+          "arguments": "{\"url\": \"https://ai.meta.com/research/vjepa/\", \"maxChars\": 15000}"
+        }
+      },
+      {
+        "id": "call_02_lxSjZU9oKdyIFCLXO7DF9740",
+        "type": "function",
+        "function": {
+          "name": "mcp__open-websearch__fetchWebContent",
+          "arguments": "{\"url\": \"https://aiwiki.ai/wiki/v_jepa_2\", \"maxChars\": 12000}"
+        }
+      }
+    ],
+    "reasoning_content": "Let me get the actual paper content and some explanatory articles to understand it well."
+  }
+}
+
+{
+  "ts": "2026-06-13T16:01:46",
+  "seq": 6,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_00_zDLXuagBP0TUMfDrfoce8795",
+    "content": "{\"error\": \"Failed to fetch web content: Request URL resolves to a private or local network target, which is not allowed\", \"tool\": \"mcp__open-websearch__fetchWebContent\"}"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:01:46",
+  "seq": 7,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_01_ERsQomLn5gy0DABiWgLZ5200",
+    "content": "{\"error\": \"Failed to fetch web content: Request URL resolves to a private or local network target, which is not allowed\", \"tool\": \"mcp__open-websearch__fetchWebContent\"}"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:01:46",
+  "seq": 8,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_02_lxSjZU9oKdyIFCLXO7DF9740",
+    "content": "{\"error\": \"Failed to fetch web content: Request URL resolves to a private or local network target, which is not allowed\", \"tool\": \"mcp__open-websearch__fetchWebContent\"}"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:01:49",
+  "seq": 9,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_00_3cYDWP4xEIRHdmei4Dmj8639",
+        "type": "function",
+        "function": {
+          "name": "fetch",
+          "arguments": "{\"url\": \"https://arxiv.org/abs/2506.09985\", \"max_length\": 8000}"
+        }
+      },
+      {
+        "id": "call_01_T0mNDYYBlz1I9bTiWMvf4965",
+        "type": "function",
+        "function": {
+          "name": "fetch",
+          "arguments": "{\"url\": \"https://ai.meta.com/research/vjepa/\", \"max_length\": 15000}"
+        }
+      },
+      {
+        "id": "call_02_PGq45h9BMmHWC9RymczK1581",
+        "type": "function",
+        "function": {
+          "name": "fetch",
+          "arguments": "{\"url\": \"https://aiwiki.ai/wiki/v_jepa_2\", \"max_length\": 12000}"
+        }
+      }
+    ],
+    "reasoning_content": "The web content fetch is failing. Let me try using fetch tool instead, and also try to get the arxiv abstract and some blog articles."
+  }
+}
+
+{
+  "ts": "2026-06-13T16:01:51",
+  "seq": 10,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_00_3cYDWP4xEIRHdmei4Dmj8639",
+    "content": "URL: https://arxiv.org/abs/2506.09985\n\nComputer Science > Artificial Intelligence\narXiv:2506.09985\n(cs)\n[Submitted on 11 Jun 2025]\nTitle:\nV-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction and Planning\nAuthors:\nMido Assran\nAdrien Bardes\nDavid Fan\nQuentin Garrido\nRussell Howes\nMojtaba\nKomeili\nMatthew Muckley\nAmmar Rizvi\nClaire Roberts\nKoustuv Sinha\nArtem Zholus\nSergio Arnaud\nAbha Gejji\nAda Martin\nFrancois Robert Hogan\nDaniel Dugas\nPiotr Bojanowski\nVasil Khalidov\nPatrick Labatut\nFrancisco Massa\nMarc Szafraniec\nKapil Krishnakumar\nYong Li\nXiaodong Ma\nSarath Chandar\nFranziska Meier\nYann LeCun\nMichael Rabbat\nNicolas Ballas\nView PDF\nHTML (experimental)\nAbstract:\nA major challenge for modern AI is to learn to understand the world and learn to act largely by observation. This paper explores a self-supervised approach that combines internet-scale video data with a small amount of interaction data (robot trajectories), to develop models capable of understanding, predicting, and planning in the physical world. We first pre-train an action-free joint-embedding-predictive architecture, V-JEPA 2, on a video and image dataset comprising over 1 million hours of internet video. V-JEPA 2 achieves strong performance on motion understanding (77.3 top-1 accuracy on Something-Something v2) and state-of-the-art performance on human action anticipation (39.7 recall-at-5 on Epic-Kitchens-100) surpassing previous task-specific models. Additionally, after aligning V-JEPA 2 with a large language model, we demonstrate state-of-the-art performance on multiple video question-answering tasks at the 8 billion parameter scale (e.g., 84.0 on PerceptionTest, 76.9 on TempCompass). Finally, we show how self-supervised learning can be applied to robotic planning tasks by post-training a latent action-conditioned world model, V-JEPA 2-AC, using less than 62 hours of unlabeled robot videos from the Droid dataset. We deploy V-JEPA 2-AC zero-shot on Franka arms in two different labs and enable picking and placing of objects using planning with image goals. Notably, this is achieved without collecting any data from the robots in these environments, and without any task-specific training or reward. This work demonstrates how self-supervised learning from web-scale data and a small amount of robot interaction data can yield a world model capable of planning in the physical world.\nComments:\n48 pages, 19 figures\nSubjects:\nArtificial Intelligence (cs.AI)\n; Computer Vision and Pattern Recognition (cs.CV); Machine Learning (cs.LG); Robotics (cs.RO)\nCite as:\narXiv:2506.09985\n[cs.AI]\n(or\narXiv:2506.09985v1\n[cs.AI]\nfor this version)\nhttps://doi.org/10.48550/arXiv.2506.09985\narXiv-issued DOI via DataCite\nSubmission history\nFrom: Nicolas Ballas [\nview email\n[v1]\nWed, 11 Jun 2025 17:57:09 UTC (17,742 KB)\nFull-text links:\nAccess Paper:\nView PDF\nHTML (experimental)\nTeX Source\nview license\nCurrent browse context:\ncs.AI\n< prev\nnext >\nnew\nrecent\n2025-06\nChange to browse by:\ncs\ncs.CV\ncs.LG\ncs.RO\nReferences & Citations\nNASA ADS\nGoogle Scholar\nSemantic Scholar\nBookmark\nBibliographic Tools\nBibliographic and Citation Tools\nBibliographic Explorer Toggle\nBibliographic Explorer\nWhat is the Explorer?\nConnected Papers Toggle\nConnected Papers\nWhat is Connected Papers?\nLitmaps Toggle\nLitmaps\nWhat is Litmaps?\nscite.ai Toggle\nscite Smart Citations\nWhat are Smart Citations?\nCode, Data, Media\nCode, Data and Media Associated with this Article\nalphaXiv Toggle\nalphaXiv\nWhat is alphaXiv?\nLinks to Code Toggle\nCatalyzeX Code Finder for Papers\nWhat is CatalyzeX?\nDagsHub Toggle\nDagsHub\nWhat is DagsHub?\nGotitPub Toggle\nGotit.pub\nWhat is GotitPub?\nHuggingface Toggle\nHugging Face\nWhat is Huggingface?\nScienceCast Toggle\nScienceCast\nWhat is ScienceCast?\nDemos\nDemos\nReplicate Toggle\nReplicate\nWhat is Replicate?\nSpaces Toggle\nHugging Face Spaces\nWhat is Spaces?\nSpaces Toggle\nTXYZ.AI\nWhat is TXYZ.AI?\nRelated Papers\nRecommenders and Search Tools\nLink to Influence Flower\nInfluence Flower\nWhat are Influence Flowers?\nCore recommender toggle\nCORE Recommender\nWhat is CORE?\nAbout arXivLabs\narXivLabs: experimental projects with community collaborators\narXivLabs is a framework that allows collaborators to develop and share new arXiv features directly on our website.\nBoth individuals and organizations that work with arXivLabs have embraced and accepted our values of openness, community, excellence, and user data privacy. arXiv is committed to these values and only works with partners that adhere to them.\nHave an idea for a project that will add value for arXiv's community?\nLearn more about arXivLabs\nWhich authors of this paper are endorsers?\nDisable MathJax\nWhat is MathJax?"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:01:51",
+  "seq": 11,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_01_T0mNDYYBlz1I9bTiWMvf4965",
+    "content": "HTTP 错误 400: Bad Request\nURL: https://ai.meta.com/research/vjepa/"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:01:52",
+  "seq": 12,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_02_PGq45h9BMmHWC9RymczK1581",
+    "content": "URL: https://aiwiki.ai/wiki/v_jepa_2\n\nImprove this article\nAdd missing citations, update stale details, or suggest a clearer explanation.\nSuggest edit"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:01:55",
+  "seq": 13,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_00_j0sclvJxhrZidZLPdVjM5952",
+        "type": "function",
+        "function": {
+          "name": "fetch",
+          "arguments": "{\"url\": \"https://aiwiki.ai/wiki/v_jepa_2\", \"max_length\": 20000}"
+        }
+      },
+      {
+        "id": "call_01_SzXiBtm30s6b0Y4edMWL0482",
+        "type": "function",
+        "function": {
+          "name": "fetch",
+          "arguments": "{\"url\": \"https://github.com/facebookresearch/vjepa2\", \"max_length\": 10000}"
+        }
+      },
+      {
+        "id": "call_02_9bIIqz9GSnMaRHfpesMr2150",
+        "type": "function",
+        "function": {
+          "name": "fetch",
+          "arguments": "{\"url\": \"https://grokipedia.com/page/V-JEPA_2\", \"max_length\": 15000}"
+        }
+      }
+    ],
+    "reasoning_content": "Let me get the full paper PDF and more explanatory articles."
+  }
+}
+
+{
+  "ts": "2026-06-13T16:01:56",
+  "seq": 14,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_00_j0sclvJxhrZidZLPdVjM5952",
+    "content": "URL: https://aiwiki.ai/wiki/v_jepa_2\n\nImprove this article\nAdd missing citations, update stale details, or suggest a clearer explanation.\nSuggest edit"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:02:02",
+  "seq": 15,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_01_SzXiBtm30s6b0Y4edMWL0482",
+    "content": "URL: https://github.com/facebookresearch/vjepa2\n\nfacebookresearch\nvjepa2\nPublic\nNotifications\nYou must be signed in to change notification settings\nFork\n509\nStar\n4.1k"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:02:04",
+  "seq": 16,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_02_9bIIqz9GSnMaRHfpesMr2150",
+    "content": "URL: https://grokipedia.com/page/V-JEPA_2\n\nFact-checked by Grok 4 months ago\nV-JEPA 2\nV-JEPA 2, or Video Joint Embedding Predictive Architecture 2, is a 1.2 billion-parameter self-supervised world model developed by Meta AI for processing and predicting video data, introduced on June 11, 2025, as an advancement in non-generative AI architectures that enable state-of-the-art visual understanding and physical reasoning without relying on explicit pixel generation.\n[1]\n[2]\nBuilding on the original Joint Embedding Predictive Architecture (JEPA) framework pioneered by Meta's Chief AI Scientist Yann LeCun and his team, V-JEPA 2 trains on internet-scale video datasets combined with limited interaction data, such as robot trajectories, to learn abstract representations of motion, object interactions, and world dynamics.\n[3]\n[2]\nThis model excels in applications like zero-shot robot control for tasks including grasping and placing objects, as well as forecasting future video frames to support planning in physical environments, marking a significant step toward scalable, grounded machine intelligence.\n[1]\n[4]\nKey innovations include its joint embedding predictive architecture (JEPA), featuring an encoder and predictor trained in two phases to learn representations of physical world dynamics, outperforming prior self-supervised video models on benchmarks for motion understanding and robotics simulation.\n[2]\n[5]\nDevelopment and Release\nAnnouncement and Release Date\nV-JEPA 2 was officially announced by Meta AI on June 11, 2025, marking a significant advancement in self-supervised video modeling. The announcement was detailed in a blog post on the Meta AI website, where the model was introduced as a 1.2 billion-parameter world model trained on internet-scale video data to enable visual understanding, prediction, and planning.\n[1]\nSimultaneously, the accompanying research paper, titled \"V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction, and Planning,\" was published as a preprint on arXiv under the identifier 2506.09985, providing the foundational technical overview.\n[2]\nAs part of the release, Meta made the model openly accessible to the research community, including the release of model weights and PyTorch codebase via GitHub and Hugging Face repositories. This open-source approach facilitated immediate experimentation and benchmarking.\n[4]\n[6]\n[5]\nThe announcement garnered widespread media attention, with coverage from outlets like PYMNTS and InfoQ. According to Meta, V-JEPA 2 is the first video-trained world model achieving state-of-the-art (SOTA) performance in visual prediction and zero-shot robot control. These reports emphasized its potential to advance machine intelligence by building on the original Joint Embedding Predictive Architecture (JEPA) framework developed by Yann LeCun's team.\n[7]\n[5]\n[1]\nKey Contributors and Affiliations\nV-JEPA 2 was primarily developed by the Fundamental AI Research (FAIR) team at Meta Platforms, Inc., under the leadership of Yann LeCun, Meta's\n\n... (内容较长，共 18238 字符，已保存到 temp\\fetch_results\\fetch_results\\1715b159.txt)\n如需查看完整内容，请使用 read 工具读取上述文件路径，支持 offset/limit 分段读取。"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:02:07",
+  "seq": 17,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_00_Fom3MocgUKSNN05J1Zm00557",
+        "type": "function",
+        "function": {
+          "name": "read",
+          "arguments": "{\"file_path\": \"temp\\\\fetch_results\\\\fetch_results\\\\1715b159.txt\"}"
+        }
+      }
+    ],
+    "reasoning_content": "Let me get the full content from the saved file to read more about V-JEPA 2."
+  }
+}
+
+{
+  "ts": "2026-06-13T16:02:07",
+  "seq": 18,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_00_Fom3MocgUKSNN05J1Zm00557",
+    "content": "# 文件: temp\\fetch_results\\fetch_results\\1715b159.txt\n# 显示: 第 1-159 行 / 共 159 行\n  1→URL: https://grokipedia.com/page/V-JEPA_2\n  2→\n  3→Fact-checked by Grok 4 months ago\n  4→V-JEPA 2\n  5→V-JEPA 2, or Video Joint Embedding Predictive Architecture 2, is a 1.2 billion-parameter self-supervised world model developed by Meta AI for processing and predicting video data, introduced on June 11, 2025, as an advancement in non-generative AI architectures that enable state-of-the-art visual understanding and physical reasoning without relying on explicit pixel generation.\n  6→[1]\n  7→[2]\n  8→Building on the original Joint Embedding Predictive Architecture (JEPA) framework pioneered by Meta's Chief AI Scientist Yann LeCun and his team, V-JEPA 2 trains on internet-scale video datasets combined with limited interaction data, such as robot trajectories, to learn abstract representations of motion, object interactions, and world dynamics.\n  9→[3]\n 10→[2]\n 11→This model excels in applications like zero-shot robot control for tasks including grasping and placing objects, as well as forecasting future video frames to support planning in physical environments, marking a significant step toward scalable, grounded machine intelligence.\n 12→[1]\n 13→[4]\n 14→Key innovations include its joint embedding predictive architecture (JEPA), featuring an encoder and predictor trained in two phases to learn representations of physical world dynamics, outperforming prior self-supervised video models on benchmarks for motion understanding and robotics simulation.\n 15→[2]\n 16→[5]\n 17→Development and Release\n 18→Announcement and Release Date\n 19→V-JEPA 2 was officially announced by Meta AI on June 11, 2025, marking a significant advancement in self-supervised video modeling. The announcement was detailed in a blog post on the Meta AI website, where the model was introduced as a 1.2 billion-parameter world model trained on internet-scale video data to enable visual understanding, prediction, and planning.\n 20→[1]\n 21→Simultaneously, the accompanying research paper, titled \"V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction, and Planning,\" was published as a preprint on arXiv under the identifier 2506.09985, providing the foundational technical overview.\n 22→[2]\n 23→As part of the release, Meta made the model openly accessible to the research community, including the release of model weights and PyTorch codebase via GitHub and Hugging Face repositories. This open-source approach facilitated immediate experimentation and benchmarking.\n 24→[4]\n 25→[6]\n 26→[5]\n 27→The announcement garnered widespread media attention, with coverage from outlets like PYMNTS and InfoQ. According to Meta, V-JEPA 2 is the first video-trained world model achieving state-of-the-art (SOTA) performance in visual prediction and zero-shot robot control. These reports emphasized its potential to advance machine intelligence by building on the original Joint Embedding Predictive Architecture (JEPA) framework developed by Yann LeCun's team.\n 28→[7]\n 29→[5]\n 30→[1]\n 31→Key Contributors and Affiliations\n 32→V-JEPA 2 was primarily developed by the Fundamental AI Research (FAIR) team at Meta Platforms, Inc., under the leadership of Yann LeCun, Meta's Chief AI Scientist.\n 33→[3]\n 34→[2]\n 35→The project involved a collaborative effort from numerous researchers affiliated with Meta AI, including key contributors such as Mahmoud Assran, Adrien Bardes, David Fan, Quentin Garrido, Ross Howes, Matthew Muckley, Ammar Rizvi, and others.\n 36→[2]\n 37→[4]\n 38→Additional contributors included experts from academic partners, such as Jitendra Malik from the University of California, Berkeley, highlighting interdisciplinary collaborations in robotics, computer vision, and machine learning.\n 39→[2]\n 40→The development also featured Nicolas Ballas as a key organizer, with the work building on prior JEPA frameworks advanced by LeCun's team at Meta FAIR.\n 41→[2]\n 42→Architecture and Training\n 43→Model Components\n 44→V-JEPA 2 is a world model featuring a total of 1.2 billion parameters, enabling scalable processing of video data through advanced neural architectures.\n 45→[1]\n 46→At its core, the model employs transformer-based encoders to process raw video input and generate joint embeddings that capture semantic information about the observed world, facilitating effective representation of spatio-temporal dynamics.\n 47→[1]\n 48→Building on the Joint Embedding Predictive Architecture (JEPA) framework, V-JEPA 2 incorporates a predictor network that receives these video embeddings along with contextual inputs to forecast future embeddings, adapted specifically for video through integrated spatio-temporal processing to handle motion and temporal sequences.\n 49→[1]\n 50→[8]\n 51→Complementing this, a representation network works in tandem to refine and support the embedding spaces, ensuring robust joint representations without relying on generative reconstruction at the pixel level.\n 52→[1]\n 53→The self-supervised components of V-JEPA 2 emphasize non-generative prediction, allowing the model to learn predictive mappings in latent spaces derived from video data, which promotes efficient understanding of world evolution through embedding-based forecasting rather than explicit image synthesis.\n 54→[1]\n 55→[8]\n 56→Training Methodology\n 57→V-JEPA 2 is trained using a two-stage self-supervised learning approach that leverages the joint embedding predictive architecture (JEPA) to predict latent representations of future video frames rather than raw pixels, which helps avoid the pitfalls of generative modeling such as blurriness and computational inefficiency.\n 58→[3]\n 59→[2]\n 60→In the first stage, the model's encoder and predictor are pre-trained on internet-scale unlabeled video data to develop general world modeling capabilities, enabling the system to learn robust representations of visual dynamics without requiring explicit labels.\n 61→[3]\n 62→[2]\n 63→This phase utilizes vast datasets comprising over a million hours of diverse video footage, equivalent to billions of frames, sourced from public internet videos to capture a broad spectrum of real-world scenarios.\n 64→[4]\n 65→[2]\n 66→The second stage involves fine-tuning the pre-trained model with a small amount of interaction data, such as robot trajectories, to adapt it for specific applications like zero-shot control in robotics tasks.\n 67→[2]\n 68→This fine-tuning enhances the model's ability to predict action-conditioned future states, building on the foundational representations from the initial pre-training while minimizing the need for extensive labeled data.\n 69→[1]\n 70→Optimization techniques, including scalable distributed training on large GPU clusters, ensure efficient handling of the model's 1.2 billion parameters and the massive data scale, allowing for rapid convergence and high-fidelity predictions.\n 71→[4]\n 72→[3]\n 73→Overall, this methodology emphasizes scalability and efficiency, drawing from self-supervised paradigms to advance world models that support downstream tasks in visual understanding and physical reasoning.\n 74→[2]\n 75→Capabilities and Applications\n 76→Visual Prediction and Understanding\n 77→V-JEPA 2 achieves state-of-the-art performance in visual understanding tasks, such as action recognition and scene prediction, by leveraging self-supervised learning on large-scale video data.\n 78→[1]\n 79→This model excels in interpreting complex video sequences, enabling it to identify actions and anticipate scene evolutions without relying on labeled datasets.\n 80→[2]\n 81→For instance, it demonstrates superior accuracy in recognizing human activities and predicting environmental changes in dynamic videos, surpassing previous benchmarks in these areas.\n 82→[3]\n 83→At its core, V-JEPA 2 employs a mechanism for predicting future latent states in videos, which allows it to model world dynamics through non-generative forecasting without explicit supervision.\n 84→[1]\n 85→This approach involves encoding video frames into a joint embedding space and using predictive architectures to forecast subsequent states, capturing temporal dependencies and physical consistencies inherent in the data.\n 86→[2]\n 87→By focusing on latent representations rather than pixel-level reconstruction, the model efficiently learns robust representations of visual dynamics, building on the foundational Joint Embedding Predictive Architecture (JEPA) framework.\n 88→[3]\n 89→A key strength of V-JEPA 2 lies in its zero-shot generalization to unseen video environments for basic prediction tasks, where it can forecast outcomes in novel settings without additional training.\n 90→[1]\n 91→For example, the model successfully predicts object trajectories and scene transitions in unfamiliar real-world videos, such as those involving everyday interactions or natural movements, by transferring learned world models to new domains.\n 92→[2]\n 93→This capability highlights its potential for broad visual understanding, as it adapts predictions across diverse video sources while maintaining high fidelity to underlying dynamics.\n 94→[3]\n 95→Robotics Control\n 96→V-JEPA 2 enables zero-shot robot control by leveraging its video prediction capabilities to guide actions in novel environments without requiring task-specific training data. The model, when integrated with robotic hardware such as Franka Emika Panda arms, uses predicted future video frames to plan and execute manipulation tasks, allowing robots to interact with unfamiliar objects autonomously. This approach relies on the model's self-supervised learning from large-scale video datasets to infer physical dynamics and generate action sequences that align with desired image goals.\n 97→[1]\n 98→In practical deployments, V-JEPA 2 has been tested on real-world robotic setups across different laboratories, demonstrating its ability to perform tasks like grasping and pick-and-place operations. For instance, post-training on a modest amount of robot interaction video—less than 62 hours—enables the model to achieve high success rates in zero-shot scenarios, such as picking up and placing objects using visual predictions without explicit reward signals or labels. This integration highlights V-JEPA 2's potential for scalable robotics applications, where the model's world modeling supports direct control execution in unseen settings.\n 99→[9]\n100→[3]\n101→Benchmarks from Meta's evaluations show that V-JEPA 2-AC, a variant fine-tuned for action-conditioned predictions, attains success rates of 65–80% on manipulation tasks including grasping, reaching with objects, and placing in diverse lab environments. These results underscore the model's efficacy in translating video-based predictions into precise robot commands, facilitating zero-shot planning that adapts to variations in object shapes, positions, and lighting conditions. By focusing on predictive planning, V-JEPA 2 bridges the gap between simulated world understanding and physical robot control, paving the way for more generalizable AI-driven robotics.\n102→[1]\n103→[10]\n104→Physical Reasoning and Planning\n105→V-JEPA 2 shows promising physical reasoning capabilities by predicting the evolution of the physical world from video data, enabling models to infer object dynamics and causal interactions without explicit supervision.\n106→[1]\n107→This capability stems from its self-supervised training on large-scale video datasets, where the model learns to represent and anticipate how objects move, collide, and interact in three-dimensional space. For instance, it can forecast trajectories of falling objects or the outcomes of physical manipulations, capturing underlying physical interactions through latent representations rather than pixel-level reconstruction.\n108→[1]\n109→In supporting planning tasks, V-JEPA 2 simulates future states of dynamic environments to facilitate decision-making in AI agents, allowing for the evaluation of hypothetical actions in simulated scenarios. By generating plausible future video frames or embeddings, the model aids in path planning or sequence optimization, where agents can explore multiple potential outcomes to select optimal strategies. This simulation-based approach enhances efficiency in complex environments by reducing the need for real-world trial-and-error.\n110→[1]\n111→The architecture of V-JEPA 2 advances machine intelligence through scalable world models that infer physical laws directly from observational data, promoting generalization across diverse scenarios without hardcoded rules. These models scale with data and compute, which are foundational for more robust AI systems. Researchers at Meta have highlighted how this inference mechanism allows V-JEPA 2 to handle unseen physical phenomena, such as novel object interactions, by leveraging joint embedding predictions.\n112→[1]\n113→Evaluation and Impact\n114→Benchmarks and Performance Metrics\n115→V-JEPA 2 was evaluated using several established benchmarks for video understanding and prediction, demonstrating state-of-the-art performance in key areas. On the Something-Something v2 dataset, which assesses motion understanding through video classification tasks, V-JEPA 2 achieved a top-1 accuracy of 77.3%. Similarly, on the Epic-Kitchens-100 dataset for human action anticipation, it attained a recall-at-5 score of 39.7, outperforming prior task-specific models.\n116→[2]\n117→For video question-answering tasks, an aligned version of V-JEPA 2, scaled to 8 billion parameters and integrated with a large language model, scored 84.0 on the PerceptionTest benchmark and 76.9 on the TempCompass benchmark. These results highlight its capabilities in zero-shot visual understanding, where the model interprets and reasons about video content without task-specific fine-tuning. Evaluation was conducted on custom video corpora, including over 22 million videos for training, emphasizing real-world manipulation and physical interactions.\n118→[2]\n119→[11]\n120→Meta introduced three new benchmarks specifically designed to evaluate physical reasoning in video-trained world models, addressing gaps in assessing nuanced interactions like object dynamics and causal inference from video data. These benchmarks, made openly available, measure performance on tasks such as predicting physical world evolution and reasoning about interventions, with human baselines achieving 85%–95% accuracy, revealing a significant gap for current AI models.\n121→[1]\n122→[12]\n123→In robotics applications, the action-conditioned variant V-JEPA 2-AC, trained on less than 62 hours of unlabeled videos from the Droid dataset, enabled zero-shot control for tasks like picking and placing objects on Franka robotic arms in unseen environments, achieving success rates of 65%–80%. This performance was tested on custom datasets of robot manipulation videos, focusing on generalization without environment-specific data collection.\n124→[2]\n125→Comparisons to Prior Models\n126→V-JEPA 2 represents a significant advancement over the original Joint Embedding Predictive Architecture (JEPA) and its video-specific predecessor, V-JEPA, primarily through its expanded scale and enhanced predictive capabilities. While the original JEPA, introduced by Yann LeCun and colleagues in 2022, focused on non-generative predictive learning for images and audio using smaller models, V-JEPA 2 scales to 1.2 billion parameters, enabling more robust video understanding without pixel-level reconstruction.\n127→[1]\n128→This contrasts with V-JEPA, which used models up to 1 billion parameters.\n129→[13]\n130→In terms of zero-shot capabilities, V-JEPA 2 demonstrates effective transfer to robotics tasks without fine-tuning, such as achieving success rates of 65%–80% in pick-and-place tasks with new objects in unseen environments.\n131→[1]\n132→The original JEPA lacked video-specific extensions, limiting it to static predictions, whereas V-JEPA 2 supports prediction and planning in dynamic video environments. These gains stem from refined predictor-target alignments that reduce overfitting, allowing better generalization across diverse video domains.\n133→Compared to generative video models like Sora or VideoPoet, V-JEPA 2 emphasizes efficiency by predicting abstract representations rather than raw pixels. Unlike earlier self-supervised approaches such as Time-Contrastive Networks (TCN), which relied on contrastive losses and struggled with long-term dependencies, V-JEPA 2's predictive architecture highlights its edge in scalable world modeling without explicit supervision. This non-generative focus also mitigates issues like mode collapse seen in diffusion-based models, enabling more reliable planning in dynamic environments.\n134→Broader Implications for AI\n135→V-JEPA 2 represents a significant advancement in self-supervised learning paradigms, particularly by demonstrating how large-scale video data can train scalable AI agents capable of generalizing across diverse physical environments without extensive labeled datasets. By leveraging the Joint Embedding Predictive Architecture (JEPA) framework, it enables models to learn predictive representations from raw video inputs, fostering the development of autonomous systems that can adapt to real-world scenarios with minimal supervision.\n136→[1]\n137→[2]\n138→The model's emphasis on world models that simulate physical understanding brings AI closer to human-like intelligence, allowing for intuitive prediction of object interactions and environmental dynamics, which could underpin more robust reasoning in complex tasks such as robotic planning. This approach not only enhances predictive capabilities but also paves the way for AI systems that internalize causal structures of the physical world, potentially accelerating progress toward general artificial intelligence.\n139→[14]\n140→[15]\n141→Meta's open-source release of V-JEPA 2 encourages widespread community experimentation and innovation in AI robotics, promoting collaborative advancements.\n142→[3]\n143→[16]\n144→References\n145→Introducing the V-JEPA 2 world model and new benchmarks for ...\n146→[2506.09985] V-JEPA 2: Self-Supervised Video Models ... - arXiv\n147→Introducing V-JEPA 2 - AI at Meta\n148→PyTorch code and models for VJEPA2 self-supervised ... - GitHub\n149→Meta Introduces V-JEPA 2, a Video-Based World Model for Physical ...\n150→V-JEPA 2 - Hugging Face\n151→Meta Debuts AI to Help Robots 'Understand the Physical World'\n152→V-JEPA 2: Self-Supervised Video Models Enable Understanding ...\n153→V-JEPA 2: Self-Supervised Video Models Enable Understanding ...\n154→V-JEPA-2-AC: Video World Modeling for Robotics\n155→Meta Unveils V-JEPA 2: Calls it 'a Breakthrough in Self-Supervised ...\n156→Meta V-JEPA 2: 30x Faster AI World Model Beats Nvidia Cosmos\n157→Meta's V-JEPA 2 Redefines AI's Understanding of the Physical World\n158→Meta's V-JEPA 2 World Model Brings AI Closer to Thinking Before ...\n159→Meta V-JEPA 2 world model uses raw video to train robots"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:02:09",
+  "seq": 19,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_00_fqa2azjZttHCCPWuSIB09197",
+        "type": "function",
+        "function": {
+          "name": "fetch",
+          "arguments": "{\"url\": \"https://arxiv.org/html/2506.09985\", \"max_length\": 25000}"
+        }
+      }
+    ],
+    "reasoning_content": "Now I have a comprehensive understanding of V-JEPA 2. Let me also try to get the blog post from Meta's site and the actual paper PDF to provide more detail. Let me also get the arXiv HTML version."
+  }
+}
+
+{
+  "ts": "2026-06-13T16:02:11",
+  "seq": 20,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_00_fqa2azjZttHCCPWuSIB09197",
+    "content": "URL: https://arxiv.org/html/2506.09985\n\n1]FAIR at Meta\n2]Mila – Quebec AI Institute and Polytechnique Montréal\n\\contribution\n[*]Core Team\nV-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction and Planning\nMahmoud Assran\nAdrien Bardes\nDavid Fan\nQuentin Garrido\nRussell Howes\nMojtaba Komeili\nMatthew Muckley\nAmmar Rizvi\nClaire Roberts\nKoustuv Sinha\nArtem Zholus\nSergio Arnaud\nAbha Gejji\nAda Martin\nFrancois Robert Hogan\nDaniel Dugas\nPiotr Bojanowski\nVasil Khalidov\nPatrick Labatut\nFrancisco Massa\nMarc Szafraniec\nKapil Krishnakumar\nYong Li\nXiaodong Ma\nSarath Chandar\nFranziska Meier\nYann LeCun\nMichael Rabbat\nNicolas Ballas\nballasn@meta.com\nmikerabbat@meta.com\nApril 26, 2026\nAbstract\nA major challenge for modern AI is to learn to understand the world and learn to act largely by observation\n(LeCun,\n2022\nThis paper explores a self-supervised approach that combines internet-scale video data with a small amount of interaction data (robot trajectories), to develop models capable of understanding, predicting, and planning in the physical world. We first pre-train an action-free joint-embedding-predictive architecture, V-JEPA 2, on a video and image dataset comprising over 1 million hours of internet video. V-JEPA 2 achieves strong performance on motion understanding (77.3 top-1 accuracy on Something-Something v2) and state-of-the-art performance on human action anticipation (39.7 recall-at-5 on Epic-Kitchens-100) surpassing previous task-specific models. Additionally, after aligning V-JEPA 2 with a large language model, we demonstrate state-of-the-art performance on multiple video question-answering tasks at the 8 billion parameter scale (e.g., 84.0 on PerceptionTest, 76.9 on TempCompass). Finally, we show how self-supervised learning can be applied to robotic planning tasks by post-training a latent action-conditioned world model, V-JEPA 2-AC, using less than 62 hours of unlabeled robot videos from the Droid dataset. We deploy V-JEPA 2-AC zero-shot on Franka arms in two different labs and enable picking and placing of objects using planning with image goals. Notably, this is achieved without collecting any data from the robots in these environments, and without any task-specific training or reward. This work demonstrates how self-supervised learning from web-scale data and a small amount of robot interaction data can yield a world model capable of planning in the physical world.\n\\correspondence\nNicolas Ballas <> and Michael Rabbat <>\n\\metadata\n[Code]\nhttps://github.com/facebookresearch/vjepa2\n\\metadata\n[Blogpost]\nhttps://ai.meta.com/blog/v-jepa-2-world-model-benchmarks\n1\nIntroduction\nHumans have the ability to adapt and generalize when taking on new tasks and operating in unfamiliar environments.\nSeveral cognitive learning theories suggest that humans learn an internal model of the world by integrating low-level sensory inputs to represent and predict future states\n(Craik,\n1967\n; Rao and Ballard,\n1999\n, and they further posit that this world model shapes our perception at any given \n\n... (内容较长，共 142956 字符，已保存到 temp\\fetch_results\\fetch_results\\eb8b3e8b.txt)\n如需查看完整内容，请使用 read 工具读取上述文件路径，支持 offset/limit 分段读取。"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:02:14",
+  "seq": 21,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_00_Co4CvzEccA9OCMwyuMzE9566",
+        "type": "function",
+        "function": {
+          "name": "read",
+          "arguments": "{\"file_path\": \"temp\\\\fetch_results\\\\fetch_results\\\\eb8b3e8b.txt\", \"offset\": 0, \"limit\": 300}"
+        }
+      }
+    ],
+    "reasoning_content": "I have a lot of content now. Let me also read key sections from the arXiv HTML paper to get more details for the write-up."
+  }
+}
+
+{
+  "ts": "2026-06-13T16:02:14",
+  "seq": 22,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_00_Co4CvzEccA9OCMwyuMzE9566",
+    "content": "# 文件: temp\\fetch_results\\fetch_results\\eb8b3e8b.txt\n# 显示: 第 1-300 行 / 共 3869 行\n  1→URL: https://arxiv.org/html/2506.09985\n  2→\n  3→1]FAIR at Meta\n  4→2]Mila – Quebec AI Institute and Polytechnique Montréal\n  5→\\contribution\n  6→[*]Core Team\n  7→V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction and Planning\n  8→Mahmoud Assran\n  9→Adrien Bardes\n 10→David Fan\n 11→Quentin Garrido\n 12→Russell Howes\n 13→Mojtaba Komeili\n 14→Matthew Muckley\n 15→Ammar Rizvi\n 16→Claire Roberts\n 17→Koustuv Sinha\n 18→Artem Zholus\n 19→Sergio Arnaud\n 20→Abha Gejji\n 21→Ada Martin\n 22→Francois Robert Hogan\n 23→Daniel Dugas\n 24→Piotr Bojanowski\n 25→Vasil Khalidov\n 26→Patrick Labatut\n 27→Francisco Massa\n 28→Marc Szafraniec\n 29→Kapil Krishnakumar\n 30→Yong Li\n 31→Xiaodong Ma\n 32→Sarath Chandar\n 33→Franziska Meier\n 34→Yann LeCun\n 35→Michael Rabbat\n 36→Nicolas Ballas\n 37→ballasn@meta.com\n 38→mikerabbat@meta.com\n 39→April 26, 2026\n 40→Abstract\n 41→A major challenge for modern AI is to learn to understand the world and learn to act largely by observation\n 42→(LeCun,\n 43→2022\n 44→This paper explores a self-supervised approach that combines internet-scale video data with a small amount of interaction data (robot trajectories), to develop models capable of understanding, predicting, and planning in the physical world. We first pre-train an action-free joint-embedding-predictive architecture, V-JEPA 2, on a video and image dataset comprising over 1 million hours of internet video. V-JEPA 2 achieves strong performance on motion understanding (77.3 top-1 accuracy on Something-Something v2) and state-of-the-art performance on human action anticipation (39.7 recall-at-5 on Epic-Kitchens-100) surpassing previous task-specific models. Additionally, after aligning V-JEPA 2 with a large language model, we demonstrate state-of-the-art performance on multiple video question-answering tasks at the 8 billion parameter scale (e.g., 84.0 on PerceptionTest, 76.9 on TempCompass). Finally, we show how self-supervised learning can be applied to robotic planning tasks by post-training a latent action-conditioned world model, V-JEPA 2-AC, using less than 62 hours of unlabeled robot videos from the Droid dataset. We deploy V-JEPA 2-AC zero-shot on Franka arms in two different labs and enable picking and placing of objects using planning with image goals. Notably, this is achieved without collecting any data from the robots in these environments, and without any task-specific training or reward. This work demonstrates how self-supervised learning from web-scale data and a small amount of robot interaction data can yield a world model capable of planning in the physical world.\n 45→\\correspondence\n 46→Nicolas Ballas <> and Michael Rabbat <>\n 47→\\metadata\n 48→[Code]\n 49→https://github.com/facebookresearch/vjepa2\n 50→\\metadata\n 51→[Blogpost]\n 52→https://ai.meta.com/blog/v-jepa-2-world-model-benchmarks\n 53→1\n 54→Introduction\n 55→Humans have the ability to adapt and generalize when taking on new tasks and operating in unfamiliar environments.\n 56→Several cognitive learning theories suggest that humans learn an internal model of the world by integrating low-level sensory inputs to represent and predict future states\n 57→(Craik,\n 58→1967\n 59→; Rao and Ballard,\n 60→1999\n 61→, and they further posit that this world model shapes our perception at any given moment, playing a crucial role in informing our understanding of reality\n 62→(Friston,\n 63→2010\n 64→; Clark,\n 65→2013\n 66→; Nortmann et al.,\n 67→2015\n 68→Moreover, our ability to predict the effects of our actions on future states of the world is also essential for goal-oriented planning\n 69→(Sutton and Barto,\n 70→1981\n 71→1998\n 72→; Ha and Schmidhuber,\n 73→2018\n 74→; Wolpert and Ghahramani,\n 75→2000\n 76→Building artificial agents that learn a world model from sensory data, such as video, could enable them to\n 77→understand\n 78→the physical world,\n 79→predict\n 80→future states, and effectively — like humans —\n 81→plan\n 82→in new situations, resulting in systems capable of tackling tasks that have not been encountered before.\n 83→Figure 1\n 84→V-JEPA 2 Overview.\n 85→Leveraging 1M hours of internet-scale video and 1M images, we pretrain the V-JEPA 2 video model using a visual mask denoising objective\n 86→(Bardes et al.,\n 87→2024\n 88→; Assran et al.,\n 89→2023\n 90→, and leverage this model for downstream tasks such as action classification, object recognition, action anticipation, and Video Question Answering by aligning the model with an LLM backbone.\n 91→After pretraining, we can also freeze the video encoder and train a new action-conditioned predictor with a small amount of robot interaction data on top of the learned representations, and leverage this action-conditioned model, V-JEPA 2-AC, for downstream robot manipulation tasks using planning within a model predictive control loop.\n 92→Previous works have explored the development of predictive world models from interaction data consisting of state-action sequences, often also relying on explicit reward feedback from the environment to infer goals\n 93→(Sutton and Barto,\n 94→1981\n 95→; Fragkiadaki et al.,\n 96→2015\n 97→; Ha and Schmidhuber,\n 98→2018\n 99→; Hafner et al.,\n100→2019b\n101→; Hansen et al.,\n102→2022\n103→. However, the limited availability of real-world interaction data constrains the scalability of these methods.\n104→To address this limitation, more recent works have leveraged both internet-scale video and interaction data towards training action-conditioned video generation models for robot control, but only demonstrate limited results in robot execution using model-based control\n105→(Hu et al.,\n106→2023\n107→; Yang et al.,\n108→2024b\n109→; Bruce et al.,\n110→2024\n111→; Agarwal et al.,\n112→2025\n113→In particular, this line of research often emphasizes the evaluation of the faithfulness of the predictions and visual quality instead of planning capabilities, perhaps due to the computational cost of planning by generating video.\n114→In this work, we build upon the self-supervised hypothesis as a means to learn world models that capture background knowledge of the world largely from observation. Specifically, we leverage the joint-embedding predictive architecture (JEPA)\n115→(LeCun,\n116→2022\n117→, which learns by making predictions in a learned representation space.\n118→In contrast to approaches that focus on learning entirely from interaction data, self-supervised learning enables us to make use of internet-scale video — depicting sequences of states without direct observations of the actions —\n119→to learn to both represent video observations and learn a predictive model for world dynamics in this learned representation space.\n120→Furthermore, in contrast to approaches based on video generation, the JEPA approach focuses on learning representations for predictable aspects of a scene (e.g., the trajectory of an object in motion) while ignoring unpredictable details that generative objectives emphasize, since they make pixel-level predictions (e.g., the precise location of each blade of grass in a field, or each leaf on a tree).\n121→By scaling JEPA pretraining, we demonstrate that it yields video representations with state-of-the-art understanding and prediction capabilities, and that such representations can be leveraged as a basis for action-conditioned predictive models and enable zero-shot planning.\n122→Our approach, V-JEPA 2, utilizes a stage-wise training procedure, beginning with action-free pre-training on internet-scale video, followed by post-training with a small amount of interaction data (see\n123→Figure\n124→1\n125→In the first stage, we use a mask-denoising feature prediction objective\n126→(Assran et al.,\n127→2023\n128→; Bardes et al.,\n129→2024\n130→, where the model predicts masked segments of a video in a learned representation space.\n131→We train the V-JEPA 2 encoder with up to 1 billion parameters and with more than 1 million hours of video.\n132→Our experiments confirm that scaling self-supervised video pretraining enhances the encoder’s ability to achieve visual understanding, including broad motion and appearance recognition capabilities, through probe-based evaluations and by aligning the encoder with a language model for video question-answering\n133→(Krojer et al.,\n134→2024\n135→; Pătrăucean et al.,\n136→2023\n137→; Liu et al.,\n138→2024c\n139→; Cai et al.,\n140→2024\n141→; Shangguan et al.,\n142→2024\n143→Following pretraining on internet-scale video, we train an action-conditioned world model, V-JEPA 2-AC, on a small set of interaction data using the representations learned in the first stage.\n144→Our action-conditioned world model is a 300M-parameter transformer network employing a block-causal attention mechanism, which autoregressively predicts the representation of the next video frame conditioned on an action and previous states.\n145→With as little as 62 hours of unlabeled interaction data from the Droid dataset\n146→(Khazatsky et al.,\n147→2024\n148→, we demonstrate the feasibility of training a latent world model that, given sub-goals, can be leveraged to plan actions on a Franka robot arm and perform prehensile manipulation tasks from a monocular RGB camera zero-shot in a new environment.\n149→To summarize, we show that joint-embedding predictive architectures learning from videos can be used to build a world model that enables\n150→understanding\n151→the physical world,\n152→predicting\n153→future states, and effectively\n154→planning\n155→in new situations; this is achieved by leveraging internet-scale video and a small amount of interaction data.\n156→Specifically:\n157→Understanding — Probe-based Classification:\n158→Scaling self-supervised video pretraining results in video representations applicable to many tasks. V-JEPA 2 excels at encoding fine-grained motion information, achieving strong performance on tasks requiring motion understanding, such as Something-Something v2, with\n159→77.3\n160→77.3\n161→top-1 accuracy using an attentive probe.\n162→Understanding — Video Question-Answering:\n163→V-JEPA 2 encoder can be used to train a multi-modal large language model, to tackle video-question answering tasks. We observe state-of-the-art performance on 8B language model class on multiple benchmarks that require physical world understanding and temporal reasoning, such as MVP (\n164→44.5\n165→44.5\n166→paired accuracy), PerceptionTest (\n167→84.0\n168→84.0\n169→test set accuracy), TempCompass (\n170→76.9\n171→76.9\n172→multi-choice accuracy), TemporalBench (\n173→36.7\n174→36.7\n175→multi-binary short-QA accuracy) and TOMATO (\n176→40.3\n177→40.3\n178→accuracy). In particular, we show that a video encoder pre-trained\n179→without\n180→language supervision can be aligned with a language model and achieve state-of-the-art performance, contrary to conventional wisdom\n181→(Yuan et al.,\n182→2025\n183→; Wang et al.,\n184→2024b\n185→Prediction:\n186→Large-scale self-supervised video pretraining enhances prediction capabilities. V-JEPA 2 achieves state-of-the-art performance on the Epic-Kitchens-100 human-action anticipation task using an attentive probe, with\n187→39.7\n188→39.7\n189→recall-at-5, which is a\n190→44\n191→44\n192→% relative improvement over the previous best model.\n193→Planning:\n194→We demonstrate that V-JEPA 2-AC, obtained by post-training V-JEPA 2 with only\n195→62\n196→62\n197→hours of unlabeled robot manipulation data from the popular Droid dataset, can be deployed in new environments to solve prehensile manipulation tasks using planning with given subgoals.\n198→Without training on any additional data from robots in our labs, and without any task-specific training or reward, the model successfully handles prehensile manipulation tasks, such as Grasp and Pick-and-Place with novel objects and in new environments.\n\n[工具输出已截断：原始 304 行，原始 16092 字符；保留 200 行，11772 字符；截断位置：第 11772 字符附近。请不要假设后续内容已读取。]"
+  },
+  "truncated": true,
+  "original_line_count": 304,
+  "original_char_count": 16092
+}
+
+{
+  "ts": "2026-06-13T16:02:47",
+  "seq": 23,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "assistant",
+    "content": "现在我已经吃透了这篇论文，来给你写一份超直观的「白话」解读文档。",
+    "tool_calls": [
+      {
+        "id": "call_00_PpXD1a7ox5gmlRAabb1s8692",
+        "type": "function",
+        "function": {
+          "name": "write",
+          "arguments": "{\"file_path\": \"workspace/V-JEPA2-白话解读.md\", \"content\": \"# 🧠 V-JEPA 2 白话解读\\n\\n> **论文**: V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction and Planning  \\n> **作者**: Assran, Bardes, Fan, Garrido 等（Meta FAIR 团队，Yann LeCun 领衔）  \\n> **时间**: 2025 年 6 月  \\n> **核心思想**: **让 AI 像人类一样——光靠「看视频」就能学会理解世界、预测未来，甚至动手干活。**\\n\\n---\\n\\n## 一、这玩意儿解决什么问题？🤔\\n\\n现在的大语言模型（ChatGPT 之类）很聪明，但它们有一个致命的缺陷：**它们不懂物理世界**。\\n\\n你问 GPT「把杯子推到桌子边缘会怎样」，它背得出答案——但它没有真正「感受」过重力、摩擦力、物体碰撞这些物理常识。它只是从文字里猜的。\\n\\n而人类怎么学的？**一个婴儿从来不读物理教科书**。他就躺着看、伸手抓、东西掉地上——通过观察和少量动手，大脑就建起了一个「世界模型」：知道东西会往下掉、撞到会弹开、推一下会滑走。\\n\\n**V-JEPA 2 的目标就是：让 AI 也走这条路——先看大量视频「偷师」世界规律，再拿一点点机器人数据练手，就能在新环境里干活。**\\n\\n---\\n\\n## 二、这条路的起点：Yann LeCun 的「世界模型」蓝图 🗺️\\n\\nMeta 首席科学家 **Yann LeCun（杨立昆）** 一直有个宏大愿景：\\n\\n> AI 不应该只会「背答案」，而应该在脑子里建一个 **世界模型（World Model）**——一个对物理世界的内部模拟器。\\n\\n在这个蓝图里：\\n- **看视频 = 给世界模型喂数据**\\n- **预测下一帧 = 世界模型在「想象」接下来会发生什么**\\n- **规划行动 = 在世界模型里「脑补」不同动作的结果，挑最好的那个**\\n\\nV-JEPA 系列就是这个世界模型蓝图的具体实现。**V-JEPA 2 是当前最大、最强、最能干活的一个版本。**\\n\\n---\\n\\n## 三、V-JEPA 这个名字到底啥意思？🔬\\n\\n| 字母 | 全称 | 人话解释 |\\n|------|------|---------|\\n| **V** | Video | 处理的对象是视频 |\\n| **J** | Joint | 把过去和未来「联合」到一个空间里处理 |\\n| **E** | Embedding | 不直接看像素，而是把画面「压缩」成高维特征（嵌入向量） |\\n| **P** | Predictive | 核心任务是「预测」——猜下一秒会发生什么 |\\n| **A** | Architecture | 一种网络架构 |\\n\\n**一句话总结**：V-JEPA = **把视频压缩成特征，然后在特征空间里预测未来的架构**。\\n\\n---\\n\\n## 四、V-JEPA 2 最大的特点：不做「像素级生成」🚫🖼️\\n\\n这是它和 Sora、VideoPoet 这类模型最根本的区别。\\n\\n### 传统做法（生成式）\\n- 输入：视频前半段\\n- 任务：**逐像素生成**下一帧的画面\\n- 问题：计算量巨大，还要纠结「草地里每片叶子长啥样」这种没意义的事\\n\\n### V-JEPA 的做法（预测式）\\n- 输入：视频前半段\\n- 任务：把画面压缩成「高层特征」，然后**在特征空间里预测**下一段的特征\\n- 好处：只关注「重要的东西」——物体的运动轨迹、交互方式——**忽略那些无关紧要的像素细节**\\n\\n> 💡 **打个比方**  \\n> 生成式模型像画家，要把画面逐笔画出。  \\n> V-JEPA 像棋手，不看棋子长什么样，只关注「棋子在棋盘上的位置变化」。\\n\\n### 为什么这个区别重要？\\n\\n因为 V-JEPA 2 不用生成像素，所以：\\n1. **快得多**——计算量大幅降低（Meta 号称比同类模型快 30 倍）\\n2. **更鲁棒**——只建模「可预测」的部分，不会在像素细节上走火入魔\\n3. **更易扩展**——可以轻松看几百万小时的视频来训练\\n\\n---\\n\\n## 五、训练流程：两步走（先看，再练）🏋️\\n\\n### 第一阶段：纯看视频（Action-Free Pretraining）\\n\\n| 项目 | 数据 |\\n|------|------|\\n| 视频总量 | **超过 100 万小时**（≈114 年不间断看） |\\n| 图片数 | 100 万张 |\\n| 参数规模 | 12 亿参数（1.2B） |\\n| 训练方式 | 自监督（完全不需要人工标注） |\\n\\n**具体怎么学？**\\n\\nV-JEPA 2 用一种叫 **Mask-Denoising（遮罩去噪）** 的方法训练：\\n\\n1. 把一段视频切成若干片段\\n2. 随机遮挡住其中一些片段\\n3. 让模型根据没被遮的部分，去**预测被遮部分的特征**\\n4. 如果预测对了→模型学到了视频中的时空规律\\n\\n这就像：给你看一部电影的前半段和后半段（但中间挖掉 5 分钟），让你猜中间发生了什么。为了猜对，你必须理解场景的因果逻辑、物体的运动规律。\\n\\n### 第二阶段：少量练手（Post-Training with Interaction Data）\\n\\n看完 100 万小时视频后，模型已经有了「物理常识」。这时只需要给它看**一点点机器人数据**（不到 62 小时的未标记机器人操作视频），训练一个小小的**动作条件预测器**（300M 参数的 Transformer），就能得到 **V-JEPA 2-AC**（Action-Conditioned 版本）。\\n\\n> **关键**：这 62 小时的数据是**别人录好的**（Droid 数据集），不是在新环境里采集的。模型 **从来没在那个实验室的机器人上练过手**，却能直接上手干活——这叫 **Zero-Shot（零样本）**。\\n\\n---\\n\\n## 六、它能干什么？三个核心能力 🎯\\n\\n### 1️⃣ 理解（Understanding）——看懂视频在干嘛\\n\\n| 测试任务 | 分数 | 说明 |\\n|---------|------|------|\\n| Something-Something v2（动作识别） | **77.3%** top-1 准确率 | 识别「拿东西」「推东西」「扔东西」这类动作 |\\n| PerceptionTest（视频问答） | **84.0** | 看完视频回答问题（8B 模型中 SOTA） |\\n| TempCompass（时序推理） | **76.9** | 判断事件发生的先后顺序 |\\n| MVP（物理理解） | **44.5%** 配对准确率 | 理解物体物理交互 |\\n\\n做这件事的方式是把 V-JEPA 2 的**视频编码器**和大语言模型（LLM）对接，让 LLM 能「看懂」视频内容。\\n\\n### 2️⃣ 预测（Prediction）——猜接下来会发生什么\\n\\n| 测试任务 | 分数 | 说明 |\\n|---------|------|------|\\n| Epic-Kitchens-100（动作预测） | **39.7** recall@5 | 看一个人切菜，预测他下一步要做什么 |\\n\\n这个分数比之前最好的模型还要好 **44%**。注意，之前的模型是专门为这个任务设计的，而 V-JEPA 2 是**一个通用模型，看完视频直接上**。\\n\\n### 3️⃣ 规划（Planning）——动手干活\\n\\n这是最炸裂的部分。\\n\\nV-JEPA 2-AC 被用在 **Franka 机械臂** 上做操作任务：\\n\\n| 任务 | 成功率 |\\n|------|--------|\\n| 抓取物体（Grasp） | **65-80%** |\\n| 拿放物体（Pick-and-Place） | **65-80%** |\\n\\n而且：\\n- ✅ **零样本**（Zero-Shot）——机器人在新环境没见过\\n- ✅ **无奖励函数**——不用设计任何奖励信号\\n- ✅ **无任务特定训练**——没为拿杯子专门训练过\\n- ✅ **仅靠单目 RGB 摄像头**——不需要昂贵的深度传感器\\n\\n**怎么做到的？** 机械臂拿到一个目标图像（比如「把杯子放到这里」），然后在 V-JEPA 2-AC 的「脑内模拟器」里推演不同的动作序列，挑选最能达到目标的那一组，再执行。这叫 **Model Predictive Control（模型预测控制）**。\\n\\n---\\n\\n## 七、和之前的版本比，进步在哪儿？📈\\n\\n| 维度 | V-JEPA (1) | V-JEPA 2 |\\n|------|-----------|----------|\\n| 参数 | 约 10 亿（1B） | **12 亿（1.2B）** |\\n| 训练数据 | 大规模视频 | **超 100 万小时视频 + 100 万张图片** |\\n| 视频理解 | 不错 | **SOTA（最先进水平）** |\\n| 动作预测 | 未有展示 | **SOTA，比之前好 44%** |\\n| 机器人控制 | ❌ 不能 | ✅ **Zero-Shot 机器人操作** |\\n| 物理推理基准 | ❌ 无 | ✅ **发布三个新的物理推理基准** |\\n\\n---\\n\\n## 八、为什么这事儿很重要？🌍\\n\\n### 与主流 AI 路线的对比\\n\\n| 路线 | 代表 | 核心思路 | 局限 |\\n|------|------|---------|------|\\n| **语言模型** | GPT-4, Claude | 从文本学世界 | 不懂物理、没身体 |\\n| **视频生成** | Sora | 从视频学但生成像素 | 计算量大、不能控制机器人 |\\n| **强化学习** | AlphaGo | 从试错中学 | 需要大量交互数据 |\\n| **V-JEPA 路线** ✅ | V-JEPA 2 | **看视频学特征，少量数据学行动** | **兼顾理解、预测、控制** |\\n\\n### 为什么说这是「通向 AGI 的一步」\\n\\n杨立昆一直强调：**真正的智能需要世界模型**。V-JEPA 2 证明了一个路径可行：\\n\\n> **大量看（自监督）+ 少量练（交互数据）= 能理解、能预测、能行动的 AI**\\n\\n这套范式如果扩展到更多场景（自动驾驶、家庭机器人、工业自动化），意味着：\\n- AI 不需要人类手把手教每一个任务\\n- AI 可以「看 YouTube 视频」学会物理常识\\n- AI 可以「零样本」适应新的环境和任务\\n\\n---\\n\\n## 九、还有啥不足？🤷\\n\\n论文自己也诚实指出了局限：\\n\\n1. **成功率还不够高**——65-80% 的抓取成功率在真实场景中不够用（需要 99%+）\\n2. **只能做预hensile（夹取类）操作**——还不能做更精细的操作（如拧螺丝、穿针）\\n3. **目前只有一个机器人平台（Franka）测试过**\\n4. **物理推理还远不如人类**——人类在新基准上能到 85-95%，V-JEPA 2 还差一截\\n\\n---\\n\\n## 十、一句话总结 🎯\\n\\n> **V-JEPA 2 就是让 AI 先「刷一亿小时的视频」自学物理常识，然后看一小时机器人示范就能在新环境里动手干活——这是离开「背答案式 AI」、走向「真懂物理世界 AI」的关键一步。**\\n\\n---\\n\\n## 附录：名词解释 📖\\n\\n| 术语 | 白话解释 |\\n|------|---------|\\n| **自监督学习** | 不给数据打标签，让模型自己从数据中找规律 |\\n| **嵌入/Embedding** | 把复杂数据（图片、视频）压缩成一组数字，代表其「含义」 |\\n| **特征空间** | 所有嵌入向量构成的空间，相似的视频在空间里距离近 |\\n| **Zero-Shot** | 模型没在某个任务上训练过，直接上手干 |\\n| **World Model** | 大脑里对物理世界的内部模拟器 |\\n| **Model Predictive Control** | 先在脑子里模拟不同动作的结果，选最好的那个再执行 |\\n| **Transformer** | 一种神经网络架构，GPT 也用这个 |\\n| **Droid 数据集** | Meta 收集的机器人操作视频数据集 |\\n\\n---\\n\\n*文档基于 arXiv:2506.09985 及 Meta AI 官方发布信息整理*\\n\"}"
+        }
+      }
+    ],
+    "reasoning_content": "I now have enough information to write a comprehensive plain-language explanation of V-JEPA 2. Let me now write a Markdown document in the workspace."
+  }
+}
+
+{
+  "ts": "2026-06-13T16:02:47",
+  "seq": 24,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "tool",
+    "tool_call_id": "call_00_PpXD1a7ox5gmlRAabb1s8692",
+    "content": "{\"success\": true, \"message\": \"File written: workspace/V-JEPA2-白话解读.md\", \"details\": {\"file_path\": \"workspace\\\\V-JEPA2-白话解读.md\", \"size_bytes\": 10599, \"lines\": 219}}"
+  }
+}
+
+{
+  "ts": "2026-06-13T16:02:52",
+  "seq": 25,
+  "session_id": "ccf1fa",
+  "entry": {
+    "role": "assistant",
+    "content": "搞定了！文档已经写好了 👉 `workspace/V-JEPA2-白话解读.md`\n\n---\n\n### 快速总结一下这篇论文的核心：\n\n**V-JEPA 2** 是 Meta FAIR 团队（Yann LeCun 领衔）做的一个「世界模型」。它的牛逼之处在于：\n\n**1. 训练方式很「人类」** 🤱\n- 第一步：**刷了 100 万小时互联网视频**（没有任何人工标注，纯自学）\n- 第二步：**看了 62 小时机器人操作视频**（未标注的）\n- 然后就能直接在新环境里干活了\n\n**2. 技术路线很聪明** 🧠\n- 不像 Sora 那样**生成像素**（算力大、细节纠结）\n- 而是把视频**压缩成特征**，在特征空间里预测未来（快 30 倍，只关注「重要的事」）\n\n**3. 做了三件事都很能打** 🎯\n- **理解**：动作识别 77.3%，视频问答 84.0（8B 参数级别 SOTA）\n- **预测**：动作预测比之前最好的模型好 44%\n- **规划**：机械臂零样本抓取成功率 65-80%，从未见过的环境、没用过奖励函数\n\n**4. 为什么重要** 💡\n它证明了「大量看视频自学 + 少量动手数据 = 能理解、能预测、能行动」这条路走得通——这正是 Yann LeCun 多年倡导的**世界模型**路线，被很多人认为是通向真正智能（AGI）的关键拼图。"
+  }
+}
+

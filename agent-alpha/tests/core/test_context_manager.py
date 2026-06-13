@@ -174,3 +174,97 @@ def test_compression_failure_falls_back_to_short_valid_recent_history(capsys):
     assert "压缩失败，已退回最近短上下文" in out
     assert manager.count_history_tokens(fallback) <= target
     _assert_no_orphan_tools(fallback)
+
+
+def test_manual_compression_failure_keeps_original_history():
+    llm = RecordingSummaryLLM(error=RuntimeError("summary failed"))
+    manager = ContextManager(llm=llm, tools=[], system_prompt="", keep_recent_turns=1)
+    history = [
+        {"role": "user", "content": "old research"},
+        {"role": "assistant", "content": "old answer"},
+        {"role": "user", "content": "latest question"},
+        {"role": "assistant", "content": "latest answer"},
+    ]
+
+    result = manager.compress_history_with_result(
+        history,
+        trigger="manual",
+        allow_fallback=False,
+    )
+
+    assert result.success is False
+    assert result.fallback is False
+    assert result.summary == ""
+    assert "summary failed" in result.error
+    assert result.history == history
+
+
+def test_compression_result_includes_summary_and_counts():
+    summary_text = "## 当前状态\n- 已完成调研。"
+    llm = RecordingSummaryLLM(response=summary_text)
+    manager = ContextManager(llm=llm, tools=[], system_prompt="", keep_recent_turns=1)
+    history = [
+        {"role": "user", "content": "old research"},
+        {"role": "assistant", "content": "old answer"},
+        {"role": "user", "content": "latest question"},
+        {"role": "assistant", "content": "latest answer"},
+    ]
+
+    result = manager.compress_history_with_result(
+        history,
+        trigger="manual",
+        allow_fallback=False,
+    )
+
+    assert result.success is True
+    assert result.fallback is False
+    assert result.summary == summary_text
+    assert result.before_message_count == 4
+    assert result.after_message_count == 2
+    assert result.before_tokens > result.after_tokens
+    assert result.to_event()["summary"] == summary_text
+
+
+def test_manual_compression_with_no_old_history_keeps_history_unchanged():
+    llm = RecordingSummaryLLM(response="should not be used")
+    manager = ContextManager(llm=llm, tools=[], system_prompt="", keep_recent_turns=10)
+    history = [
+        {"role": "user", "content": "only recent"},
+        {"role": "assistant", "content": "answer"},
+    ]
+
+    result = manager.compress_history_with_result(
+        history,
+        trigger="manual",
+        allow_fallback=False,
+    )
+
+    assert result.success is False
+    assert result.fallback is False
+    assert result.summary == ""
+    assert "没有需要压缩的历史" in result.error
+    assert result.history == history
+    assert llm.prompts == []
+
+
+def test_manual_compression_preserves_summary_with_newlines_quotes_and_json_fragments():
+    summary_text = '## 当前状态\n- 中文摘要\n- "引号" 和 {"bad": json 片段}\n- 管道 | 符号'
+    llm = RecordingSummaryLLM(response=summary_text)
+    manager = ContextManager(llm=llm, tools=[], system_prompt="", keep_recent_turns=1)
+    history = [
+        {"role": "user", "content": "old research"},
+        {"role": "assistant", "content": "old answer"},
+        {"role": "user", "content": "latest question"},
+        {"role": "assistant", "content": "latest answer"},
+    ]
+
+    result = manager.compress_history_with_result(
+        history,
+        trigger="manual",
+        allow_fallback=False,
+    )
+
+    assert result.success is True
+    assert result.summary == summary_text
+    assert result.history[0]["content"] == summary_text
+    assert result.to_event()["summary"] == summary_text

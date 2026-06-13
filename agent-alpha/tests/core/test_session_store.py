@@ -101,3 +101,37 @@ def test_session_store_updates_workspace_in_same_session_and_records_event():
         assert updated.updated_at == "2026-04-08T10:05:00"
     finally:
         cleanup_test_dir(tmp_dir)
+
+
+def test_session_store_appends_compaction_event_without_changing_history():
+    tmp_dir = make_test_dir("session-store-compaction-event")
+    try:
+        sessions_dir = tmp_dir / "session-log" / "sessions"
+        store = SessionStore(sessions_dir)
+        original_history = [{"role": "user", "content": "hello"}]
+        store.save(
+            SessionRecord(
+                session_id="abc123",
+                kind=SessionKind.INTERACTIVE,
+                workspace="D:/demo/workspace",
+                history=original_history,
+                created_at="2026-04-08T10:00:00",
+                updated_at="2026-04-08T10:00:00",
+            )
+        )
+
+        updated = store.append_event(
+            "abc123",
+            {
+                "type": "context_compacted",
+                "timestamp": "2026-04-08T10:05:00",
+                "summary": "## 当前状态\n- 已压缩。",
+            },
+        )
+
+        assert updated.history == original_history
+        assert updated.events[-1]["type"] == "context_compacted"
+        assert updated.events[-1]["summary"] == "## 当前状态\n- 已压缩。"
+        assert updated.updated_at == "2026-04-08T10:05:00"
+    finally:
+        cleanup_test_dir(tmp_dir)

@@ -317,7 +317,7 @@ delta 分三档，标明是哪档：
 ## 输出
 
 1. 获取时间戳：`date +%Y%m%dT%H%M%S` 和 `date "+%Y-%m-%d %a %H:%M"`
-2. 写入 `~/Documents/notes/{时间戳}--拆书-{书名}__book.org`
+2. 文件名：`{时间戳}--拆书-{书名}__book.org`
 3. org-mode 格式（标题用 `*`，加粗用 `*bold*` 单星号，禁止 markdown 双星号）
 4. 文件头：
 

@@ -103,3 +103,50 @@ def test_session_event_writer_continues_seq_from_legacy_single_line_records():
         assert [record["seq"] for record in records] == [1, 2, 3]
     finally:
         cleanup_test_dir(tmp_dir)
+
+
+def test_session_event_writer_appends_compaction_event_with_summary():
+    tmp_dir = make_test_dir("session-events-compaction")
+    try:
+        writer = SessionEventWriter(tmp_dir / "events", "abc123")
+
+        writer.write_event(
+            "context_compacted",
+            {
+                "trigger": "manual",
+                "summary": "## 当前状态\n- 已压缩。",
+                "before_message_count": 12,
+                "after_message_count": 3,
+            },
+        )
+
+        records = _read_records(tmp_dir / "events" / "abc123.jsonl")
+        assert records[0]["type"] == "context_compacted"
+        assert records[0]["event"]["summary"] == "## 当前状态\n- 已压缩。"
+        assert records[0]["event"]["trigger"] == "manual"
+        assert "entry" not in records[0]
+    finally:
+        cleanup_test_dir(tmp_dir)
+
+
+def test_session_event_writer_compaction_event_continues_after_history_entries():
+    tmp_dir = make_test_dir("session-events-compaction-seq")
+    try:
+        writer = SessionEventWriter(tmp_dir / "events", "abc123")
+        writer.write({"role": "user", "content": "hello"})
+        writer.write({"role": "assistant", "content": "working"})
+
+        writer.write_event(
+            "context_compacted",
+            {
+                "trigger": "auto-threshold",
+                "summary": '## 当前状态\n- "quoted" | json-ish {x}',
+            },
+        )
+
+        records = _read_records(tmp_dir / "events" / "abc123.jsonl")
+        assert [record["seq"] for record in records] == [1, 2, 3]
+        assert records[2]["type"] == "context_compacted"
+        assert records[2]["event"]["summary"] == '## 当前状态\n- "quoted" | json-ish {x}'
+    finally:
+        cleanup_test_dir(tmp_dir)

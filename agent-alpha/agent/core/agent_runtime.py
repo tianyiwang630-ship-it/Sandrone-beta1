@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -71,6 +72,7 @@ class AgentRuntime:
         )
         self.max_turns = max_turns
         self.history: List[Dict[str, Any]] = []
+        self.runtime_events: List[Dict[str, Any]] = []
         self._interrupted = threading.Event()
         self.tool_loader.set_interrupt_event(self._interrupted)
 
@@ -106,12 +108,11 @@ class AgentRuntime:
     def handle(self, request: str | RuntimeRequest) -> RuntimeResponse:
         runtime_request = request if isinstance(request, RuntimeRequest) else RuntimeRequest(content=request)
 
+        event_writer = self._create_event_writer(runtime_request.session_id)
         if self.context_manager.should_compress(self.history):
-            self.history = self.context_manager.compress_history(self.history)
-
-        event_writer = None
-        if self.runtime_events_dir is not None and runtime_request.session_id:
-            event_writer = SessionEventWriter(self.runtime_events_dir, runtime_request.session_id)
+            result = self.compact_history(trigger="auto-threshold", allow_fallback=True)
+            self._record_compression_event(result, event_writer=event_writer)
+            self._print_compression_result(result)
 
         loop = AgentLoop(
             llm=self.llm,
@@ -167,6 +168,7 @@ class AgentRuntime:
             "workspace": str(self.workspace_root),
             "history": self.history,
             "role": self.role_config.name,
+            "events": self.runtime_events,
         }
 
     def save_context(self, filepath: str):
@@ -176,6 +178,57 @@ class AgentRuntime:
     def reset(self):
         self.history = []
         print("Session history cleared.")
+
+    def compact_history(self, *, trigger: str, allow_fallback: bool):
+        result = self.context_manager.compress_history_with_result(
+            self.history,
+            trigger=trigger,
+            allow_fallback=allow_fallback,
+        )
+        if result.success or result.fallback:
+            self.history = result.history
+        return result
+
+    def _create_event_writer(self, session_id: str | None) -> SessionEventWriter | None:
+        if self.runtime_events_dir is None or not session_id:
+            return None
+        return SessionEventWriter(self.runtime_events_dir, session_id)
+
+    def _record_compression_event(
+        self,
+        result,
+        *,
+        event_writer: SessionEventWriter | None = None,
+    ) -> dict[str, Any]:
+        event = result.to_event()
+        event["timestamp"] = datetime.now().isoformat(timespec="seconds")
+        self.runtime_events.append(event)
+        if event_writer is not None:
+            event_writer.write_event(event["type"], event)
+        return event
+
+    def _print_compression_result(self, result) -> None:
+        if result.success:
+            print(
+                "\n上下文已压缩："
+                f"{result.trigger}，消息 {result.before_message_count} -> {result.after_message_count}，"
+                f"tokens {result.before_tokens} -> {result.after_tokens}"
+            )
+            if result.summary:
+                print("\n压缩摘要：")
+                print(result.summary)
+            print()
+            return
+
+        if result.fallback:
+            print(
+                "\n上下文压缩失败，已 fallback 到最近短上下文："
+                f"{result.trigger}，消息 {result.before_message_count} -> {result.after_message_count}，"
+                f"tokens {result.before_tokens} -> {result.after_tokens}，错误：{result.error}\n"
+            )
+            return
+
+        print(f"\n上下文压缩失败：{result.error}\n")
 
     def close(self) -> None:
         mcp_mgr = self.tool_loader.tool_executors.get("_mcp_manager")

@@ -127,3 +127,18 @@ class SessionEventWriter:
             handle.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n\n")
 
         self._next_seq += 1
+
+    def write_event(self, event_type: str, event: dict[str, Any], **metadata: Any) -> None:
+        payload = {
+            "ts": _now_iso(),
+            "seq": self._next_seq,
+            "session_id": self.session_id,
+            "type": event_type,
+            "event": copy.deepcopy(event),
+        }
+        payload.update({key: value for key, value in metadata.items() if value is not None})
+
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n\n")
+
+        self._next_seq += 1

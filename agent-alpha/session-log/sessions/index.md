@@ -44,3 +44,5 @@
 | f3f029 | 06-12 11:40 | 4 | workspace | session-log/logs/2026-06-12_11-40-22_session_f3f029.json | https://github.com/lijigang/ljg-skills.git 安装这个skill |
 | f54ad4 | 06-12 11:47 | 1 | workspace | session-log/logs/2026-06-12_11-47-31_session_f54ad4.json | 你有哪些skill |
 | 3b6179 | 06-12 16:44 | 8 | workspace | session-log/logs/2026-06-12_16-44-33_session_3b6179.json | 你有哪些skill |
+| 3b6179 | 06-12 16:44 | 15 | workspace | session-log/logs/2026-06-12_20-41-49_session_3b6179.json | 你有哪些skill |
+| 3b6179 | 06-12 16:44 | 16 | workspace | session-log/logs/2026-06-12_22-09-24_session_3b6179.json | 你有哪些skill |

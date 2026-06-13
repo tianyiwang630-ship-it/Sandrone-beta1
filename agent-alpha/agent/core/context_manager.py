@@ -3,6 +3,7 @@
 """
 
 import json
+from dataclasses import dataclass
 from typing import List, Dict, Any
 
 import tiktoken
@@ -17,6 +18,38 @@ from agent.core.config import (
 )
 from agent.core.message_history import collect_recent_complete_groups, sanitize_tool_history
 from agent.core.session_events import truncate_tool_result
+
+
+@dataclass(slots=True)
+class ContextCompressionResult:
+    trigger: str
+    history: List[Dict]
+    summary: str
+    before_message_count: int
+    after_message_count: int
+    before_tokens: int
+    after_tokens: int
+    success: bool
+    fallback: bool
+    error: str | None = None
+
+    @property
+    def event_type(self) -> str:
+        return "context_compacted" if self.success else "context_compaction_failed"
+
+    def to_event(self) -> dict[str, Any]:
+        return {
+            "type": self.event_type,
+            "trigger": self.trigger,
+            "summary": self.summary,
+            "before_message_count": self.before_message_count,
+            "after_message_count": self.after_message_count,
+            "before_tokens": self.before_tokens,
+            "after_tokens": self.after_tokens,
+            "success": self.success,
+            "fallback": self.fallback,
+            "error": self.error,
+        }
 
 
 class ContextManager:
@@ -129,7 +162,23 @@ class ContextManager:
         Returns:
             压缩后的新 history 列表
         """
+        return self.compress_history_with_result(
+            history,
+            trigger="auto-threshold",
+            allow_fallback=True,
+        ).history
+
+    def compress_history_with_result(
+        self,
+        history: List[Dict],
+        *,
+        trigger: str,
+        allow_fallback: bool,
+    ) -> ContextCompressionResult:
+        """压缩 history，并返回可记录到日志的压缩结果。"""
         print("\n🗜️  开始压缩对话历史...")
+        before_message_count = len(history)
+        before_tokens = self.count_history_tokens(history)
 
         # 1. 分离旧对话和最近对话，保留完整 tool-call 消息组
         valid_history = sanitize_tool_history(history)
@@ -142,7 +191,18 @@ class ContextManager:
 
         if not old_history:
             print("⚠️  没有需要压缩的历史")
-            return valid_history
+            return ContextCompressionResult(
+                trigger=trigger,
+                history=history,
+                summary="",
+                before_message_count=before_message_count,
+                after_message_count=len(history),
+                before_tokens=before_tokens,
+                after_tokens=before_tokens,
+                success=False,
+                fallback=False,
+                error="没有需要压缩的历史",
+            )
 
         old_tokens = sum(
             self.count_tokens(msg.get("content", ""))
@@ -171,15 +231,53 @@ class ContextManager:
             print(f"   - 压缩率: {compression_ratio:.1f}%")
             print(f"✅ 压缩完成，保留最近 {self.keep_recent_turns} 组\n")
 
-            return new_history
+            return ContextCompressionResult(
+                trigger=trigger,
+                history=new_history,
+                summary=summary_md,
+                before_message_count=before_message_count,
+                after_message_count=len(new_history),
+                before_tokens=before_tokens,
+                after_tokens=self.count_history_tokens(new_history),
+                success=True,
+                fallback=False,
+                error=None,
+            )
 
         except Exception as e:
+            if not allow_fallback:
+                print(f"❌ 压缩失败: {e}，历史未改变")
+                return ContextCompressionResult(
+                    trigger=trigger,
+                    history=history,
+                    summary="",
+                    before_message_count=before_message_count,
+                    after_message_count=len(history),
+                    before_tokens=before_tokens,
+                    after_tokens=before_tokens,
+                    success=False,
+                    fallback=False,
+                    error=str(e),
+                )
+
             print(f"❌ 压缩失败: {e}，压缩失败，已退回最近短上下文")
             fallback_target = int(self.available_for_history * self.compression_threshold * 0.3)
-            return collect_recent_complete_groups(
+            fallback_history = collect_recent_complete_groups(
                 history,
                 max_tokens=fallback_target,
                 count_message_tokens=self._count_history_message_tokens,
+            )
+            return ContextCompressionResult(
+                trigger=trigger,
+                history=fallback_history,
+                summary="",
+                before_message_count=before_message_count,
+                after_message_count=len(fallback_history),
+                before_tokens=before_tokens,
+                after_tokens=self.count_history_tokens(fallback_history),
+                success=False,
+                fallback=True,
+                error=str(e),
             )
 
     # ============================================

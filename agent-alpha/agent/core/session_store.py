@@ -125,3 +125,16 @@ class SessionStore:
         )
         self.save(record)
         return record
+
+    def append_event(self, session_id: str, event: dict[str, Any]) -> SessionRecord:
+        record = self.load(session_id)
+        if record is None:
+            raise ValueError(f"Session not found: {session_id}")
+
+        payload = dict(event)
+        timestamp = str(payload.get("timestamp") or _now_iso())
+        payload["timestamp"] = timestamp
+        record.events.append(payload)
+        record.updated_at = timestamp
+        self.save(record)
+        return record

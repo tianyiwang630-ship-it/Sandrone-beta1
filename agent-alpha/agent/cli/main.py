@@ -11,6 +11,7 @@ import shlex
 
 from agent.core.agent_runtime import AgentRuntime
 from agent.core.runtime_paths import apply_runtime_env
+from agent.core.session_events import SessionEventWriter
 from agent.core.session_store import SessionKind, SessionRecord, SessionStore
 from agent.core.runtime_types import RuntimeRequest
 from agent.core.session_paths import create_cli_session_paths, get_default_workspace_root
@@ -140,16 +141,108 @@ def _save_session_snapshot(
     created_at: datetime,
     metadata: dict | None = None,
 ) -> SessionRecord:
+    existing = store.load(session_id)
+    events = _merge_session_events(
+        list(existing.events) if existing is not None else [],
+        list(getattr(agent, "runtime_events", [])),
+    )
     record = SessionRecord(
         session_id=session_id,
         kind=SessionKind.INTERACTIVE,
         workspace=str(workspace),
         history=[dict(message) for message in agent.history],
         metadata=metadata or {},
+        events=events,
         created_at=created_at.isoformat(),
         updated_at=datetime.now().isoformat(),
     )
     return store.save(record)
+
+
+def _merge_session_events(existing: list[dict], runtime_events: list[dict]) -> list[dict]:
+    merged = [dict(event) for event in existing]
+    seen = {json.dumps(event, ensure_ascii=False, sort_keys=True) for event in merged}
+    for event in runtime_events:
+        key = json.dumps(event, ensure_ascii=False, sort_keys=True)
+        if key in seen:
+            continue
+        merged.append(dict(event))
+        seen.add(key)
+    return merged
+
+
+def _append_session_event_and_history(
+    *,
+    store: SessionStore,
+    session_id: str,
+    agent,
+    event: dict,
+) -> None:
+    record = store.load(session_id)
+    if record is None:
+        return
+    payload = dict(event)
+    payload["timestamp"] = str(payload.get("timestamp") or datetime.now().isoformat(timespec="seconds"))
+    record.history = [dict(message) for message in agent.history]
+    record.events.append(payload)
+    record.updated_at = payload["timestamp"]
+    store.save(record)
+
+
+def _print_compaction_result(result) -> None:
+    if result.success:
+        print(
+            "\n上下文已压缩："
+            f"{result.trigger}，消息 {result.before_message_count} -> {result.after_message_count}，"
+            f"tokens {result.before_tokens} -> {result.after_tokens}"
+        )
+        if result.summary:
+            print("\n压缩摘要：")
+            print(result.summary)
+        print()
+        return
+
+    if result.fallback:
+        print(
+            "\n上下文压缩失败，已 fallback 到最近短上下文："
+            f"{result.trigger}，消息 {result.before_message_count} -> {result.after_message_count}，"
+            f"tokens {result.before_tokens} -> {result.after_tokens}，错误：{result.error}\n"
+        )
+        return
+
+    print(f"\n压缩失败，历史未改变：{result.error}\n")
+
+
+def _handle_compact_command(
+    *,
+    agent,
+    session_id: str,
+    store: SessionStore,
+    events_dir: Path,
+) -> None:
+    if not agent.history:
+        print("\n当前没有可压缩的对话历史。\n")
+        return
+
+    result = agent.compact_history(trigger="manual", allow_fallback=False)
+    if result.success:
+        agent.history = result.history
+
+    event = result.to_event()
+    event["timestamp"] = datetime.now().isoformat(timespec="seconds")
+
+    if hasattr(agent, "runtime_events"):
+        agent.runtime_events.append(event)
+
+    writer = SessionEventWriter(events_dir, session_id)
+    writer.write_event(event["type"], event)
+    _append_session_event_and_history(
+        store=store,
+        session_id=session_id,
+        agent=agent,
+        event=event,
+    )
+    _print_compaction_result(result)
 
 
 def _format_session_option(index: int, record: SessionRecord) -> str:
@@ -271,6 +364,7 @@ def run_single_agent_cli():
     print("  - /resume: restore an earlier interactive session")
     print("  - /workspace: show current workspace")
     print("  - /workspace set <path>: replace workspace")
+    print("  - /compact: manually compress current conversation context")
     print("  - context: print current prompt + history JSON")
     print("  - save: write current context JSON into this session temp directory")
     print("  - save-log: persist the session log now")
@@ -362,6 +456,15 @@ def run_single_agent_cli():
                         created_at=started_at,
                         metadata={"project_root": str(project_root)},
                     )
+                continue
+
+            if user_input.lower() == "/compact":
+                _handle_compact_command(
+                    agent=agent,
+                    session_id=session_id,
+                    store=session_store,
+                    events_dir=events_dir,
+                )
                 continue
 
             if user_input.lower() == "context":

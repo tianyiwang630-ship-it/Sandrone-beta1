@@ -2,10 +2,11 @@
   "enabled": true,
   "type": "stdio",
   "command": "npx",
-  "args": ["-y", "open-websearch@latest"],
+  "args": ["-y", "open-websearch@2.1.11"],
   "env": {
     "DEFAULT_SEARCH_ENGINE": "duckduckgo",
     "ALLOWED_SEARCH_ENGINES": "baidu,bing,linuxdo,csdn,duckduckgo,exa,brave,juejin,startpage,sogou",
+    "FAKE_IP_CIDRS": "198.18.0.0/16",
     "MODE": "stdio"
   },
   "description": "Multi-engine web search. Allowed engines: baidu, bing, linuxdo, csdn, duckduckgo, exa, brave, juejin, startpage, sogou. Google is not supported."

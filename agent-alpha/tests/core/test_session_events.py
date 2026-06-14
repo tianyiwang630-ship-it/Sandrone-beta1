@@ -62,6 +62,32 @@ def test_truncate_tool_result_allows_higher_limit_for_document_reads():
     assert len(document_truncated) == len(content)
     assert "[工具输出已截断" in default_truncated
 
+def test_truncate_tool_result_uses_smaller_limits_for_browser_tools_without_affecting_reads():
+    content = "x" * 35000
+
+    navigate_truncated, navigate_metadata = truncate_tool_result(
+        content,
+        max_chars=30000,
+        tool_name="browser_navigate",
+    )
+    snapshot_truncated, snapshot_metadata = truncate_tool_result(
+        content,
+        max_chars=30000,
+        tool_name="browser_snapshot",
+    )
+    read_result, read_metadata = truncate_tool_result(
+        content,
+        max_chars=30000,
+        tool_name="read",
+    )
+
+    assert navigate_metadata["truncated"] is True
+    assert snapshot_metadata["truncated"] is True
+    assert len(navigate_truncated) <= 6000
+    assert len(snapshot_truncated) <= 11000
+    assert read_metadata == {}
+    assert len(read_result) == len(content)
+
 
 def test_session_event_writer_appends_multiline_json_blocks_with_seq():
     tmp_dir = make_test_dir("session-events-writer")

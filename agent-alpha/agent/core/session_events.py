@@ -13,6 +13,10 @@ from typing import Any
 
 MAX_EVENT_TOOL_RESULT_LINES = 200
 DOCUMENT_READ_TOOL_RESULT_CHARS = 50000
+BROWSER_TOOL_RESULT_CHARS = {
+    "browser_navigate": 5000,
+    "browser_snapshot": 10000,
+}
 DOCUMENT_READ_TOOL_NAMES = {
     "read",
     "read_file",
@@ -49,15 +53,21 @@ def truncate_tool_result(
         truncated = True
 
     if truncated:
-        retained_char_count = len(truncated_text)
-        retained_line_count = truncated_text.count("\n") + 1 if truncated_text else 0
-        truncated_text += (
-            "\n\n"
-            f"[工具输出已截断：原始 {original_line_count} 行，原始 {original_char_count} 字符；"
-            f"保留 {retained_line_count} 行，{retained_char_count} 字符；"
-            f"截断位置：第 {retained_char_count} 字符附近。"
-            "请不要假设后续内容已读取。]"
-        )
+        notice = ""
+        for _ in range(3):
+            retained_char_count = len(truncated_text)
+            retained_line_count = truncated_text.count("\n") + 1 if truncated_text else 0
+            notice = (
+                "\n\n"
+                f"[工具输出已截断：原始 {original_line_count} 行，原始 {original_char_count} 字符；"
+                f"保留 {retained_line_count} 行，{retained_char_count} 字符；"
+                f"截断位置：第 {retained_char_count} 字符附近。"
+                "请不要假设后续内容已读取。]"
+            )
+            if len(truncated_text) + len(notice) <= effective_max_chars:
+                break
+            truncated_text = truncated_text[: max(0, effective_max_chars - len(notice))]
+        truncated_text += notice
 
     metadata: dict[str, Any] = {}
     if truncated:
@@ -74,6 +84,8 @@ def _effective_max_chars(max_chars: int, tool_name: str | None) -> int:
         return max_chars
 
     normalized_name = tool_name.lower()
+    if normalized_name in BROWSER_TOOL_RESULT_CHARS:
+        return min(max_chars, BROWSER_TOOL_RESULT_CHARS[normalized_name])
     if (
         normalized_name in DOCUMENT_READ_TOOL_NAMES
         or normalized_name.endswith("_read")

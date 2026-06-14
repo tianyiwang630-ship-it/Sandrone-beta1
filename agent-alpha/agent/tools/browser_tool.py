@@ -32,7 +32,7 @@ class BrowserNavigateTool(_BrowserTool):
                 "name": self.name,
                 "description": (
                     "Open a URL in a local headless agent-browser session. "
-                    "Uses a temporary copy of the selected agent-alpha browser profile and returns a page snapshot."
+                    "Uses a temporary copy of the selected agent-alpha browser profile and returns a navigation summary."
                 ),
                 "parameters": {
                     "type": "object",
@@ -75,7 +75,16 @@ class BrowserSnapshotTool(_BrowserTool):
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "full": {"type": "boolean", "description": "Return full snapshot instead of interactive compact snapshot.", "default": False},
+                        "save_full": {
+                            "type": "boolean",
+                            "description": "Save full snapshot to temp/browser_snapshots and return only file metadata. Defaults to false.",
+                            "default": False,
+                        },
+                        "full": {
+                            "type": "boolean",
+                            "description": "Compatibility alias for save_full. Prefer save_full for new calls.",
+                            "default": False,
+                        },
                         "session_id": {"type": "string", "description": "Optional browser session id."},
                     },
                     "required": [],
@@ -84,8 +93,8 @@ class BrowserSnapshotTool(_BrowserTool):
         }
 
     def execute(self, **kwargs) -> Any:
-        args = ["snapshot"] if kwargs.get("full", False) else ["snapshot", "-i"]
-        return self.manager.run_current(args, session_id=kwargs.get("session_id"))
+        save_full = bool(kwargs.get("save_full", kwargs.get("full", False)))
+        return self.manager.snapshot_current(save_full=save_full, session_id=kwargs.get("session_id"))
 
 
 class BrowserClickTool(_BrowserTool):

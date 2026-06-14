@@ -171,6 +171,16 @@ def _merge_session_events(existing: list[dict], runtime_events: list[dict]) -> l
     return merged
 
 
+def _record_runtime_error(*, events_dir: Path, session_id: str, exc: Exception) -> None:
+    event = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "error_type": type(exc).__name__,
+        "message": str(exc),
+    }
+    writer = SessionEventWriter(events_dir, session_id)
+    writer.write_event("runtime_error", event)
+
+
 def _append_session_event_and_history(
     *,
     store: SessionStore,
@@ -520,6 +530,7 @@ def run_single_agent_cli():
             import traceback
 
             traceback.print_exc()
+            _record_runtime_error(events_dir=events_dir, session_id=session_id, exc=exc)
             print()
 
 

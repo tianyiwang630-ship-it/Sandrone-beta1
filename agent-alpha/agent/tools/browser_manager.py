@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import locale
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -15,6 +16,10 @@ from pathlib import Path
 from typing import Any
 
 from agent.tools.process_utils import subprocess_group_kwargs, terminate_process_tree
+
+
+COMPACT_BROWSER_SNAPSHOT_CHARS = 8000
+COMPACT_BROWSER_SNAPSHOT_ITEMS = 80
 
 
 def _utc_now() -> str:
@@ -411,6 +416,145 @@ class BrowserManager:
             "warning": "Configured Chrome path was not found; fell back to agent-browser default browser.",
         }
 
+    def _extract_snapshot_data(self, result: dict[str, Any]) -> tuple[str, dict[str, Any], str | None]:
+        data = result.get("data")
+        if isinstance(data, dict):
+            snapshot = data.get("snapshot")
+            refs = data.get("refs")
+            origin = data.get("origin") or data.get("url")
+            if isinstance(snapshot, str):
+                return snapshot, refs if isinstance(refs, dict) else {}, str(origin) if origin else None
+        snapshot = result.get("snapshot")
+        if isinstance(snapshot, str):
+            return snapshot, {}, None
+        raw = result.get("raw")
+        if isinstance(raw, str):
+            return raw, {}, None
+        if isinstance(data, str):
+            return data, {}, None
+        return "", {}, None
+
+    def _is_actionable_snapshot_line(self, line: str) -> bool:
+        stripped = line.strip()
+        if "[ref=" not in stripped:
+            return False
+        actionable_prefixes = (
+            "- heading ",
+            "- link ",
+            "- button ",
+            "- textbox ",
+            "- input ",
+            "- textarea ",
+            "- select ",
+            "- combobox ",
+            "- searchbox ",
+            "- checkbox ",
+            "- radio ",
+            "- menuitem ",
+            "- option ",
+            "- tab ",
+        )
+        return stripped.startswith(actionable_prefixes)
+
+    def _compact_snapshot_text(self, snapshot: str) -> tuple[str, bool]:
+        lines = snapshot.replace("\r\n", "\n").splitlines()
+        kept: list[str] = []
+        truncated = False
+        for line in lines:
+            if not self._is_actionable_snapshot_line(line):
+                continue
+            candidate = "\n".join([*kept, line]) if kept else line
+            if len(candidate) > COMPACT_BROWSER_SNAPSHOT_CHARS:
+                truncated = True
+                break
+            kept.append(line)
+            if len(kept) >= COMPACT_BROWSER_SNAPSHOT_ITEMS:
+                truncated = True
+                break
+
+        if not kept:
+            fallback = [line for line in lines if "[ref=" in line][:COMPACT_BROWSER_SNAPSHOT_ITEMS]
+            kept = fallback
+            truncated = len(fallback) < len([line for line in lines if "[ref=" in line])
+
+        compact = "\n".join(kept)
+        if len(compact) > COMPACT_BROWSER_SNAPSHOT_CHARS:
+            compact = compact[:COMPACT_BROWSER_SNAPSHOT_CHARS]
+            truncated = True
+        if len(compact) < len(snapshot):
+            truncated = True
+        return compact, truncated
+
+    def _refs_for_snapshot_text(self, refs: dict[str, Any], snapshot: str) -> dict[str, Any]:
+        if not refs:
+            return {}
+        ref_ids = set(re.findall(r"\[ref=([^\]\s]+)\]", snapshot))
+        return {key: value for key, value in refs.items() if key in ref_ids}
+
+    def _compact_snapshot_result(self, result: dict[str, Any], session: BrowserSession) -> dict[str, Any]:
+        snapshot, refs, origin = self._extract_snapshot_data(result)
+        compact, truncated = self._compact_snapshot_text(snapshot)
+        compact_refs = self._refs_for_snapshot_text(refs, compact)
+        return {
+            "success": bool(result.get("success", True)),
+            "session_id": session.session_id,
+            "mode": session.mode,
+            "origin": origin,
+            "snapshot": compact,
+            "refs": compact_refs,
+            "truncated": truncated,
+            "original_chars": len(snapshot),
+            "returned_chars": len(compact),
+            "original_ref_count": len(refs),
+            "returned_ref_count": len(compact_refs),
+            "browser_executable": self.browser_executable_info(),
+            "note": (
+                "Returned compact actionable browser snapshot. "
+                "Use save_full=true to write the full snapshot to temp/browser_snapshots."
+            ),
+        }
+
+    def _save_full_snapshot_result(self, result: dict[str, Any], session: BrowserSession) -> dict[str, Any]:
+        snapshot, refs, origin = self._extract_snapshot_data(result)
+        if not snapshot:
+            snapshot = json.dumps(result, ensure_ascii=False, indent=2)
+        snapshot_dir = self.project_root / "temp" / "browser_snapshots"
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        path = snapshot_dir / f"{session.session_id}-{stamp}.md"
+        path.write_text(
+            "\n".join(
+                [
+                    "# Browser Snapshot",
+                    "",
+                    f"- session_id: {session.session_id}",
+                    f"- mode: {session.mode}",
+                    f"- origin: {origin or ''}",
+                    f"- original_chars: {len(snapshot)}",
+                    f"- refs: {len(refs)}",
+                    "",
+                    "```text",
+                    snapshot,
+                    "```",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        note = "Full browser snapshot saved to temp file and not returned to model history."
+        return {
+            "success": bool(result.get("success", True)),
+            "session_id": session.session_id,
+            "mode": session.mode,
+            "origin": origin,
+            "snapshot_file": self._relative_path(path),
+            "original_chars": len(snapshot),
+            "returned_chars": len(note),
+            "original_ref_count": len(refs),
+            "browser_executable": self.browser_executable_info(),
+            "note": note,
+        }
+
     def _browser_env(self) -> dict[str, str]:
         env = dict(os.environ)
         info = self.browser_executable_info()
@@ -548,9 +692,9 @@ class BrowserManager:
                     self.current_session_id = next(iter(self.active_sessions), None)
                 return copy_error
         result = self._run_cli(session, ["open", url], timeout=60)
-        snapshot = self._run_cli(session, ["snapshot", "-i"], timeout=60)
         self._touch_profile(profile)
         persistent_profile_dir = self._profile_dir(profile)
+        data = result.get("data") if isinstance(result.get("data"), dict) else {}
         return {
             "success": bool(result.get("success", result.get("data") is not None)),
             "session_id": session.session_id,
@@ -558,9 +702,11 @@ class BrowserManager:
             "profile_dir": str(persistent_profile_dir),
             "runtime_profile_dir": str(session.profile_dir) if session.profile_dir else None,
             "mode": session.mode,
+            "url": data.get("url") or data.get("origin") or url,
+            "title": data.get("title"),
             "browser_executable": self.browser_executable_info(),
             "open": result,
-            "snapshot": snapshot,
+            "next_step": "Call browser_snapshot for actionable page state; use save_full=true only when full evidence is needed.",
         }
 
     def start_headed_login(self, profile: str = "default", url: str = "about:blank") -> dict[str, Any]:
@@ -608,6 +754,20 @@ class BrowserManager:
         result.setdefault("session_id", session.session_id)
         result.setdefault("mode", session.mode)
         return result
+
+    def snapshot_current(self, *, save_full: bool = False, session_id: str | None = None) -> dict[str, Any]:
+        session = self._get_session(session_id)
+        if session is None:
+            return {"success": False, "error": "No active browser session. Call browser_navigate or browser_connect_cdp first."}
+        args = ["snapshot"] if save_full else ["snapshot", "-i"]
+        result = self._run_cli(session, args, timeout=60)
+        if not result.get("success", True):
+            result.setdefault("session_id", session.session_id)
+            result.setdefault("mode", session.mode)
+            return result
+        if save_full:
+            return self._save_full_snapshot_result(result, session)
+        return self._compact_snapshot_result(result, session)
 
     def close(self, session_id: str | None = None, save_profile: bool | None = None) -> dict[str, Any]:
         session = self._get_session(session_id)

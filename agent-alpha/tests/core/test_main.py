@@ -282,3 +282,40 @@ def test_save_session_snapshot_merges_runtime_events_for_auto_compaction():
         assert record.history == agent.history
     finally:
         cleanup_test_dir(tmp_dir)
+
+
+def test_record_runtime_error_writes_event_without_overwriting_resumable_session():
+    tmp_dir = make_test_dir("main-runtime-error-event")
+    try:
+        from agent.cli.main import _record_runtime_error
+
+        sessions_dir = tmp_dir / "agent-alpha" / "session-log" / "sessions"
+        events_dir = tmp_dir / "agent-alpha" / "session-log" / "events"
+        workspace_root = tmp_dir / "agent-alpha" / "workspace"
+        store = SessionStore(sessions_dir)
+        clean_history = [{"role": "user", "content": "clean resumable history"}]
+        store.save(
+            SessionRecord(
+                session_id="abc123",
+                kind=SessionKind.INTERACTIVE,
+                workspace=str(workspace_root),
+                history=clean_history,
+                created_at="2026-06-14T10:00:00",
+                updated_at="2026-06-14T10:00:00",
+            )
+        )
+
+        _record_runtime_error(
+            events_dir=events_dir,
+            session_id="abc123",
+            exc=RuntimeError("Content Exists Risk"),
+        )
+
+        records = _read_event_records(events_dir / "abc123.jsonl")
+        assert records[0]["type"] == "runtime_error"
+        assert records[0]["event"]["error_type"] == "RuntimeError"
+        assert records[0]["event"]["message"] == "Content Exists Risk"
+        assert "traceback" not in records[0]["event"]
+        assert store.load("abc123").history == clean_history
+    finally:
+        cleanup_test_dir(tmp_dir)

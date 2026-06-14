@@ -14,7 +14,7 @@ from agent.core.role_config import RoleConfig
 from agent.core.tool_loader import ToolLoader
 import agent.tools.browser_manager as browser_manager_module
 from agent.tools.browser_manager import BrowserManager
-from agent.tools.browser_tool import BrowserNavigateTool
+from agent.tools.browser_tool import BrowserNavigateTool, BrowserSnapshotTool
 
 
 class FakeBrowserProc:
@@ -80,6 +80,8 @@ def test_headless_navigation_uses_temporary_profile_copy(tmp_path):
 
     def fake_run(session, command_args, timeout=60, headed=False):
         calls.append((session.session_id, list(command_args), headed))
+        if command_args[:1] == ["snapshot"]:
+            raise AssertionError("browser_navigate must not collect a page snapshot")
         return {"success": True, "data": {"command": command_args}}
 
     manager._run_cli = fake_run
@@ -91,13 +93,121 @@ def test_headless_navigation_uses_temporary_profile_copy(tmp_path):
     assert result["runtime_profile_dir"] != str(profile_dir)
     assert (Path(result["runtime_profile_dir"]) / "marker.txt").read_text(encoding="utf-8") == "login-state"
     assert calls[0][1] == ["open", "https://example.com"]
-    assert calls[1][1] == ["snapshot", "-i"]
+    assert len(calls) == 1
     assert calls[0][2] is False
+    assert "snapshot" not in result
+    assert "browser_snapshot" in result["next_step"]
 
     closed = manager.close(result["session_id"])
 
     assert closed["temporary_profile_removed"] is True
     assert not Path(result["runtime_profile_dir"]).parent.exists()
+
+
+def test_browser_snapshot_compacts_noisy_snapshot_but_keeps_action_refs_and_unicode(tmp_path):
+    project_root = tmp_path / "project"
+    manager = BrowserManager(project_root)
+    manager._new_session("local-headless", "default")
+    refs = {
+        **{f"e{i}": {"role": "link", "name": f"Job {i} 护士 😊"} for i in range(120)},
+        "search": {"role": "textbox", "name": "Search input"},
+        "submit": {"role": "button", "name": "Submit"},
+        "noise": {"role": "generic", "name": "footer spam"},
+    }
+    useful_lines = [
+        '- heading "Main results" [level=1, ref=e999]',
+        '- textbox "Search input" [ref=search]',
+        '- button "Submit" [ref=submit]',
+    ]
+    useful_lines.extend(f'- link "Job {i} 护士 😊" [ref=e{i}]' for i in range(120))
+    noisy_lines = [
+        '- generic "' + ("footer spam copyright newsletter " * 30) + f'{i}" [ref=noise]'
+        for i in range(80)
+    ]
+    long_unexpected_line = '- generic "' + ("unexpected single line " * 700) + '"'
+    snapshot = "\n".join(noisy_lines[:40] + useful_lines + noisy_lines[40:] + [long_unexpected_line])
+
+    def fake_run(session, command_args, timeout=60, headed=False):
+        assert command_args == ["snapshot", "-i"]
+        return {
+            "success": True,
+            "data": {
+                "origin": "https://example.com/jobs",
+                "snapshot": snapshot,
+                "refs": refs,
+            },
+        }
+
+    manager._run_cli = fake_run
+
+    result = manager.snapshot_current(save_full=False)
+
+    assert result["success"] is True
+    assert result["origin"] == "https://example.com/jobs"
+    assert result["truncated"] is True
+    assert result["original_chars"] == len(snapshot)
+    assert result["returned_chars"] <= 8000
+    assert len(result["snapshot"]) <= 8000
+    assert 'textbox "Search input" [ref=search]' in result["snapshot"]
+    assert 'button "Submit" [ref=submit]' in result["snapshot"]
+    assert 'link "Job 0 护士 😊" [ref=e0]' in result["snapshot"]
+    assert "footer spam copyright newsletter" not in result["snapshot"]
+    assert "unexpected single line" not in result["snapshot"]
+    assert result["refs"]["search"]["role"] == "textbox"
+    assert result["refs"]["submit"]["role"] == "button"
+    assert "noise" not in result["refs"]
+
+
+def test_browser_snapshot_save_full_writes_complete_utf8_file_without_returning_body(tmp_path):
+    project_root = tmp_path / "project"
+    manager = BrowserManager(project_root)
+    session = manager._new_session("local-headless", "default")
+    full_snapshot = ("FULL SNAPSHOT 中文 😊\n" * 2000) + "tail marker"
+
+    def fake_run(run_session, command_args, timeout=60, headed=False):
+        assert run_session.session_id == session.session_id
+        assert command_args == ["snapshot"]
+        return {
+            "success": True,
+            "data": {
+                "origin": "https://example.com/full",
+                "snapshot": full_snapshot,
+                "refs": {"e1": {"role": "link", "name": "keep"}},
+            },
+        }
+
+    manager._run_cli = fake_run
+
+    result = manager.snapshot_current(save_full=True)
+
+    snapshot_file = project_root / result["snapshot_file"]
+    saved_text = snapshot_file.read_text(encoding="utf-8")
+    result_json = json.dumps(result, ensure_ascii=False)
+    assert result["success"] is True
+    assert result["original_chars"] == len(full_snapshot)
+    assert result["returned_chars"] < 1200
+    assert snapshot_file.exists()
+    assert "temp/browser_snapshots/" in result["snapshot_file"]
+    assert "FULL SNAPSHOT 中文 😊" in saved_text
+    assert "tail marker" in saved_text
+    assert "FULL SNAPSHOT 中文 😊" not in result_json
+
+
+def test_browser_snapshot_tool_prefers_save_full_name_but_accepts_full_alias(tmp_path):
+    tool = BrowserSnapshotTool(project_root=tmp_path / "project")
+    calls = []
+
+    def fake_snapshot_current(*, save_full, session_id=None):
+        calls.append((save_full, session_id))
+        return {"success": True}
+
+    tool.manager.snapshot_current = fake_snapshot_current
+
+    definition = tool.get_tool_definition()
+    assert "save_full" in definition["function"]["parameters"]["properties"]
+    assert tool.execute(save_full=True, session_id="abc") == {"success": True}
+    assert tool.execute(full=True, session_id="def") == {"success": True}
+    assert calls == [(True, "abc"), (True, "def")]
 
 
 def test_headless_navigation_removes_stale_headed_lock_before_copy(tmp_path):

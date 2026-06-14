@@ -50,3 +50,6 @@
 | ccf1fa | 06-13 16:00 | 1 | workspace | session-log/logs/2026-06-13_16-00-09_session_ccf1fa.json | 白话解读一下5. V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction and PlanningAssran  |
 | f59b09 | 06-13 16:00 | 1 | workspace | session-log/logs/2026-06-13_16-00-29_session_f59b09.json | 白话解读一下9. Genie: Generative Interactive EnvironmentsBruce et al., 2024，写md文档 |
 | 1e2981 | 06-13 16:07 | 1 | workspace | session-log/logs/2026-06-13_16-07-03_session_1e2981.json | 7. Mastering Atari, Go, Chess and Shogi by Planning with a Learned ModelSchrittwieser et al., 2020 讲 |
+| 0932a6 | 06-14 18:29 | 3 | workspace | session-log/logs/2026-06-14_18-29-28_session_0932a6.json | 建一个文件夹，AI论文学习，把这几个白话文讲论文的文档放进去 |
+| cbae5f | 06-14 18:32 | 6 | workspace | session-log/logs/2026-06-14_18-32-04_session_cbae5f.json | 我认识一个网友，今年高考，我在帮她填报志愿，所有的文档都放在agent-alpha\workspace\网友专业填报里。写一个md，网友profile内容如下：这位网友高考只能上大专，未来专升本；女生 |
+| cbae5f | 06-14 18:32 | 4 | workspace | session-log/logs/2026-06-14_18-57-11_session_cbae5f.json | 我认识一个网友，今年高考，我在帮她填报志愿，所有的文档都放在agent-alpha\workspace\网友专业填报里。写一个md，网友profile内容如下：这位网友高考只能上大专，未来专升本；女生 |

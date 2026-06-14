@@ -1,5 +1,5 @@
 {
-  "default": "deepseek-flash",
+  "default": "deepseek-pro",
   "profiles": {
     "glm": {
       "provider": "zhipu",

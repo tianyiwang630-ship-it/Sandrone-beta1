@@ -224,7 +224,8 @@ class BrowserCloseTool(_BrowserTool):
             "function": {
                 "name": self.name,
                 "description": (
-                    "Close the active browser session. Headed profile directories persist automatically; headless temporary profiles are cleaned up."
+                    "Close a local headless browser session and clean its temporary profile. "
+                    "This tool refuses to close headed login windows or external CDP browsers."
                 ),
                 "parameters": {
                     "type": "object",
@@ -305,7 +306,8 @@ class ProfileLoginHeadedTool(_BrowserTool):
                 "name": self.name,
                 "description": (
                     "Open a headed agent-browser session for manual login. "
-                    "The selected profile's Chrome user-data directory persists login state automatically."
+                    "The selected profile's Chrome user-data directory persists login state automatically. "
+                    "Do not close it with browser_close."
                 ),
                 "parameters": {
                     "type": "object",
@@ -322,6 +324,68 @@ class ProfileLoginHeadedTool(_BrowserTool):
         return self.manager.start_headed_login(
             profile=kwargs.get("profile", "default"),
             url=kwargs.get("url", "about:blank"),
+        )
+
+
+class ProfileSaveHeadedTool(_BrowserTool):
+    @property
+    def name(self) -> str:
+        return "profile_save_headed"
+
+    def get_tool_definition(self) -> Dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": (
+                    "Save the current headed login state for this same alpha instance without closing the visible browser."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "profile": {"type": "string", "description": "Profile to save. Defaults to 'default'.", "default": "default"}
+                    },
+                    "required": [],
+                },
+            },
+        }
+
+    def execute(self, **kwargs) -> Any:
+        return self.manager.profile_save_headed(profile=kwargs.get("profile", "default"))
+
+
+class ProfileCloseHeadedTool(_BrowserTool):
+    @property
+    def name(self) -> str:
+        return "profile_close_headed"
+
+    def get_tool_definition(self) -> Dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": (
+                    "Close the visible headed login browser only when the user explicitly asked to close it. "
+                    "Never call this just to unlock a profile."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "profile": {"type": "string", "description": "Profile to close. Defaults to 'default'.", "default": "default"},
+                        "user_confirmed_close_visible_browser": {
+                            "type": "boolean",
+                            "description": "Must be true only when the user explicitly asked to close the visible headed browser.",
+                        },
+                    },
+                    "required": ["user_confirmed_close_visible_browser"],
+                },
+            },
+        }
+
+    def execute(self, **kwargs) -> Any:
+        return self.manager.profile_close_headed(
+            profile=kwargs.get("profile", "default"),
+            user_confirmed_close_visible_browser=bool(kwargs.get("user_confirmed_close_visible_browser", False)),
         )
 
 
@@ -370,14 +434,7 @@ class BrowserDisconnectCdpTool(_BrowserTool):
         }
 
     def execute(self, **kwargs) -> Any:
-        session_id = kwargs.get("session_id") or self.manager.current_session_id
-        session = self.manager.active_sessions.get(session_id or "")
-        if not session or session.mode != "external-cdp":
-            return {"success": False, "error": "No active external CDP session to disconnect."}
-        self.manager.active_sessions.pop(session.session_id, None)
-        if self.manager.current_session_id == session.session_id:
-            self.manager.current_session_id = next(iter(self.manager.active_sessions), None)
-        return {"success": True, "session_id": session.session_id, "disconnected": True}
+        return self.manager.disconnect_cdp(kwargs.get("session_id"))
 
 
 class BrowserCdpStatusTool(_BrowserTool):

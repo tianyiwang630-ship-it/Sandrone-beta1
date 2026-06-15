@@ -1,12 +1,19 @@
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$SourceUserData = Join-Path $env:LOCALAPPDATA "Google\Chrome\User Data"
+$RealUserProfile = [Environment]::GetEnvironmentVariable("USERPROFILE", "User")
+if (-not $RealUserProfile) {
+    $RealUserProfile = $env:USERPROFILE
+}
+$SourceUserData = Join-Path (Join-Path $RealUserProfile "AppData\Local") "Google\Chrome\User Data"
 $SourceLocalState = Join-Path $SourceUserData "Local State"
 $SourceProfile = Join-Path $SourceUserData "Profile 5"
 $TargetUserData = Join-Path $ProjectRoot "state\browser\profiles\default\user-data"
+$StagingUserData = Join-Path $ProjectRoot "state\browser\profiles\default\user-data.importing"
 $TargetLocalState = Join-Path $TargetUserData "Local State"
 $TargetDefaultProfile = Join-Path $TargetUserData "Default"
+$LocksDir = Join-Path $ProjectRoot "state\browser\locks"
+$ProfileCopyLock = Join-Path $LocksDir "profile-copy-default.lock"
 
 function Resolve-FullPath {
     param([string]$Path)
@@ -69,6 +76,100 @@ function Set-DefaultProfileMetadata {
     $localState | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $LocalStatePath -Encoding UTF8
 }
 
+function Test-ProcessAlive {
+    param([int]$Pid)
+    return [bool](Get-Process -Id $Pid -ErrorAction SilentlyContinue)
+}
+
+function Acquire-ProfileCopyLock {
+    param(
+        [string]$LockPath,
+        [int]$TimeoutSeconds = 60
+    )
+
+    New-Item -ItemType Directory -Path (Split-Path -Parent $LockPath) -Force | Out-Null
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $payload = @{
+        owner_pid = $PID
+        owner_id = "$PID-profile5-sync"
+        project_root = $ProjectRoot
+        created_at = (Get-Date).ToUniversalTime().ToString("o")
+    } | ConvertTo-Json -Compress
+
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $stream = [System.IO.File]::Open($LockPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+            try {
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
+                $stream.Write($bytes, 0, $bytes.Length)
+            } finally {
+                $stream.Close()
+            }
+            return
+        } catch [System.IO.IOException] {
+            try {
+                $existing = Get-Content -LiteralPath $LockPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($existing.owner_pid -and -not (Test-ProcessAlive -Pid ([int]$existing.owner_pid))) {
+                    Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue
+                    continue
+                }
+            } catch {
+                # Damaged or unreadable lock: keep it and wait, do not guess.
+            }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+
+    throw "Timed out waiting for profile-copy-default.lock: $LockPath"
+}
+
+function Release-ProfileCopyLock {
+    param([string]$LockPath)
+    Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue
+}
+
+function Test-ImportedUserData {
+    param([string]$UserDataPath)
+
+    $localState = Join-Path $UserDataPath "Local State"
+    $preferences = Join-Path $UserDataPath "Default\Preferences"
+    if (-not (Test-Path -LiteralPath $localState)) {
+        throw "Imported user-data is missing Local State: $localState"
+    }
+    if (-not (Test-Path -LiteralPath $preferences)) {
+        throw "Imported user-data is missing Default\Preferences: $preferences"
+    }
+}
+
+function Replace-Directory {
+    param(
+        [string]$Source,
+        [string]$Target
+    )
+
+    $backup = "$Target.old-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+    if (Test-Path -LiteralPath $backup) {
+        Remove-Item -LiteralPath $backup -Recurse -Force
+    }
+
+    if (Test-Path -LiteralPath $Target) {
+        Move-Item -LiteralPath $Target -Destination $backup
+    }
+
+    try {
+        Move-Item -LiteralPath $Source -Destination $Target
+    } catch {
+        if ((Test-Path -LiteralPath $backup) -and -not (Test-Path -LiteralPath $Target)) {
+            Move-Item -LiteralPath $backup -Destination $Target
+        }
+        throw
+    } finally {
+        if (Test-Path -LiteralPath $backup) {
+            Remove-Item -LiteralPath $backup -Recurse -Force
+        }
+    }
+}
+
 Write-Host "Sync Chrome Profile 5 to agent-alpha default profile" -ForegroundColor Cyan
 Write-Host "Project root: $ProjectRoot"
 Write-Host "Source Local State: $SourceLocalState"
@@ -92,15 +193,28 @@ if ($blocking.Count -gt 0) {
 }
 
 Assert-PathInside -Path $TargetUserData -Root $ProjectRoot
+Assert-PathInside -Path $StagingUserData -Root $ProjectRoot
+Assert-PathInside -Path $ProfileCopyLock -Root $ProjectRoot
 
-if (Test-Path -LiteralPath $TargetUserData) {
-    Remove-Item -LiteralPath $TargetUserData -Recurse -Force
+Acquire-ProfileCopyLock -LockPath $ProfileCopyLock
+
+try {
+    if (Test-Path -LiteralPath $StagingUserData) {
+        Remove-Item -LiteralPath $StagingUserData -Recurse -Force
+    }
+
+    New-Item -ItemType Directory -Path $StagingUserData -Force | Out-Null
+    Copy-Item -LiteralPath $SourceLocalState -Destination (Join-Path $StagingUserData "Local State") -Force
+    Copy-Item -LiteralPath $SourceProfile -Destination (Join-Path $StagingUserData "Default") -Recurse -Force
+    Set-DefaultProfileMetadata -LocalStatePath (Join-Path $StagingUserData "Local State")
+    Test-ImportedUserData -UserDataPath $StagingUserData
+    Replace-Directory -Source $StagingUserData -Target $TargetUserData
+} finally {
+    if (Test-Path -LiteralPath $StagingUserData) {
+        Remove-Item -LiteralPath $StagingUserData -Recurse -Force
+    }
+    Release-ProfileCopyLock -LockPath $ProfileCopyLock
 }
-
-New-Item -ItemType Directory -Path $TargetUserData -Force | Out-Null
-Copy-Item -LiteralPath $SourceLocalState -Destination $TargetLocalState -Force
-Copy-Item -LiteralPath $SourceProfile -Destination $TargetDefaultProfile -Recurse -Force
-Set-DefaultProfileMetadata -LocalStatePath $TargetLocalState
 
 Write-Host ""
 Write-Host "Sync complete." -ForegroundColor Green

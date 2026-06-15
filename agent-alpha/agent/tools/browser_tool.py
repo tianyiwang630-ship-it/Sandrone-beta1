@@ -32,7 +32,8 @@ class BrowserNavigateTool(_BrowserTool):
                 "name": self.name,
                 "description": (
                     "Open a URL in a local headless agent-browser session. "
-                    "Uses a temporary copy of the selected agent-alpha browser profile and returns a navigation summary."
+                    "Uses a temporary copy of the selected agent-alpha browser profile and returns a navigation summary. "
+                    "Use this as the headless fallback when headed or CDP interactive mode is occupied by another alpha."
                 ),
                 "parameters": {
                     "type": "object",
@@ -307,7 +308,8 @@ class ProfileLoginHeadedTool(_BrowserTool):
                 "description": (
                     "Open a headed agent-browser session for manual login. "
                     "The selected profile's Chrome user-data directory persists login state automatically. "
-                    "Do not close it with browser_close."
+                    "Do not close it with browser_close. If another alpha owns headed or CDP interactive mode, "
+                    "do not clear that lock; use browser_navigate for headless work."
                 ),
                 "parameters": {
                     "type": "object",
@@ -399,7 +401,10 @@ class BrowserConnectCdpTool(_BrowserTool):
             "type": "function",
             "function": {
                 "name": self.name,
-                "description": "Connect browser tools to a user-managed Chrome/Edge instance via CDP port or WebSocket URL.",
+                "description": (
+                    "Connect browser tools to a user-managed Chrome/Edge instance via CDP port or WebSocket URL. "
+                    "Only one alpha can own CDP at a time; if another alpha owns the global interactive lock, do not reconnect."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -424,7 +429,10 @@ class BrowserDisconnectCdpTool(_BrowserTool):
             "type": "function",
             "function": {
                 "name": self.name,
-                "description": "Forget the active external CDP browser session without closing the user's browser.",
+                "description": (
+                    "Forget this alpha's active external CDP browser session without closing the user's browser. "
+                    "This must not release CDP sessions owned by another alpha."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {"session_id": {"type": "string", "description": "Optional CDP session id."}},
@@ -447,7 +455,10 @@ class BrowserCdpStatusTool(_BrowserTool):
             "type": "function",
             "function": {
                 "name": self.name,
-                "description": "Show active browser sessions, including external CDP sessions.",
+                "description": (
+                    "Show this alpha's current browser sessions plus the global interactive lock. "
+                    "The global interactive lock may belong to another alpha while this current alpha has no local sessions."
+                ),
                 "parameters": {"type": "object", "properties": {}, "required": []},
             },
         }

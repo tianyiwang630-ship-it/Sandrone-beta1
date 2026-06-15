@@ -14,7 +14,7 @@ from agent.core.role_config import RoleConfig
 from agent.core.tool_loader import ToolLoader
 import agent.tools.browser_manager as browser_manager_module
 from agent.tools.browser_manager import BrowserManager
-from agent.tools.browser_tool import BrowserNavigateTool, BrowserSnapshotTool
+from agent.tools.browser_tool import BrowserCdpStatusTool, BrowserNavigateTool, BrowserSnapshotTool
 
 
 class FakeBrowserProc:
@@ -576,6 +576,119 @@ def test_cdp_uses_interactive_lock_but_never_touches_profile_copy_paths(tmp_path
     assert disconnected["success"] is True
     assert manager._read_interactive_lock() is None
     assert calls == [("external-cdp", ["get", "url"])]
+
+
+def test_other_alpha_cdp_lock_guides_headed_failure_to_headless_without_releasing_lock(tmp_path):
+    project_root = tmp_path / "project"
+    owner = BrowserManager(project_root)
+    other = BrowserManager(project_root)
+    owner._run_cli = lambda session, command_args, timeout=60, headed=False: {"success": True}
+    other._run_cli = lambda session, command_args, timeout=60, headed=False: {"success": True}
+
+    connected = owner.connect_cdp("9222")
+    failed_headed = other.start_headed_login(url="https://example.com/login")
+
+    assert connected["success"] is True
+    assert failed_headed["success"] is False
+    assert failed_headed["interactive_owner"] == "other_alpha"
+    assert failed_headed["interactive_lock_scope"] == "global_across_alpha_instances"
+    assert failed_headed["sessions_scope"] == "current_alpha_only"
+    assert failed_headed["headless_allowed_by_interactive_lock"] is True
+    assert failed_headed["recommended_next_tool"] == "browser_navigate"
+    assert "browser_disconnect_cdp" in failed_headed["do_not_call"]
+    assert other._read_interactive_lock()["session_id"] == connected["session_id"]
+
+    headless = other.start_headless("https://example.com/search")
+
+    assert headless["success"] is True
+    assert headless["mode"] == "local-headless"
+    assert other._read_interactive_lock()["session_id"] == connected["session_id"]
+
+
+def test_cdp_status_explains_global_lock_and_current_alpha_sessions_are_separate(tmp_path):
+    project_root = tmp_path / "project"
+    owner = BrowserManager(project_root)
+    other = BrowserManager(project_root)
+    owner._run_cli = lambda session, command_args, timeout=60, headed=False: {"success": True}
+
+    connected = owner.connect_cdp("9222")
+    status = other.status()
+
+    assert connected["success"] is True
+    assert status["interactive_lock"]["session_id"] == connected["session_id"]
+    assert status["current_cdp_session_id"] is None
+    assert status["sessions"] == []
+    assert status["interactive_owner"] == "other_alpha"
+    assert status["interactive_lock_scope"] == "global_across_alpha_instances"
+    assert status["sessions_scope"] == "current_alpha_only"
+    assert status["headless_allowed_by_interactive_lock"] is True
+    assert status["recommended_next_tool"] == "browser_navigate"
+    assert "browser_connect_cdp" in status["do_not_call"]
+
+
+def test_other_alpha_disconnect_cdp_refuses_to_release_global_cdp_lock(tmp_path):
+    project_root = tmp_path / "project"
+    owner = BrowserManager(project_root)
+    other = BrowserManager(project_root)
+    owner._run_cli = lambda session, command_args, timeout=60, headed=False: {"success": True}
+
+    connected = owner.connect_cdp("9222")
+    disconnected = other.disconnect_cdp()
+
+    assert connected["success"] is True
+    assert disconnected["success"] is False
+    assert disconnected["interactive_owner"] == "other_alpha"
+    assert disconnected["recommended_next_tool"] == "browser_navigate"
+    assert "browser_disconnect_cdp" in disconnected["do_not_call"]
+    assert other._read_interactive_lock()["session_id"] == connected["session_id"]
+
+
+def test_current_alpha_cdp_status_does_not_mark_own_lock_as_other_alpha(tmp_path):
+    project_root = tmp_path / "project"
+    manager = BrowserManager(project_root)
+    manager._run_cli = lambda session, command_args, timeout=60, headed=False: {"success": True}
+
+    connected = manager.connect_cdp("9222")
+    status = manager.status()
+
+    assert connected["success"] is True
+    assert status["interactive_owner"] == "current_alpha"
+    assert status["current_cdp_session_id"] == connected["session_id"]
+    assert status["recommended_next_tool"] is None
+    assert status["do_not_call"] == []
+
+
+def test_dead_owner_cdp_lock_is_still_released_by_existing_refresh_logic(monkeypatch, tmp_path):
+    project_root = tmp_path / "project"
+    manager = BrowserManager(project_root)
+    manager._write_interactive_lock(
+        {
+            "kind": "cdp",
+            "status": "running",
+            "owner_id": "dead-owner",
+            "owner_pid": 987654,
+            "session_id": "dead-cdp",
+            "cdp_url": "9222",
+        }
+    )
+    monkeypatch.setattr(BrowserManager, "_is_owner_process_alive", lambda self, pid: False)
+
+    status = manager.status()
+
+    assert status["interactive_lock"] is None
+    assert status["interactive_owner"] == "none"
+    assert manager._read_interactive_lock() is None
+
+
+def test_browser_tool_descriptions_explain_other_alpha_interactive_lock_fallback(tmp_path):
+    project_root = tmp_path / "project"
+    navigate_desc = BrowserNavigateTool(project_root).get_tool_definition()["function"]["description"]
+    status_desc = BrowserCdpStatusTool(project_root).get_tool_definition()["function"]["description"]
+
+    assert "other alpha" in navigate_desc
+    assert "headless fallback" in navigate_desc
+    assert "global interactive lock" in status_desc
+    assert "current alpha" in status_desc
 
 
 def test_profile5_sync_script_uses_lock_and_staging_instead_of_destructive_default_delete():

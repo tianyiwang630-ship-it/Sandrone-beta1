@@ -447,11 +447,37 @@ class BrowserManager:
         self._remove_interactive_lock()
         return None
 
+    def _interactive_lock_guidance(self, lock: dict[str, Any] | None) -> dict[str, Any]:
+        owner = "none"
+        if lock:
+            owner = "current_alpha" if lock.get("owner_id") == self.owner_id else "other_alpha"
+        guidance: dict[str, Any] = {
+            "interactive_owner": owner,
+            "interactive_lock_scope": "global_across_alpha_instances",
+            "sessions_scope": "current_alpha_only",
+            "headless_allowed_by_interactive_lock": True,
+            "recommended_next_tool": None,
+            "do_not_call": [],
+        }
+        if owner == "other_alpha":
+            guidance["recommended_next_tool"] = "browser_navigate"
+            guidance["do_not_call"] = [
+                "browser_disconnect_cdp",
+                "browser_close",
+                "browser_connect_cdp",
+            ]
+            guidance["note"] = (
+                "interactive_lock is owned by another alpha instance; do not disconnect, close, "
+                "or reconnect that interactive browser. Use browser_navigate for headless work."
+            )
+        return guidance
+
     def _interactive_busy_error(self, requested: str, lock: dict[str, Any]) -> dict[str, Any]:
         return {
             "success": False,
             "error": f"Cannot start {requested}; browser interactive mode is already occupied by {lock.get('kind')}.",
             "interactive_lock": lock,
+            **self._interactive_lock_guidance(lock),
         }
 
     def _lock_profile_for_headed(self, profile: str, session_id: str) -> dict[str, Any] | None:
@@ -1328,7 +1354,15 @@ class BrowserManager:
             if lock and lock.get("kind") == "cdp" and lock.get("owner_id") == self.owner_id:
                 self._remove_interactive_lock()
                 return {"success": True, "session_id": lock.get("session_id"), "disconnected": True}
-            return {"success": False, "error": "No active external CDP session to disconnect."}
+            result = {"success": False, "error": "No active external CDP session to disconnect."}
+            if lock and lock.get("kind") == "cdp":
+                result["error"] = (
+                    "No active external CDP session owned by this alpha to disconnect. "
+                    "The global CDP lock belongs to another alpha instance."
+                )
+                result["interactive_lock"] = lock
+                result.update(self._interactive_lock_guidance(lock))
+            return result
         self.active_sessions.pop(session.session_id, None)
         self.current_cdp_session_id = None
         lock = self._read_interactive_lock()
@@ -1342,13 +1376,14 @@ class BrowserManager:
 
     def status(self) -> dict[str, Any]:
         self._refresh_interactive_lock()
+        lock = self._read_interactive_lock()
         return {
             "success": True,
             "current_session_id": self.current_session_id,
             "current_headless_session_id": self.current_headless_session_id,
             "current_headed_session_id": self.current_headed_session_id,
             "current_cdp_session_id": self.current_cdp_session_id,
-            "interactive_lock": self._read_interactive_lock(),
+            "interactive_lock": lock,
             "sessions": [
                 {
                     "session_id": item.session_id,
@@ -1358,6 +1393,7 @@ class BrowserManager:
                 }
                 for item in self.active_sessions.values()
             ],
+            **self._interactive_lock_guidance(lock),
         }
 
     def _wait_after_stop(self, proc: subprocess.Popen[Any]) -> None:

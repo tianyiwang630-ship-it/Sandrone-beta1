@@ -57,3 +57,6 @@
 | f4fb11 | 06-14 19:33 | 2 | workspace | session-log/logs/2026-06-14_19-33-37_session_f4fb11.json | agent-alpha\workspace\网友专业填报，看一下文件，然后用怀疑的眼光，搜集信息验证一件事情：专升本干兽医的入行可行性，交叉比对，多信息比较，你可以先去搜如果获取信息、批判性思维，再去 |
 | 100881 | 06-15 11:25 | 5 | workspace | session-log/logs/2026-06-15_11-25-19_session_100881.json | 你好 |
 | 289838 | 06-15 20:35 | 5 | workspace | session-log/logs/2026-06-15_20-35-34_session_289838.json | 开启cdp模式，去知乎，搜索鸣潮玩家的逆天行为 |
+| 6100fc | 06-15 21:28 | 1 | workspace | session-log/logs/2026-06-15_21-28-58_session_6100fc.json | 有有头浏览器，打开x，看看马斯克 山姆奥特曼最近在关注什么 |
+| 0a5d4d | 06-15 20:35 | 4 | workspace | session-log/logs/2026-06-15_20-35-48_session_0a5d4d.json | 打开有头浏览器，搜索在中国专升本学历干宠物兽医的难度 |
+| cef62f | 06-16 19:09 | 4 | workspace | session-log/logs/2026-06-16_19-09-57_session_cef62f.json | https://github.com/lijigang/ljg-skills.git 里面的skill，我现在装了哪些 |

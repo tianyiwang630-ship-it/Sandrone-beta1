@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自我意识不在某个脑区里，在六个过程的交互中涌现 — Mograbi et al. 2023/2024</title>
+<style>
+  :root {
+    --bg:#fafaf8; --text:#1a1a1a; --muted:#6b7280;
+    --border:#e5e7eb; --card:#fff; --block:#f3f4f6;
+    --max-w:860px;
+    --b0:#2563eb; --p0:#7c3aed; --r0:#dc2626; --g0:#059669; --a0:#d97706; --t0:#0d9488;
+    --s0:#0891b2;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans SC',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.85;font-size:15px;padding:2rem 1rem;}
+  article{max-width:var(--max-w);margin:0 auto;background:var(--card);padding:3rem 2.4rem;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);}
+
+  h1{font-size:1.65rem;font-weight:800;margin-bottom:0.3rem;letter-spacing:-0.01em;}
+  .subtitle{color:var(--muted);font-size:0.95rem;margin-bottom:2.5rem;}
+  h2{font-size:1.2rem;font-weight:700;margin:2.6rem 0 0.8rem;padding-bottom:0.3rem;border-bottom:2px solid var(--b0);}
+  h3{font-size:1.05rem;font-weight:700;margin:1.6rem 0 0.5rem;color:var(--p0);}
+  p{margin:0.85rem 0;}
+  strong{font-weight:700;} em{color:var(--r0);font-style:normal;}
+
+  figure{margin:1.8rem 0;text-align:center;}
+  figure svg{max-width:100%;height:auto;border:1px solid var(--border);border-radius:8px;background:#fff;}
+  figcaption{font-size:0.82rem;color:var(--muted);margin-top:0.5rem;line-height:1.5;}
+
+  .hl{background:#fefce8;border-left:3px solid #eab308;padding:0.6rem 1rem;margin:1rem 0;border-radius:0 6px 6px 0;font-size:0.9rem;}
+  .box{background:var(--block);padding:1.1rem 1.3rem;margin:1rem 0;border-radius:8px;}
+  .box0{background:#eff6ff;border-left:4px solid var(--b0);padding:1rem 1.2rem;margin:1rem 0;border-radius:0 8px 8px 0;}
+  .boxG{background:#ecfdf5;border-left:4px solid var(--g0);padding:1rem 1.2rem;margin:1rem 0;border-radius:0 8px 8px 0;}
+  .boxR{background:#fef2f2;border-left:4px solid var(--r0);padding:1rem 1.2rem;margin:1rem 0;border-radius:0 8px 8px 0;}
+  .boxA{background:#fffbeb;border-left:4px solid var(--a0);padding:1rem 1.2rem;margin:1rem 0;border-radius:0 8px 8px 0;}
+  hr{border:none;border-top:1px solid var(--border);margin:2rem 0;}
+
+  table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:0.88rem;}
+  th,td{border:1px solid var(--border);padding:0.45rem 0.6rem;text-align:left;}
+  th{background:var(--block);font-weight:700;}
+  tr:nth-child(even) td{background:#fafafa;}
+
+  .meta{font-size:0.85rem;color:var(--muted);}
+  .meta a{color:var(--b0);}
+
+  @media(max-width:600px){article{padding:1.5rem 1rem;}body{padding:0.5rem;font-size:14px;}h1{font-size:1.4rem;}}
+</style>
+</head>
+<body>
+<article>
+
+<h1>自我意识不在某个脑区里，在六个过程的交互中涌现</h1>
+<div class="subtitle">The cognitive neuroscience of self-awareness — Mograbi, Hall, Arantes &amp; Huntley (2023/2024)</div>
+
+<div class="meta">
+  <strong>作者：</strong>Daniel C. Mograbi (PUC-Rio / KCL), Simon Hall (Camden &amp; Islington NHS), Beatriz Arantes (PUC-Rio), Jonathan Huntley (UCL / Exeter)<br>
+  <strong>期刊：</strong>WIREs Cognitive Science, 2024, 15(2): e1670 &nbsp;|&nbsp; <strong>性质：</strong>综述 (Advanced Review) &nbsp;|&nbsp;
+  <a href="https://doi.org/10.1002/wcs.1670" target="_blank">DOI: 10.1002/wcs.1670</a>
+</div>
+
+<!-- ==================== 图 0：总览 ==================== -->
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 340" width="820" height="340">
+  <rect x="0" y="0" width="820" height="340" fill="#fff" rx="8"/>
+  <text x="410" y="26" text-anchor="middle" font-size="13" font-weight="700" fill="#6b7280">图 0：ISAM — 六个自我意识过程 + 预测编码 = 涌现的自我意识</text>
+
+  <!-- 6 process boxes at top -->
+  <rect x="20" y="44" width="120" height="50" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="80" y="65" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">内感受</text>
+  <text x="80" y="82" text-anchor="middle" font-size="8.5" fill="#6b7280">Interoception</text>
+
+  <rect x="148" y="44" width="120" height="50" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="208" y="65" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">身体所有权</text>
+  <text x="208" y="82" text-anchor="middle" font-size="8.5" fill="#6b7280">Body Ownership</text>
+
+  <rect x="276" y="44" width="120" height="50" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="336" y="65" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">自主感</text>
+  <text x="336" y="82" text-anchor="middle" font-size="8.5" fill="#6b7280">Agency</text>
+
+  <rect x="404" y="44" width="120" height="50" rx="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="464" y="65" text-anchor="middle" font-size="10" font-weight="700" fill="#6b21a8">元认知</text>
+  <text x="464" y="82" text-anchor="middle" font-size="8.5" fill="#6b7280">Metacognition</text>
+
+  <rect x="532" y="44" width="120" height="50" rx="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="592" y="65" text-anchor="middle" font-size="10" font-weight="700" fill="#6b21a8">情绪调节</text>
+  <text x="592" y="82" text-anchor="middle" font-size="8.5" fill="#6b7280">Emotional Reg.</text>
+
+  <rect x="660" y="44" width="140" height="50" rx="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="730" y="65" text-anchor="middle" font-size="10" font-weight="700" fill="#6b21a8">自传体记忆</text>
+  <text x="730" y="82" text-anchor="middle" font-size="8.5" fill="#6b7280">Autobiographical M.</text>
+
+  <!-- Label: body self -->
+  <rect x="20" y="100" width="376" height="16" rx="3" fill="#bfdbfe"/><text x="208" y="112" text-anchor="middle" font-size="8.5" fill="#1e40af">身体自我意识（嵌套层级）</text>
+  <rect x="404" y="100" width="396" height="16" rx="3" fill="#e9d5ff"/><text x="602" y="112" text-anchor="middle" font-size="8.5" fill="#6b21a8">高阶自我意识（平行交互）</text>
+
+  <!-- PC framework -->
+  <rect x="60" y="124" width="700" height="70" rx="10" fill="#fefce8" stroke="#fcd34d" stroke-width="1.5"/>
+  <text x="410" y="147" text-anchor="middle" font-size="11" font-weight="700" fill="#92400e">预测编码框架 (Predictive Coding)</text>
+  <text x="410" y="165" text-anchor="middle" font-size="9.5" fill="#4b5563">自上而下的先验/预测  ⇄  自下而上的感觉输入  →  匹配 = 稳态 · 不匹配 = 预测误差 → 修正信念或改变输入</text>
+  <text x="410" y="182" text-anchor="middle" font-size="9" fill="#9ca3af">内隐自监控（所有物种） → 显性自反（少数物种） → 涌现的自我意识体验</text>
+
+  <!-- Bottom result -->
+  <rect x="140" y="210" width="540" height="60" rx="12" fill="#7c3aed"/>
+  <text x="410" y="236" text-anchor="middle" font-size="13.5" font-weight="700" fill="#fff">自我意识 = 六个过程在预测编码下的动态交互中涌现</text>
+  <text x="410" y="256" text-anchor="middle" font-size="11" fill="#ddd6fe">不是可定位的「东西」，不是单一脑区的活动，是过程，是分级现象</text>
+
+  <!-- Footnote -->
+  <text x="410" y="310" text-anchor="middle" font-size="10" fill="#6b7280">临床验证：不同疾病损伤不同过程组合 → 精神分裂症全局崩解 · 抑郁症自上而下信念扭曲 · BPD情绪调节独损 · OCD元认知单点异常</text>
+  <text x="410" y="328" text-anchor="middle" font-size="9" fill="#9ca3af">跨诊断进路 → 方法整合 → 神经化学探针 → 跨物种比较 → 机器自我意识 → 治疗转化</text>
+</svg>
+<figcaption>图 0：文章核心框架一览 — ISAM（整合自我意识模型）</figcaption>
+</figure>
+
+<!-- ==================== 原文 ==================== -->
+
+<h2>1. 问题</h2>
+
+<p>你拍脑门问自己：「自我意识是什么？」绝大多数人会回答：「我知道我是我。」你追问：「这发生在脑的什么地方？」经典回答指向前额叶——那个最「人类」的皮层。但看了一圈临床数据你会感到不安：精神分裂症的自我意识问题是全面的——身体感、自主感、元认知、自传体记忆全乱了。自闭症的内感受异常和情绪调节异常并存。抑郁症的不止是自我评价降低，自传体记忆也在塌。边缘型人格障碍的情绪调节彻底崩。阿尔茨海默症的自传体记忆逐片剥落。</p>
+
+<p>这些病症彼此的损伤模式没有显示出任何单一脑区的垄断。<em>如果是前额叶坏了→自我意识没了，那应该有一组前额叶损伤患者表现出整齐的统一症状。但临床现实不是这样。</em></p>
+
+<p>所以我们可能问错了问题。不问「自我意识在哪个脑区」，问「自我意识是哪几个过程在什么框架下交互涌现的」。Mograbi 团队这篇文章，就是来回答这个问题的。</p>
+
+
+<h2>2. 六大自我意识过程</h2>
+
+<!-- ==================== 图 1：六大过程 ==================== -->
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 560" width="820" height="560">
+  <rect x="0" y="0" width="820" height="560" fill="#fff" rx="8"/>
+  <text x="410" y="24" text-anchor="middle" font-size="13" font-weight="700" fill="#374151">图 1：六大自我意识过程 — 定义、神经基础、临床特征</text>
+
+  <!-- Process 1: Interoception -->
+  <rect x="20" y="36" width="252" height="110" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="146" y="56" text-anchor="middle" font-size="11" font-weight="700" fill="#1e40af">① 内感受 Interoception</text>
+  <text x="146" y="74" text-anchor="middle" font-size="9" fill="#4b5563">感知全身生理状态 — 心跳、呼吸、胃</text>
+  <text x="146" y="90" text-anchor="middle" font-size="9" fill="#6b7280">精度·敏感度·觉察 三分为真（Garfinkel 2015）</text>
+  <text x="146" y="106" text-anchor="middle" font-size="9" fill="#2563eb">岛叶皮层（背侧中岛叶）</text>
+  <text x="146" y="122" text-anchor="middle" font-size="9" fill="#dc2626">焦虑 · 抑郁 · ASD · FND · 精神分裂症 · 进食障碍</text>
+
+  <!-- Process 2: Body Ownership -->
+  <rect x="282" y="36" width="252" height="110" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="408" y="56" text-anchor="middle" font-size="11" font-weight="700" fill="#1e40af">② 身体所有权 Body Ownership</text>
+  <text x="408" y="74" text-anchor="middle" font-size="9" fill="#4b5563">身体归属 + 本体位置感</text>
+  <text x="408" y="90" text-anchor="middle" font-size="9" fill="#6b7280">多感官整合的产物（橡胶手错觉）</text>
+  <text x="408" y="106" text-anchor="middle" font-size="9" fill="#2563eb">岛叶 · 顶叶 · 前运动皮层 · TPJ</text>
+  <text x="408" y="122" text-anchor="middle" font-size="9" fill="#dc2626">精神分裂症 · PTSD · 人格解体 · 躯体异己感</text>
+
+  <!-- Process 3: Agency -->
+  <rect x="544" y="36" width="256" height="110" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="672" y="56" text-anchor="middle" font-size="11" font-weight="700" fill="#1e40af">③ 自主感 Agency</text>
+  <text x="672" y="74" text-anchor="middle" font-size="9" fill="#4b5563">体验自己是行动的发起者</text>
+  <text x="672" y="90" text-anchor="middle" font-size="9" fill="#6b7280">传出副本→预测与反馈匹配</text>
+  <text x="672" y="106" text-anchor="middle" font-size="9" fill="#2563eb">前 SMA · 顶叶比较器 · 多巴胺系统</text>
+  <text x="672" y="122" text-anchor="middle" font-size="9" fill="#dc2626">精神分裂症 · 异己手 · 疾病失认 · 病理性内疚</text>
+
+  <!-- Arrow down -->
+  <text x="410" y="162" text-anchor="middle" font-size="16" fill="#2563eb" opacity="0.4">▼ 身体自我意识（嵌套层级） ▼</text>
+
+  <!-- Process 4: Metacognition -->
+  <rect x="20" y="180" width="252" height="110" rx="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="146" y="200" text-anchor="middle" font-size="11" font-weight="700" fill="#6b21a8">④ 元认知 Metacognition</text>
+  <text x="146" y="218" text-anchor="middle" font-size="9" fill="#4b5563">对自己认知的监测·知识·调节</text>
+  <text x="146" y="234" text-anchor="middle" font-size="9" fill="#6b7280">MAS 三域：理解自己·理解他人·掌控</text>
+  <text x="146" y="250" text-anchor="middle" font-size="9" fill="#7c3aed">DLPFC · 内侧前额叶</text>
+  <text x="146" y="266" text-anchor="middle" font-size="9" fill="#dc2626">精神分裂症 · OCD · PTSD · 痴呆 · 惊恐</text>
+
+  <!-- Process 5: Emotional Regulation -->
+  <rect x="282" y="180" width="252" height="110" rx="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="408" y="200" text-anchor="middle" font-size="11" font-weight="700" fill="#6b21a8">⑤ 情绪调节 Emotional Reg.</text>
+  <text x="408" y="218" text-anchor="middle" font-size="9" fill="#4b5563">前因聚焦·反应相关（Gross 2002）</text>
+  <text x="408" y="234" text-anchor="middle" font-size="9" fill="#6b7280">不同疾病损伤不同策略</text>
+  <text x="408" y="250" text-anchor="middle" font-size="9" fill="#7c3aed">前额叶→杏仁核·岛叶（自上而下调控）</text>
+  <text x="408" y="266" text-anchor="middle" font-size="9" fill="#dc2626">BPD · 双相 · ASD · 物质滥用 · ADHD</text>
+
+  <!-- Process 6: Autobiographical M -->
+  <rect x="544" y="180" width="256" height="110" rx="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="672" y="200" text-anchor="middle" font-size="11" font-weight="700" fill="#6b21a8">⑥ 自传体记忆 Autobio. M.</text>
+  <text x="672" y="218" text-anchor="middle" font-size="9" fill="#4b5563">事件记忆·个人语义（连续谱）</text>
+  <text x="672" y="234" text-anchor="middle" font-size="9" fill="#6b7280">自主意识（心智时间旅行）</text>
+  <text x="672" y="250" text-anchor="middle" font-size="9" fill="#7c3aed">海马 · PCC/楔前叶 · 前额叶 · 角回</text>
+  <text x="672" y="266" text-anchor="middle" font-size="9" fill="#dc2626">AD · 抑郁 · 精神分裂症 · PTSD · 解离性遗忘</text>
+
+  <!-- Arrow down -->
+  <text x="410" y="306" text-anchor="middle" font-size="16" fill="#7c3aed" opacity="0.4">▼ 高阶自我意识（平行交互） ▼</text>
+
+  <!-- Integration arrows at bottom -->
+  <rect x="100" y="328" width="620" height="60" rx="12" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="410" y="351" text-anchor="middle" font-size="11" font-weight="700" fill="#991b1b">所有六个过程共享预测编码底层逻辑</text>
+  <text x="410" y="370" text-anchor="middle" font-size="9.5" fill="#4b5563">自上而下预测  ⇄  自下而上感觉输入  →  误差最小化（修正信念 x 改变输入）</text>
+
+  <!-- ISAM -->
+  <rect x="200" y="400" width="420" height="52" rx="12" fill="#7c3aed"/>
+  <text x="410" y="424" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">ISAM：身体自我 ↔ 高阶自我 在过程和整合双层次交互</text>
+  <text x="410" y="442" text-anchor="middle" font-size="10" fill="#ddd6fe">→ 涌现出整合的自我意识体验（非实体，是过程，是分级现象）</text>
+
+  <!-- Bottom line -->
+  <text x="410" y="485" text-anchor="middle" font-size="9" fill="#9ca3af">最低等生物有内隐自监控 → 演化叠加递归能力 → 人类水平反身思维</text>
+  <text x="410" y="503" text-anchor="middle" font-size="9" fill="#9ca3af">
+    排除（文章论证）：自我参照·自我反思·内语言 → 可能是更高阶的结果而非基础过程
+  </text>
+</svg>
+<figcaption>图 1：六大自我意识过程的完整对比 — 蓝色=身体自我（嵌套），紫色=高阶自我（平行）</figcaption>
+</figure>
+
+<!-- 正文继续 -->
+<p>文章梳理了六种自我意识过程，每种有不同的认知对象和神经底物。关键区分：<strong>身体自我意识</strong>（内感受→身体所有权→自主感，形成嵌套层级——内感受信号也馈入身体所有权和自主感）和<strong>高阶自我意识</strong>（元认知、情绪调节、自传体记忆，平行交互但受内隐自下而上信号影响）。</p>
+
+<div class="box0">
+  <strong>六个过程的选择标准：</strong>有明确的神经生物学基础 + 演化视角（在其它物种中存在较不复杂的版本）。文章明确排除了自我参照、自我反思、内语言——它们可能是更高阶的「结果」而非「基础过程」。内语言可能在高阶自我意识中重要，但不是必要条件——没有语言的生物（婴儿、动物、重度失语症患者）仍可有整合的自我意识。
+</div>
+
+<h3>内感受三个维度</h3>
+<table>
+  <tr><th>维度</th><th>定义</th><th>测量方法</th></tr>
+  <tr><td><strong>内感受精度</strong> (Accuracy)</td><td>客观上检测到内脏信号的准确性</td><td>心跳检测任务、胃胀感判断</td></tr>
+  <tr><td><strong>内感受敏感度</strong> (Sensibility)</td><td>自己主观评估自己多擅长感知身体</td><td>问卷（MAIA）、自我报告</td></tr>
+  <tr><td><strong>内感受觉察</strong> (Awareness)</td><td>精度与敏感度的匹配度——元认知性质的指标</td><td>自信度-准确度对应（Garfinkel et al., 2015）</td></tr>
+</table>
+
+<h3>自主感的双通路</h3>
+<p>Renes et al. (2013) 的经典实验证明：精神分裂症患者在显性（有意识控制方块位置）条件下自主感正常，但在 17ms 阈下启动的隐性通路中显著缺失。这说明自主感有两条路——<strong>隐性的传出副本比较回路</strong>和<strong>显性的有意识推断回路</strong>——精神分裂症先断裂的是隐性通路，这比显性通路更基础。</p>
+
+<h3>元认知的三域</h3>
+<table>
+  <tr><th>MAS 域</th><th>定义</th><th>精神分裂症损伤</th></tr>
+  <tr><td><strong>理解自己的心智</strong></td><td>自我归因、信心校准、自知力</td><td>信念不恰当确信→妄想；缺乏自知力</td></tr>
+  <tr><td><strong>理解他人的心智</strong></td><td>推断他人情绪和意图</td><td>情绪推断准确性下降→社交功能差</td></tr>
+  <tr><td><strong>掌控</strong> (Mastery)</td><td>调节心理状态的策略</td><td>策略贫乏→社交图式贫乏→恶性循环</td></tr>
+</table>
+
+<h3>情绪调节的两条路</h3>
+<table>
+  <tr><th>策略类型</th><th>包含什么</th><th>各疾病偏好</th></tr>
+  <tr><td><strong>前因聚焦</strong> (Antecedent-focused)</td><td>选择情境、修正情境、注意分配、认知重评</td><td>抑郁：认知重评利用不足</td></tr>
+  <tr><td><strong>反应相关</strong> (Response-related)</td><td>反应抑制、攻击、物质滥用</td><td>社交焦虑：过度依赖表达抑制</td></tr>
+</table>
+
+<h3>自传体记忆的连续谱</h3>
+<p>事件记忆（「大二那年冬天我跟朋友……」）和个人语义（「我在 X 大学读书」）不是二元对立——大多数记忆落在两者之间。但不同检索方式对应的神经底物不同（Burianova & Grady, 2007），这在临床上有意义：<strong>复发性抑郁的自传体记忆是笼统的、过度概括化的</strong>——对正面和中性刺激难以提取具体回忆，对负面记忆则过度聚焦。这与负面自我信念相互强化——自传体记忆既是抑郁的因（笼统的记忆无法提供正面自我参照的证据）也是果（负面自我概念过滤记忆提取）。</p>
+
+
+<h2>3. 预测编码：统一的认知架构</h2>
+
+<!-- ==================== 图 2：PC 框架 ==================== -->
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 520" width="820" height="520">
+  <defs>
+    <marker id="aD" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#2563eb"/></marker>
+    <marker id="aU" markerWidth="8" markerHeight="6" refX="0" refY="3" orient="auto"><path d="M8,0 L0,3 L8,6 Z" fill="#059669"/></marker>
+  </defs>
+  <rect x="0" y="0" width="820" height="520" fill="#fff" rx="8"/>
+  <text x="410" y="24" text-anchor="middle" font-size="13" font-weight="700" fill="#374151">图 2：预测编码框架如何统一六个自我意识过程</text>
+
+  <!-- Core PC diagram -->
+  <rect x="40" y="40" width="740" height="160" rx="10" fill="#fefce8" stroke="#fcd34d" stroke-width="2"/>
+  <text x="410" y="66" text-anchor="middle" font-size="12" font-weight="700" fill="#92400e">预测编码 (Predictive Coding) 核心机制</text>
+
+  <!-- Top-down -->
+  <rect x="170" y="82" width="180" height="46" rx="6" fill="#bfdbfe"/>
+  <text x="260" y="100" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">自上而下 (Top-down)</text>
+  <text x="260" y="117" text-anchor="middle" font-size="9" fill="#1e40af">先验 / 预测 / 信念 (Priors)</text>
+
+  <!-- Bottom-up -->
+  <rect x="460" y="82" width="180" height="46" rx="6" fill="#a7f3d0"/>
+  <text x="550" y="100" text-anchor="middle" font-size="10" font-weight="700" fill="#065f46">自下而上 (Bottom-up)</text>
+  <text x="550" y="117" text-anchor="middle" font-size="9" fill="#065f46">感觉输入 / 传入信号</text>
+
+  <!-- Arrows -->
+  <line x1="350" y1="105" x2="460" y2="105" stroke="#2563eb" stroke-width="2" marker-end="url(#aD)"/>
+  <line x1="460" y1="125" x2="350" y2="125" stroke="#059669" stroke-width="2" marker-end="url(#aU)"/>
+
+  <!-- Comparator -->
+  <rect x="340" y="142" width="130" height="36" rx="6" fill="#fca5a5"/>
+  <text x="405" y="157" text-anchor="middle" font-size="9.5" font-weight="700" fill="#991b1b">比较器</text>
+  <text x="405" y="171" text-anchor="middle" font-size="8.5" fill="#991b1b">匹配? 预测误差?</text>
+
+  <!-- Arrows from comparator -->
+  <line x1="470" y1="160" x2="510" y2="160" stroke="#dc2626" stroke-width="1.5" marker-end="url(#aD)"/>
+  <rect x="515" y="146" width="200" height="28" rx="5" fill="#fecaca"/>
+  <text x="615" y="164" text-anchor="middle" font-size="9" fill="#991b1b">误差最小化：修正信念 或 改变输入</text>
+
+  <!-- 6 applications -->
+  <text x="410" y="220" text-anchor="middle" font-size="11" font-weight="700" fill="#6b7280">▼ 六个过程的 PC 实例化 ▼</text>
+
+  <!-- Row 1 -->
+  <rect x="20" y="236" width="250" height="72" rx="6" fill="#fff" stroke="#bfdbfe" stroke-width="1"/>
+  <text x="145" y="256" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1e40af">内感受</text>
+  <text x="145" y="273" text-anchor="middle" font-size="8.5" fill="#4b5563">信念：我的身体状态是X</text>
+  <text x="145" y="289" text-anchor="middle" font-size="8.5" fill="#4b5563">输入：内脏传入信号</text>
+  <text x="145" y="303" text-anchor="middle" font-size="8" fill="#dc2626">误差→修正信念或自主神经调节</text>
+
+  <rect x="280" y="236" width="250" height="72" rx="6" fill="#fff" stroke="#bfdbfe" stroke-width="1"/>
+  <text x="405" y="256" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1e40af">身体所有权</text>
+  <text x="405" y="273" text-anchor="middle" font-size="8.5" fill="#4b5563">信念：身体图式模板</text>
+  <text x="405" y="289" text-anchor="middle" font-size="8.5" fill="#4b5563">输入：多感官（视触本体）</text>
+  <text x="405" y="303" text-anchor="middle" font-size="8" fill="#dc2626">误差→更新身体模型（橡手错觉）</text>
+
+  <rect x="540" y="236" width="260" height="72" rx="6" fill="#fff" stroke="#bfdbfe" stroke-width="1"/>
+  <text x="670" y="256" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1e40af">自主感</text>
+  <text x="670" y="273" text-anchor="middle" font-size="8.5" fill="#4b5563">预测：传出副本→行动后果预测</text>
+  <text x="670" y="289" text-anchor="middle" font-size="8.5" fill="#4b5563">输入：实际感觉反馈</text>
+  <text x="670" y="303" text-anchor="middle" font-size="8" fill="#dc2626">匹配→我做的 · 不匹配→不是我</text>
+
+  <!-- Row 2 -->
+  <rect x="20" y="316" width="250" height="72" rx="6" fill="#fff" stroke="#e9d5ff" stroke-width="1"/>
+  <text x="145" y="336" text-anchor="middle" font-size="9.5" font-weight="700" fill="#6b21a8">元认知</text>
+  <text x="145" y="353" text-anchor="middle" font-size="8.5" fill="#4b5563">信念：对自己能力的信念</text>
+  <text x="145" y="369" text-anchor="middle" font-size="8.5" fill="#4b5563">输入：任务表现客观反馈</text>
+  <text x="145" y="383" text-anchor="middle" font-size="8" fill="#dc2626">误差→更新元认知（信心校准）</text>
+
+  <rect x="280" y="316" width="250" height="72" rx="6" fill="#fff" stroke="#e9d5ff" stroke-width="1"/>
+  <text x="405" y="336" text-anchor="middle" font-size="9.5" font-weight="700" fill="#6b21a8">情绪调节</text>
+  <text x="405" y="353" text-anchor="middle" font-size="8.5" fill="#4b5563">信念：对情绪状态的期望+策略</text>
+  <text x="405" y="369" text-anchor="middle" font-size="8.5" fill="#4b5563">输入：生理唤起+情感信号</text>
+  <text x="405" y="383" text-anchor="middle" font-size="8" fill="#dc2626">误差→重评情境或调整策略</text>
+
+  <rect x="540" y="316" width="260" height="72" rx="6" fill="#fff" stroke="#e9d5ff" stroke-width="1"/>
+  <text x="670" y="336" text-anchor="middle" font-size="9.5" font-weight="700" fill="#6b21a8">自传体记忆</text>
+  <text x="670" y="353" text-anchor="middle" font-size="8.5" fill="#4b5563">信念：自我叙事框架</text>
+  <text x="670" y="369" text-anchor="middle" font-size="8.5" fill="#4b5563">输入：具体回忆细节</text>
+  <text x="670" y="383" text-anchor="middle" font-size="8" fill="#dc2626">误差→整合/过滤记忆（一致性）</text>
+
+  <!-- Bottom -->
+  <rect x="60" y="405" width="700" height="50" rx="10" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1"/>
+  <text x="410" y="426" text-anchor="middle" font-size="10" fill="#4b5563">六个过程共享同一底层逻辑——但输入来源不同（内脏/多感官/运动反馈/任务反馈/生理唤起/记忆痕迹）</text>
+  <text x="410" y="444" text-anchor="middle" font-size="10" fill="#4b5563">预测编码的优势：统一架构不要求统一神经底物 → 解释为什么不同脑损伤损伤不同过程</text>
+</svg>
+<figcaption>图 2：预测编码如何成为六个自我意识过程的统一认知架构</figcaption>
+</figure>
+
+<p>文章的核心架构选择是把所有六个过程放进<strong>预测编码</strong>。这个框架的根在 Helmholtz 的「无意识推理」概念，在 Friston 的自由能原理那里得到了数学形式化。但把 PC 系统地应用到自我意识的所有六个子过程——这是新的。</p>
+
+<div class="box0">
+  <strong>PC 讲自我意识的核心逻辑：</strong>大脑持续生成自上而下的预测 (priors)，与自下而上的感觉信息比较。不匹配 = 预测误差。最小化预测误差有两个方向：<strong>修正信念</strong>（更新内部自我模型）或<strong>改变输入</strong>（通过行动改变世界/身体状态）。六个过程都在做同一件事——只是输入来源不同。
+</div>
+
+<h3>ISAM：整合自我意识模型</h3>
+<p>文章 Figure 1 的 ISAM（Integrated Self-Awareness Model）有三个核心主张：</p>
+<ol style="margin-left:1.5rem;line-height:2;">
+  <li><strong>身体自我意识的嵌套层级</strong>——内感受信号馈入身体所有权，身体所有权馈入自主感判断。形成嵌套但不完全层级。</li>
+  <li><strong>高阶自我意识受内隐信号影响但表达为显性叙事自我表征</strong>——元认知/情绪调节/自传体记忆之间不一定是层级关系，而是平行交互。</li>
+  <li><strong>身体自我和高阶自我在过程层和整合层两个层次交互</strong>——最终涌现出整合的自我意识体验。这不是任何一个过程的产物，也不是任何一个脑区的活动。</li>
+</ol>
+
+<h3>涌现而非实体</h3>
+<div class="hl">
+  <strong>关键观点：</strong>自我意识是<strong>涌现属性</strong>——低层交互产生高层属性，这些属性不可还原为低层组分的简单相加。这意味着：(1) 自我意识不是可定位的「东西」——它是过程，不是物件；(2) 随着认知复杂度降低（往下拆），主观体验在某个还原层次消失在计算中（Dennett, 2014）；(3) 自我意识是<strong>分级现象</strong>，不是二元的——从内隐的稳态监控一直到递归的元认知。最低等生物也能自我监控但没有高层自我意识；演化把低层自监控机制越叠越复杂，最终涌现出人类级别的反身思维。
+</div>
+
+
+<h2>4. 临床验证：不同疾病打击不同过程</h2>
+
+<!-- ==================== 图 3：临床全景 ==================== -->
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 480" width="820" height="480">
+  <rect x="0" y="0" width="820" height="480" fill="#fff" rx="8"/>
+  <text x="410" y="24" text-anchor="middle" font-size="13" font-weight="700" fill="#374151">图 3：六过程 × 主要临床条件的损伤矩阵</text>
+
+  <!-- Grid: rows=conditions, cols=processes -->
+  <!-- Col headers -->
+  <rect x="10" y="40" width="110" height="28" rx="4" fill="#d1d5db"/><text x="65" y="58" text-anchor="middle" font-size="9" font-weight="700" fill="#374151">临床条件</text>
+  <rect x="125" y="40" width="65" height="28" rx="4" fill="#bfdbfe"/><text x="157" y="58" text-anchor="middle" font-size="8.5" font-weight="700" fill="#1e40af">内感受</text>
+  <rect x="195" y="40" width="65" height="28" rx="4" fill="#bfdbfe"/><text x="227" y="58" text-anchor="middle" font-size="8" font-weight="700" fill="#1e40af">身体所有权</text>
+  <rect x="265" y="40" width="65" height="28" rx="4" fill="#bfdbfe"/><text x="297" y="58" text-anchor="middle" font-size="8.5" font-weight="700" fill="#1e40af">自主感</text>
+  <rect x="335" y="40" width="65" height="28" rx="4" fill="#e9d5ff"/><text x="367" y="58" text-anchor="middle" font-size="8.5" font-weight="700" fill="#6b21a8">元认知</text>
+  <rect x="405" y="40" width="65" height="28" rx="4" fill="#e9d5ff"/><text x="437" y="58" text-anchor="middle" font-size="8" font-weight="700" fill="#6b21a8">情绪调节</text>
+  <rect x="475" y="40" width="65" height="28" rx="4" fill="#e9d5ff"/><text x="507" y="58" text-anchor="middle" font-size="8" font-weight="700" fill="#6b21a8">自传体记忆</text>
+  <rect x="545" y="40" width="65" height="28" rx="4" fill="#d1d5db"/><text x="577" y="58" text-anchor="middle" font-size="8.5" font-weight="700" fill="#374151">损伤类型</text>
+
+  <!-- Condition rows -->
+  <rect x="10" y="72" width="110" height="28" rx="3" fill="#fef2f2"/><text x="65" y="90" text-anchor="middle" font-size="9" fill="#991b1b">精神分裂症</text>
+  <circle cx="157" cy="86" r="7" fill="#dc2626"/><circle cx="227" cy="86" r="7" fill="#dc2626"/><circle cx="297" cy="86" r="7" fill="#dc2626"/>
+  <circle cx="367" cy="86" r="7" fill="#dc2626"/><circle cx="437" cy="86" r="5" fill="#fca5a5"/><circle cx="507" cy="86" r="7" fill="#dc2626"/>
+  <rect x="545" y="76" width="65" height="20" rx="4" fill="#fecaca"/><text x="577" y="90" text-anchor="middle" font-size="7.5" fill="#991b1b">双向循环</text>
+
+  <rect x="10" y="104" width="110" height="28" rx="3" fill="#fef2f2"/><text x="65" y="122" text-anchor="middle" font-size="9" fill="#991b1b">抑郁症</text>
+  <circle cx="157" cy="118" r="7" fill="#dc2626"/><circle cx="227" cy="118" r="3" fill="#d1d5db"/><circle cx="297" cy="118" r="3" fill="#d1d5db"/>
+  <circle cx="367" cy="118" r="5" fill="#fca5a5"/><circle cx="437" cy="118" r="7" fill="#dc2626"/><circle cx="507" cy="118" r="7" fill="#dc2626"/>
+  <rect x="545" y="108" width="65" height="20" rx="4" fill="#bfdbfe"/><text x="577" y="122" text-anchor="middle" font-size="7.5" fill="#1e40af">自上而下</text>
+
+  <rect x="10" y="136" width="110" height="28" rx="3" fill="#fef2f2"/><text x="65" y="154" text-anchor="middle" font-size="9" fill="#991b1b">BPD</text>
+  <circle cx="157" cy="150" r="3" fill="#d1d5db"/><circle cx="227" cy="150" r="3" fill="#d1d5db"/><circle cx="297" cy="150" r="3" fill="#d1d5db"/>
+  <circle cx="367" cy="150" r="5" fill="#fca5a5"/><circle cx="437" cy="150" r="7" fill="#dc2626"/><circle cx="507" cy="150" r="3" fill="#d1d5db"/>
+  <rect x="545" y="140" width="65" height="20" rx="4" fill="#bfdbfe"/><text x="577" y="154" text-anchor="middle" font-size="7.5" fill="#1e40af">自上而下</text>
+
+  <rect x="10" y="168" width="110" height="28" rx="3" fill="#fef2f2"/><text x="65" y="186" text-anchor="middle" font-size="9" fill="#991b1b">OCD</text>
+  <circle cx="157" cy="182" r="3" fill="#d1d5db"/><circle cx="227" cy="182" r="3" fill="#d1d5db"/><circle cx="297" cy="182" r="3" fill="#d1d5db"/>
+  <circle cx="367" cy="182" r="7" fill="#dc2626"/><circle cx="437" cy="182" r="5" fill="#fca5a5"/><circle cx="507" cy="182" r="3" fill="#d1d5db"/>
+  <rect x="545" y="172" width="65" height="20" rx="4" fill="#a7f3d0"/><text x="577" y="186" text-anchor="middle" font-size="7.5" fill="#065f46">自下而上?</text>
+
+  <rect x="10" y="200" width="110" height="28" rx="3" fill="#fef2f2"/><text x="65" y="218" text-anchor="middle" font-size="9" fill="#991b1b">焦虑障碍</text>
+  <circle cx="157" cy="214" r="7" fill="#dc2626"/><circle cx="227" cy="214" r="3" fill="#d1d5db"/><circle cx="297" cy="214" r="3" fill="#d1d5db"/>
+  <circle cx="367" cy="214" r="5" fill="#fca5a5"/><circle cx="437" cy="214" r="5" fill="#fca5a5"/><circle cx="507" cy="214" r="3" fill="#d1d5db"/>
+  <rect x="545" y="204" width="65" height="20" rx="4" fill="#bfdbfe"/><text x="577" y="218" text-anchor="middle" font-size="7.5" fill="#1e40af">自上而下</text>
+
+  <rect x="10" y="232" width="110" height="28" rx="3" fill="#fef2f2"/><text x="65" y="250" text-anchor="middle" font-size="9" fill="#991b1b">AD/痴呆</text>
+  <circle cx="157" cy="246" r="3" fill="#d1d5db"/><circle cx="227" cy="246" r="3" fill="#d1d5db"/><circle cx="297" cy="246" r="3" fill="#d1d5db"/>
+  <circle cx="367" cy="246" r="7" fill="#dc2626"/><circle cx="437" cy="246" r="3" fill="#d1d5db"/><circle cx="507" cy="246" r="7" fill="#dc2626"/>
+  <rect x="545" y="236" width="65" height="20" rx="4" fill="#a7f3d0"/><text x="577" y="250" text-anchor="middle" font-size="7.5" fill="#065f46">自下而上</text>
+
+  <rect x="10" y="264" width="110" height="28" rx="3" fill="#fef2f2"/><text x="65" y="282" text-anchor="middle" font-size="9" fill="#991b1b">人格解体</text>
+  <circle cx="157" cy="278" r="5" fill="#fca5a5"/><circle cx="227" cy="278" r="7" fill="#dc2626"/><circle cx="297" cy="278" r="3" fill="#d1d5db"/>
+  <circle cx="367" cy="278" r="3" fill="#d1d5db"/><circle cx="437" cy="278" r="5" fill="#fca5a5"/><circle cx="507" cy="278" r="3" fill="#d1d5db"/>
+  <rect x="545" y="268" width="65" height="20" rx="4" fill="#bfdbfe"/><text x="577" y="282" text-anchor="middle" font-size="7.5" fill="#1e40af">自上而下</text>
+
+  <!-- Legend -->
+  <rect x="625" y="72" width="180" height="80" rx="6" fill="#fff" stroke="#d1d5db" stroke-width="1"/>
+  <circle cx="645" cy="92" r="7" fill="#dc2626"/><text x="660" y="96" font-size="9" fill="#4b5563">核心损伤</text>
+  <circle cx="645" cy="112" r="5" fill="#fca5a5"/><text x="660" y="116" font-size="9" fill="#4b5563">次级损伤</text>
+  <circle cx="645" cy="132" r="3" fill="#d1d5db"/><text x="660" y="136" font-size="9" fill="#4b5563">未见报告</text>
+
+  <!-- Bottom analysis -->
+  <rect x="60" y="310" width="700" height="100" rx="10" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="410" y="336" text-anchor="middle" font-size="11" font-weight="700" fill="#6b21a8">三种 PC 损伤模式</text>
+  <text x="410" y="356" text-anchor="middle" font-size="9.5" fill="#4b5563">
+    <tspan fill="#1e40af" font-weight="700">① 自上而下主导：</tspan>信念出错→错误约束感觉信号 | 抑郁 · 焦虑 · BPD · 人格解体
+  </text>
+  <text x="410" y="374" text-anchor="middle" font-size="9.5" fill="#4b5563">
+    <tspan fill="#065f46" font-weight="700">② 自下而上主导：</tspan>传入信号异常→形成扭曲信念 | AD · OCD（边缘系统过激活→元信念扭曲）
+  </text>
+  <text x="410" y="392" text-anchor="middle" font-size="9.5" fill="#4b5563">
+    <tspan fill="#dc2626" font-weight="700">③ 双向循环：</tspan>高低层同时/相互维持异常 | 精神分裂症（六个过程全面损伤，难以归因单一方向）
+  </text>
+
+  <!-- Footnote -->
+  <text x="410" y="430" text-anchor="middle" font-size="9" fill="#9ca3af">岛叶背侧中部：跨诊断内感受异常的共同神经会聚点（Nord et al., 2021 元分析）</text>
+  <text x="410" y="448" text-anchor="middle" font-size="9" fill="#9ca3af">
+    关键：没有单一脑区是「自我意识的总开关」——不同疾病打击不同过程组合，且经常多个过程共损（各模式不同）
+  </text>
+</svg>
+<figcaption>图 3：六大过程 × 七类临床条件的损伤矩阵 — 不同疾病显示不同的损伤指纹</figcaption>
+</figure>
+
+<p><strong>精神分裂症是最全面的打击</strong>——六个过程几乎全有异常。这解释了这个病症特殊的主观体验：「我不再是我的思想和行动的主人」。岛叶背侧中部是一个<strong>跨诊断会聚点</strong>——多个精神疾病的内感受异常都在这里找到共同神经信号（Nord et al., 2021）。</p>
+
+<div class="hl">
+  <strong>临床意义：</strong>不同损伤模式指向不同治疗策略。自上而下模式→认知干预；自下而上模式→药物/生理干预；双向循环→两个方向同时干预。抑郁症用 CBT（改变负面信念→修正内感受解释），AD 目前只能延缓自下而上的记忆系统衰退，精神分裂症需要综合方案。
+</div>
+
+
+<h2>5. 未来方向：八条路</h2>
+
+<!-- ==================== 图 4：未来方向 ==================== -->
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 380" width="820" height="380">
+  <rect x="0" y="0" width="820" height="380" fill="#fff" rx="8"/>
+  <text x="410" y="24" text-anchor="middle" font-size="13" font-weight="700" fill="#374151">图 4：未来研究八大方向</text>
+
+  <!-- 8 nodes -->
+  <rect x="20" y="44" width="180" height="62" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="110" y="66" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">① 跨诊断进路</text>
+  <text x="110" y="82" text-anchor="middle" font-size="8.5" fill="#4b5563">不用DSM分类，改按自我</text>
+  <text x="110" y="96" text-anchor="middle" font-size="8.5" fill="#4b5563">意识损伤维度 → RDoC对齐</text>
+
+  <rect x="212" y="44" width="180" height="62" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="302" y="66" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">② 单病多过程</text>
+  <text x="302" y="82" text-anchor="middle" font-size="8.5" fill="#4b5563">同一病症测全六过程</text>
+  <text x="302" y="96" text-anchor="middle" font-size="8.5" fill="#4b5563">找嵌套层级和因果方向</text>
+
+  <rect x="404" y="44" width="180" height="62" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="494" y="66" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">③ 方法整合</text>
+  <text x="494" y="82" text-anchor="middle" font-size="8.5" fill="#4b5563">问卷+行为实验+ERP+</text>
+  <text x="494" y="96" text-anchor="middle" font-size="8.5" fill="#4b5563">fMRI+VR → 跨方法电池</text>
+
+  <rect x="596" y="44" width="204" height="62" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="698" y="66" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">④ 神经化学基础</text>
+  <text x="698" y="82" text-anchor="middle" font-size="8.5" fill="#4b5563">多巴胺×自主感 · 赛洛西宾</text>
+  <text x="698" y="96" text-anchor="middle" font-size="8.5" fill="#4b5563">×自我消融 → 天然探针</text>
+
+  <!-- Row 2 -->
+  <rect x="20" y="122" width="180" height="62" rx="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="110" y="144" text-anchor="middle" font-size="10" font-weight="700" fill="#6b21a8">⑤ 跨物种比较</text>
+  <text x="110" y="160" text-anchor="middle" font-size="8.5" fill="#4b5563">自监控：几乎所有物种</text>
+  <text x="110" y="174" text-anchor="middle" font-size="8.5" fill="#4b5563">递归元认知：少数物种</text>
+
+  <rect x="212" y="122" width="180" height="62" rx="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="302" y="144" text-anchor="middle" font-size="10" font-weight="700" fill="#6b21a8">⑥ 机器自我意识</text>
+  <text x="302" y="160" text-anchor="middle" font-size="8.5" fill="#4b5563">内语言→自我意识？</text>
+  <text x="302" y="174" text-anchor="middle" font-size="8.5" fill="#4b5563">反过来检验人类叙事必要性</text>
+
+  <rect x="404" y="122" width="180" height="62" rx="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="494" y="144" text-anchor="middle" font-size="10" font-weight="700" fill="#6b21a8">⑦ 意识障碍患者</text>
+  <text x="494" y="160" text-anchor="middle" font-size="8.5" fill="#4b5563">持续植物状态·昏迷</text>
+  <text x="494" y="174" text-anchor="middle" font-size="8.5" fill="#4b5563">→ 残存自我意识？伦理意义</text>
+
+  <rect x="596" y="122" width="204" height="62" rx="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="698" y="144" text-anchor="middle" font-size="10" font-weight="700" fill="#6b21a8">⑧ 治疗转化</text>
+  <text x="698" y="160" text-anchor="middle" font-size="8.5" fill="#4b5563">基于过程的诊断替代类别诊断</text>
+  <text x="698" y="174" text-anchor="middle" font-size="8.5" fill="#4b5563">针对特定过程的精准干预</text>
+
+  <!-- PC core in center -->
+  <rect x="140" y="210" width="540" height="50" rx="12" fill="#7c3aed"/>
+  <text x="410" y="238" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">预测编码作为统一的实验平台和理论锚点</text>
+
+  <!-- Connecting arrows -->
+  <line x1="200" y1="106" x2="300" y2="210" stroke="#93c5fd" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="398" y1="106" x2="420" y2="210" stroke="#93c5fd" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="584" y1="106" x2="540" y2="210" stroke="#93c5fd" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="718" y1="106" x2="640" y2="210" stroke="#93c5fd" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="110" y1="184" x2="200" y2="210" stroke="#c4b5fd" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="302" y1="184" x2="320" y2="210" stroke="#c4b5fd" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="494" y1="184" x2="460" y2="210" stroke="#c4b5fd" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="698" y1="184" x2="580" y2="210" stroke="#c4b5fd" stroke-width="1" stroke-dasharray="3,2"/>
+
+  <!-- Bottom gist -->
+  <rect x="60" y="280" width="700" height="80" rx="10" fill="#f0fdf4" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="410" y="306" text-anchor="middle" font-size="11" font-weight="700" fill="#065f46">八条路的核心逻辑：从碎片到整合</text>
+  <text x="410" y="328" text-anchor="middle" font-size="9.5" fill="#4b5563">跨诊断 ← 多过程测量 ← 多方法整合 ← PC 作为统一框架 → 神经化学 → 跨物种 → 机器 → 临床</text>
+  <text x="410" y="348" text-anchor="middle" font-size="9.5" fill="#4b5563">目标：一个不依赖语言和类别的、可量化、可跨物种比较、可临床转化的自我意识科学</text>
+</svg>
+<figcaption>图 4：八条未来研究方向 — 从碎片化的临床观察到整合的自我意识科学</figcaption>
+</figure>
+
+<p>文章给了八条路，我挑最值得注意的三条说：</p>
+
+<div class="boxG">
+  <strong>④ 赛洛西宾作为自我意识探针：</strong>赛洛西宾导致「自我消融」(ego-dissolution)——自我参照降低、自我与世界边界瓦解。这是一种可逆的、剂量依赖的自我意识暂时改变。它提供了一个天然探针：如果你暂时干扰了预测编码中的自上而下先验（自我模型），六个过程如何分别受到影响？这个实验伦理上可以做，理论上直接检验 ISAM 的框架预测。
+</div>
+
+<div class="boxA">
+  <strong>⑥ 机器自我意识：</strong>文章提出——如果给机器人装上内语言系统，它会发展出哪种自我意识？这既是哲学实验（检验内语言是否是自我意识的充分条件），也反过来检验人类自我意识是否真的需要叙事。如果机器人有内语言但没有自我意识，那 Morin (2018) 的内语言理论就裂了。如果机器人有内语言并且真的涌现了某种自我意识——那我们对「谁是自我意识拥有者」的定义就得彻底改变。
+</div>
+
+<hr>
+
+<h2>6. 结论</h2>
+
+<p>自我意识不是前额叶的广播台（这个你已经从 Deco 2021 知道了），也不是任何一个脑区的专属活动。Mograbi 2023/2024 补上了另一半：<strong>自我意识是六个过程——内感受、身体所有权、自主感、元认知、情绪调节、自传体记忆——在预测编码框架下动态交互中涌现的分级现象。</strong>它不是可定位的「东西」，不是单一脑区的活动，不是二元的开关。最低等生物有内隐自监控但没有高层自我意识——演化把低层自监控机制越叠越复杂，最终在人类这里涌现出了递归的反身思维。</p>
+
+<div class="boxR">
+  <strong>这篇文章在你目录里的位置：</strong><br>
+  Bressler &amp; Menon (2010) 给了你三网动力学——DMN 自我系统、SN 调度系统、CEN 任务引擎。<br>
+  Deco et al. (2021) 用信息流告诉你：全局工作空间不在前额叶，在 DMN 的中线皮层——楔前叶/PCC/扣带回峡是跨任务不变的「收件箱」。<br>
+  <strong>Mograbi et al. (2023/2024) 告诉你：这个「收件箱」接收的是六个不同来源的信件——身体、动作、认知、情感、记忆——而且每个来源的信件格式不同，但都经过同一套预测编码的「核对」。自我意识不来自收件箱的位置，来自核对的过程。</strong>
+</div>
+
+<!-- ==================== 终图 ==================== -->
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 240" width="820" height="240">
+  <rect x="0" y="0" width="820" height="240" fill="#fff" rx="8"/>
+  <text x="410" y="24" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1a1a">终图：三篇论文在你目录中的位置</text>
+
+  <rect x="20" y="44" width="245" height="100" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="142" y="70" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">Bressler &amp; Menon 2010</text>
+  <text x="142" y="88" text-anchor="middle" font-size="9" fill="#4b5563">三网动力学</text>
+  <text x="142" y="104" text-anchor="middle" font-size="8.5" fill="#6b7280">DMN · SN · CEN</text>
+  <text x="142" y="122" text-anchor="middle" font-size="8.5" fill="#6b7280">SN 切换 DMN/CEN</text>
+  <text x="142" y="138" text-anchor="middle" font-size="8" fill="#9ca3af">网络层面的动力学架构</text>
+
+  <text x="290" y="100" text-anchor="middle" font-size="18" fill="#6b7280">→</text>
+
+  <rect x="310" y="44" width="245" height="100" rx="10" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="432" y="70" text-anchor="middle" font-size="10" font-weight="700" fill="#991b1b">Deco et al. 2021</text>
+  <text x="432" y="88" text-anchor="middle" font-size="9" fill="#4b5563">信息流方向</text>
+  <text x="432" y="104" text-anchor="middle" font-size="8.5" fill="#6b7280">全局工作空间 = 中线皮层</text>
+  <text x="432" y="122" text-anchor="middle" font-size="8.5" fill="#6b7280">不在前额叶，在 DMN 收件箱</text>
+  <text x="432" y="138" text-anchor="middle" font-size="8" fill="#9ca3af">信息归集层面的枢纽定位</text>
+
+  <text x="580" y="100" text-anchor="middle" font-size="18" fill="#6b7280">→</text>
+
+  <rect x="600" y="44" width="200" height="100" rx="10" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="700" y="70" text-anchor="middle" font-size="10" font-weight="700" fill="#6b21a8">Mograbi et al. 2024</text>
+  <text x="700" y="88" text-anchor="middle" font-size="9" fill="#4b5563">六过程交互</text>
+  <text x="700" y="104" text-anchor="middle" font-size="8.5" fill="#6b7280">预测编码统一架构</text>
+  <text x="700" y="122" text-anchor="middle" font-size="8.5" fill="#6b7280">涌现的分级自我意识</text>
+  <text x="700" y="138" text-anchor="middle" font-size="8" fill="#9ca3af">过程层面的生成机制</text>
+
+  <!-- Bottom gist -->
+  <rect x="60" y="160" width="700" height="62" rx="12" fill="#2563eb"/>
+  <text x="410" y="186" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">三篇论文：从「在哪」→「谁在收」→「怎么涌现」</text>
+  <text x="410" y="208" text-anchor="middle" font-size="11" fill="#bfdbfe">网络动力学 → 信息流枢纽 → 多过程交互的预测编码</text>
+</svg>
+<figcaption>终图：Bressler 2010（三网架构）→ Deco 2021（信息归集点定位）→ Mograbi 2024（六过程预测编码涌现机制）</figcaption>
+</figure>
+
+<hr>
+
+<h2>博导审稿</h2>
+
+<p><strong>选题想象力：</strong>优秀。自我意识的综述太多了——但绝大多数要么只讲一个过程（如内感受），要么只讲一个疾病，要么陷入意识哲学的宏大叙事。Mograbi 的选题是独特的——以六个过程为横轴，以预测编码为竖轴，再拿临床疾病当验证网格。结果是：这张网覆盖了从体感层面的自我（内感受）到叙事层面的自我（自传体记忆），既能解释精神分裂症的全局崩解，又能解释 OCD 的单一过程异常。</p>
+
+<p><strong>架构野心：</strong>ISAM 是一个值得被引用的框架。不完美的框架比完美的零散观察有用得多——它给出了可证伪的预测。缺点：六个过程的选择标准不够透明——为什么是这六个？为什么没有纳入自我参照加工和内语言？文章对排除了什么给出了解释（这些可能是更高阶的「结果」而非「基础」），但论证稍显不足。神经网络细节薄弱——这篇文章几乎没有深入讨论 DMN/SN/CEN 在六个过程中的角色。</p>
+
+<p><strong>临床覆盖：</strong>表 1 是全文最有实用价值的贡献——一张六过程×十几个疾病的对照表。精神分裂症的六个过程全中不是偶然的，BPD 的情绪调节独中也不是偶然的。</p>
+
+<p><strong>局限：</strong>(1) 没有跨疾病的直接对比研究——综述的局限也是领域的局限。(2) PC 框架既有广度也有代价——广度在于它能套到任何事情上，代价在于它可能什么都解释得了但什么都没精确预测。(3) 缺乏神经网络的深层讨论。</p>
+
+<p><strong>判决：</strong>这是一篇好的路线图，不是好的终点站。它的价值是帮研究者看清楚：自我意识不是可定位的脑区，是分布在六个过程中、由预测编码统一架构的一簇能力。需要下一步的实证来夯实。</p>
+
+<hr>
+
+<h2>启发</h2>
+
+<p><strong>迁移：</strong>你公司里有没有「精神分裂型结构」——六个自我意识过程全出问题型？这意味着这个人缺乏一个整合的自我叙事→在混乱中找不到稳定的自我定位→决策漂移、情绪波动、行为不一致。这类人需要的不是绩效考核反馈（元认知训练）而是全面的自我叙事重建。反之，「OCD 型结构」——只在一个过程上出问题（信心低→反复检查）——你该做的是针对性的流程干预而非全人格改组。</p>
+
+<p><strong>混搭：</strong>PC 框架不仅讲自我意识。公司也是一个持续生成「预测」（预算、战略、期望）并与「输入」（市场信号、员工反馈）比较的系统。预测误差 = 预算偏差、市场意外 → 要么修正内部模型（调整战略）要么改变输入（改变市场条件）。但「元认知」的对等物——一个理解自己预测校准程度的系统——在大多数组织里完全缺失。</p>
+
+<p><strong>反转：</strong>文章暗示身体自我意识是嵌套的基础——内感受是最底层的。但反过来也成立：高阶自我意识可以自上而下塑造身体自我意识。PTSD 患者——自传体记忆扭曲（高阶）→ 身体持续过度警觉（低阶内感受偏差）。ISAM 如果加入动态权重——哪些情境下自上而下权重更高、哪些情境下自下而上更高——解释力会更强。另外：如果内语言不是自我意识的必要条件，那机器是否需要有「内语言」才能有自我意识？还是只要具备六个过程的信息整合架构就足够了？这是个开放问题——但文章的框架至少给了你一个不需要先解决「机器能思考吗」就能推进的实验方法。</p>
+
+<hr>
+
+<div class="meta" style="margin-top:2rem; text-align:center; font-size:0.82rem;">
+  文档生成时间：2026-06-17 &nbsp;|&nbsp; 基于 Mograbi, Hall, Arantes &amp; Huntley (2023/2024) WIREs Cognitive Science<br>
+  DOI: 10.1002/wcs.1670 &nbsp;|&nbsp; PMID: 38043919 &nbsp;|&nbsp; CC-BY &nbsp;|&nbsp; 全文 15 页
+</div>
+
+</article>
+</body>
+</html>

@@ -234,6 +234,222 @@ Layer 5 ─ 网络概念：节点、边、小世界网络、ICA、Granger 因果
 
 <h3>你必须在脑里有一张 3D 地图的六个地标</h3>
 
+<figure style="margin:1.4rem 0;">
+  <svg viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:720px;height:auto;font-family:'PingFang SC','Microsoft YaHei',sans-serif;">
+
+    <!-- ==================== 左：外侧面 ==================== -->
+    <g transform="translate(24, 18)">
+
+      <!-- 大脑轮廓 — 前额圆、枕叶收、颞叶下垂 -->
+      <path d="
+        M 240,22
+        C 200,18 130,18  80,35
+        C 50,45  32,60  28,80
+        C 25,90  24,110 28,130
+        C 30,150 38,170 50,188
+        C 62,206 78,218 96,224
+        C 114,230 132,230 148,226
+        C 164,222 178,214 190,200
+        C 202,186 210,168 216,146
+        C 222,124 224,102 226,80
+        C 226,60  228,40  240,22 Z
+      " fill="#fafaf9" stroke="#9ca3af" stroke-width="1.8"/>
+
+      <!-- 小脑 -->
+      <path d="
+        M 50,188 C 30,195 18,210 15,230 C 12,248 18,260 30,264
+        C 42,268 58,264 74,252 C 88,242 98,230 100,218
+        C 90,225 72,228 50,222 C 38,218 42,202 50,188 Z
+      " fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.2"/>
+
+      <!-- 脑干 -->
+      <path d="
+        M 54,195 C 50,215 46,240 44,265 C 42,280 44,290 50,295
+        C 58,290 62,278 60,262 C 56,240 58,218 62,200
+      " fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.2"/>
+
+      <!-- Sylvian 裂 -->
+      <path d="
+        M 64,104 C 90,98 124,96 155,102 C 178,106 196,114 210,128
+      " fill="none" stroke="#9ca3af" stroke-width="2" stroke-dasharray="7,4"/>
+
+      <!-- 中央沟示意 -->
+      <path d="M 160,40 C 162,60 164,80 160,102" fill="none" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="4,3"/>
+
+      <!-- ===== DLPFC (BA 9/46) ===== -->
+      <path d="
+        M 100,30 C 120,24 150,22 185,26 C 200,30 208,40 206,52
+        C 202,66 192,74 175,78 C 155,82 130,80 108,74
+        C 96,68 90,52 94,40 C 95,35 98,32 100,30 Z
+      " fill="#dbeafe" fill-opacity="0.7" stroke="#2563eb" stroke-width="2"/>
+
+      <!-- ===== 角回 (BA 39) ===== -->
+      <path d="
+        M 188,132 C 200,126 212,124 224,128 C 232,134 236,142 230,152
+        C 224,162 212,168 198,168 C 185,168 175,162 172,152
+        C 170,144 176,136 188,132 Z
+      " fill="#fce7f3" fill-opacity="0.7" stroke="#db2777" stroke-width="2"/>
+
+      <!-- ===== 后顶叶 PPC (BA 7/40) ===== -->
+      <path d="
+        M 156,50 C 175,44 198,42 220,48 C 230,54 234,64 228,76
+        C 220,88 206,92 188,90 C 168,88 152,80 148,68 C 146,60 150,54 156,50 Z
+      " fill="#fef3c7" fill-opacity="0.55" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5,3"/>
+
+      <!-- ===== 脑岛 (AI) ===== -->
+      <ellipse cx="130" cy="108" rx="28" ry="14" fill="#d1fae5" fill-opacity="0.75" stroke="#059669" stroke-width="2" stroke-dasharray="4,3" transform="rotate(-12,130,108)"/>
+
+      <!-- ===== 标注 ===== -->
+      <!-- DLPFC -->
+      <polyline points="155,50 155,14 250,14" fill="none" stroke="#2563eb" stroke-width="1"/>
+      <text x="252" y="12" font-size="11" font-weight="700" fill="#1d4ed8">DLPFC</text>
+      <text x="252" y="23" font-size="9" fill="#6b7280">BA 9,46 · CEN</text>
+
+      <!-- PPC -->
+      <polyline points="205,66 245,54 280,54" fill="none" stroke="#f59e0b" stroke-width="1"/>
+      <text x="282" y="50" font-size="10" font-weight="600" fill="#b45309">PPC</text>
+      <text x="282" y="62" font-size="8" fill="#6b7280">后顶叶 · CEN</text>
+
+      <!-- 角回 -->
+      <polyline points="205,148 230,142 265,136" fill="none" stroke="#db2777" stroke-width="1"/>
+      <text x="267" y="132" font-size="11" font-weight="700" fill="#be185d">角回</text>
+      <text x="267" y="144" font-size="9" fill="#6b7280">BA 39 · DMN</text>
+
+      <!-- 脑岛 -->
+      <polyline points="140,116 160,116 178,110" fill="none" stroke="#059669" stroke-width="1"/>
+      <text x="180" y="106" font-size="11" font-weight="700" fill="#047857">脑岛(AI)</text>
+      <text x="180" y="118" font-size="9" fill="#6b7280">Sylvian裂深处·SN</text>
+
+      <!-- Sylvian裂标注 -->
+      <text x="82" y="92" font-size="9" fill="#9ca3af">Sylvian裂</text>
+    </g>
+
+    <!-- ==================== 右：内侧面 ==================== -->
+    <g transform="translate(390, 18)">
+
+      <!-- 大脑轮廓 — 中线剖开 -->
+      <path d="
+        M 240,28
+        C 205,24 160,26 120,34
+        C 90,42  65,52  48,68
+        C 36,78  28,92  26,110
+        C 24,125 26,140 34,155
+        C 42,170 54,182 68,190
+        C 82,198 98,202 114,200
+        C 132,198 150,190 164,178
+        C 178,166 190,150 198,132
+        C 206,114 210,95  212,74
+        C 214,54  220,36  240,28 Z
+      " fill="#fafaf9" stroke="#9ca3af" stroke-width="1.8"/>
+
+      <!-- 胼胝体 -->
+      <path d="
+        M 76,88 C 102,78 140,74 175,80 C 195,84 205,90 206,94
+        C 205,100 195,106 178,108 C 150,110 110,108 78,102
+        C 70,100 68,94 76,88 Z
+      " fill="#e5e7eb" stroke="#9ca3af" stroke-width="1"/>
+
+      <!-- 脑干 -->
+      <path d="
+        M 68,190 C 64,215 60,240 58,265 C 56,280 58,290 64,296
+        C 72,290 74,276 72,260 C 68,238 70,216 74,198
+      " fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.2"/>
+
+      <!-- 小脑（内面） -->
+      <path d="
+        M 46,186 C 32,195 24,210 22,228 C 20,244 26,254 36,256
+        C 46,258 58,250 66,238 C 74,226 72,216 66,210
+        C 58,218 46,216 40,208 C 36,202 40,192 46,186 Z
+      " fill="#f3f4f6" stroke="#9ca3af" stroke-width="1"/>
+
+      <!-- ===== VMPFC (BA 10,11) ===== -->
+      <path d="
+        M 70,42 C 85,38 105,40 118,46 C 128,50 132,58 128,66
+        C 122,76 112,82 98,84 C 84,86 72,82 64,72
+        C 58,64 60,48 70,42 Z
+      " fill="#ddd6fe" fill-opacity="0.7" stroke="#7c3aed" stroke-width="2"/>
+
+      <!-- ===== OFC ===== -->
+      <path d="
+        M 62,74 C 75,70 92,68 106,72 C 114,76 116,84 110,90
+        C 102,96 88,96 76,92 C 66,88 58,80 62,74 Z
+      " fill="#ede9fe" fill-opacity="0.55" stroke="#a78bfa" stroke-width="1.3" stroke-dasharray="4,3"/>
+
+      <!-- ===== dACC (BA 24,32) ===== -->
+      <path d="
+        M 118,44 C 134,40 150,44 160,52 C 168,60 170,72 164,82
+        C 156,92 144,96 130,92 C 118,88 110,78 112,64
+        C 114,54 116,46 118,44 Z
+      " fill="#fce7f3" fill-opacity="0.7" stroke="#db2777" stroke-width="2"/>
+
+      <!-- ===== PCC (BA 23,31) ===== -->
+      <path d="
+        M 164,88 C 180,84 194,88 200,98 C 206,108 202,122 190,130
+        C 178,136 162,134 152,126 C 144,118 146,104 152,96
+        C 156,90 160,89 164,88 Z
+      " fill="#d1fae5" fill-opacity="0.7" stroke="#059669" stroke-width="2"/>
+
+      <!-- ===== 海马 ===== -->
+      <path d="
+        M 162,178 C 178,174 192,178 200,186 C 208,194 206,206 194,214
+        C 182,220 165,216 152,208 C 144,202 140,194 144,188
+        C 148,182 152,180 162,178 Z
+      " fill="#fef3c7" fill-opacity="0.7" stroke="#f59e0b" stroke-width="2"/>
+
+      <!-- ===== 杏仁核 ===== -->
+      <ellipse cx="162" cy="164" rx="12" ry="10" fill="#fee2e2" fill-opacity="0.8" stroke="#dc2626" stroke-width="1.8"/>
+
+      <!-- ===== 标注 ===== -->
+      <!-- VMPFC -->
+      <polyline points="98,60 82,28 50,28" fill="none" stroke="#7c3aed" stroke-width="1"/>
+      <text x="42" y="24" font-size="10" font-weight="700" fill="#6d28d9">VMPFC</text>
+      <text x="42" y="36" font-size="8" fill="#6b7280">BA 10,11 · DMN</text>
+
+      <!-- OFC -->
+      <polyline points="92,78 98,94 90,108" fill="none" stroke="#a78bfa" stroke-width="0.8"/>
+      <text x="92" y="118" text-anchor="middle" font-size="9" font-weight="600" fill="#8b5cf6">OFC</text>
+
+      <!-- dACC -->
+      <polyline points="142,66 160,50 185,44" fill="none" stroke="#db2777" stroke-width="1"/>
+      <text x="187" y="42" font-size="10" font-weight="700" fill="#be185d">dACC</text>
+      <text x="187" y="54" font-size="8" fill="#6b7280">BA 24,32 · SN</text>
+
+      <!-- PCC -->
+      <polyline points="180,106 200,100 228,96" fill="none" stroke="#059669" stroke-width="1"/>
+      <text x="230" y="92" font-size="11" font-weight="700" fill="#047857">PCC</text>
+      <text x="230" y="104" font-size="8" fill="#6b7280">BA 23,31 · DMN</text>
+
+      <!-- 海马 -->
+      <polyline points="178,196 200,196 228,190" fill="none" stroke="#f59e0b" stroke-width="1"/>
+      <text x="230" y="186" font-size="10" font-weight="700" fill="#b45309">海马</text>
+      <text x="230" y="198" font-size="8" fill="#6b7280">内侧颞叶 · DMN</text>
+
+      <!-- 杏仁核 -->
+      <polyline points="168,170 190,162 215,158" fill="none" stroke="#dc2626" stroke-width="1"/>
+      <text x="217" y="154" font-size="10" font-weight="700" fill="#b91c1c">杏仁核</text>
+      <text x="217" y="166" font-size="8" fill="#6b7280">恐惧&情绪 · SN输入</text>
+
+      <!-- 胼胝体 -->
+      <text x="150" y="116" text-anchor="middle" font-size="9" fill="#9ca3af">胼胝体</text>
+    </g>
+
+    <!-- ==================== 图例 ==================== -->
+    <g transform="translate(60, 330)">
+      <rect x="0" y="0" width="12" height="12" rx="2" fill="#dbeafe" stroke="#2563eb" stroke-width="1.2"/><text x="16" y="10" font-size="10" fill="#374151">DLPFC</text>
+      <rect x="72" y="0" width="12" height="12" rx="2" fill="#ddd6fe" stroke="#7c3aed" stroke-width="1.2"/><text x="88" y="10" font-size="10" fill="#374151">VMPFC</text>
+      <rect x="150" y="0" width="12" height="12" rx="2" fill="#fce7f3" stroke="#db2777" stroke-width="1.2"/><text x="166" y="10" font-size="10" fill="#374151">dACC</text>
+      <rect x="225" y="0" width="12" height="12" rx="2" fill="#d1fae5" stroke="#059669" stroke-width="1.2"/><text x="241" y="10" font-size="10" fill="#374151">PCC</text>
+      <rect x="290" y="0" width="12" height="12" rx="2" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2"/><text x="306" y="10" font-size="10" fill="#374151">海马</text>
+      <rect x="355" y="0" width="12" height="12" rx="2" fill="#fee2e2" stroke="#dc2626" stroke-width="1.2"/><text x="371" y="10" font-size="10" fill="#374151">杏仁核</text>
+      <rect x="435" y="0" width="12" height="12" rx="2" fill="#d1fae5" stroke="#059669" stroke-width="1.2" stroke-dasharray="3,3"/><text x="451" y="10" font-size="10" fill="#374151">脑岛(AI)</text>
+    </g>
+  </svg>
+  <figcaption style="text-align:center;font-size:0.8rem;color:var(--muted);margin-top:0.3rem;">
+    左：外侧面 — DLPFC 在额叶外侧上部，脑岛藏在 Sylvian 裂深处，角回在顶颞枕交界。<br>
+    右：内侧面 — VMPFC 在额叶最下缘，dACC 在胼胝体前上方，PCC 在胼胝体后下方，海马和杏仁核深埋颞叶内侧。
+  </figcaption>
+</figure>
+
 <ol>
   <li><strong>前额叶皮层 (Prefrontal Cortex, PFC)</strong>：额头后面的一大片。它是大脑的「执行总部」。分三个子区你必须区分：
     <ul>

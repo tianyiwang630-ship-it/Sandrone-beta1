@@ -16,11 +16,11 @@ class LLMClient:
     def from_profile(cls, profile_name: str | None = None) -> "LLMClient":
         return cls(load_llm_profile(profile_name))
 
-    def generate(self, prompt: str, max_tokens: int = LLM_MAX_TOKENS) -> str:
+    def generate(self, prompt: str, max_tokens: int | None = None) -> str:
         completion = self.client.chat.completions.create(
             model=self.model_name,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
+            max_tokens=self._resolve_max_tokens(max_tokens),
         )
         return completion.choices[0].message.content
 
@@ -28,12 +28,12 @@ class LLMClient:
         self,
         messages: list[dict[str, str]],
         tools: Optional[list[dict[str, Any]]] = None,
-        max_tokens: int = LLM_MAX_TOKENS,
+        max_tokens: int | None = None,
     ) -> Any:
         kwargs = {
             "model": self.model_name,
             "messages": messages,
-            "max_tokens": max_tokens,
+            "max_tokens": self._resolve_max_tokens(max_tokens),
         }
 
         if tools:
@@ -41,3 +41,8 @@ class LLMClient:
             kwargs["tool_choice"] = "auto"
 
         return self.client.chat.completions.create(**kwargs)
+
+    def _resolve_max_tokens(self, max_tokens: int | None) -> int:
+        if max_tokens is not None:
+            return max_tokens
+        return self.profile.max_tokens if self.profile.max_tokens is not None else LLM_MAX_TOKENS

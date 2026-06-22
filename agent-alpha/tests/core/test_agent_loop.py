@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import pytest
 import sys
 import threading
 import time
@@ -52,22 +53,30 @@ class FakeMessage:
 
 
 class FakeLLM:
-    def __init__(self, provider="openai", first_message=None):
-        self.profile = type("Profile", (), {"provider": provider})()
+    def __init__(self, provider="openai", first_message=None, responses=None):
+        self.profile = type(
+            "Profile",
+            (),
+            {"name": "fake", "provider": provider, "max_tokens": 32000},
+        )()
         self.messages_seen = []
-        self._responses = [
-            first_message
-            or FakeMessage(
-                content="",
-                tool_calls=[FakeToolCall("call-1", "load_skill", '{"name": "pdf"}')],
+        self._responses = responses or [
+            (
+                first_message
+                or FakeMessage(
+                    content="",
+                    tool_calls=[FakeToolCall("call-1", "load_skill", '{"name": "pdf"}')],
+                ),
+                None,
             ),
-            FakeMessage(content="done", tool_calls=[]),
+            (FakeMessage(content="done", tool_calls=[]), None),
         ]
 
     def generate_with_tools(self, messages, tools):
         self.messages_seen.append(messages)
-        message = self._responses.pop(0)
-        return type("Resp", (), {"choices": [type("Choice", (), {"message": message})()]})()
+        message, finish_reason = self._responses.pop(0)
+        choice = type("Choice", (), {"message": message, "finish_reason": finish_reason})()
+        return type("Resp", (), {"choices": [choice]})()
 
 
 class FakeToolLoader:
@@ -484,3 +493,242 @@ def test_agent_loop_drops_orphan_tool_results_before_llm_call():
     sent_roles = [message["role"] for message in llm.messages_seen[0]]
     assert sent_roles == ["system", "user", "assistant", "user"]
     assert all(message.get("tool_call_id") != "orphan-call" for message in llm.messages_seen[0])
+
+
+def test_agent_loop_returns_truncated_plain_text_without_retrying():
+    history = []
+    llm = FakeLLM(responses=[(FakeMessage(content="partial but useful"), "length")])
+    loop = AgentLoop(
+        llm=llm,
+        tools=[],
+        tool_loader=FakeToolLoader(),
+        history=history,
+        system_prompt="system prompt",
+        max_turns=3,
+    )
+
+    assert loop.run("answer") == "partial but useful"
+    assert len(llm.messages_seen) == 1
+    assert history[-1] == {"role": "assistant", "content": "partial but useful"}
+
+
+@pytest.mark.parametrize(
+    "broken_arguments",
+    [
+        '{"file_path":"workspace/a.html","content":"unterminated',
+        '{"file_path":"workspace/a.html","content":"x"',
+        '{"file_path":"workspace/a.html","content":"ends with escaped quote\\\"',
+        "",
+    ],
+)
+def test_agent_loop_returns_tool_error_for_each_truncated_argument_shape(broken_arguments):
+    history = []
+    tool_loader = FakeToolLoader()
+    llm = FakeLLM(
+        responses=[
+            (FakeMessage(content="", tool_calls=[FakeToolCall("broken-call", "write", broken_arguments)]), "length"),
+            (FakeMessage(content="handled"), "stop"),
+        ]
+    )
+    loop = AgentLoop(
+        llm=llm,
+        tools=[{"type": "function", "function": {"name": "write"}}],
+        tool_loader=tool_loader,
+        history=history,
+        system_prompt="system prompt",
+        max_turns=3,
+    )
+
+    assert loop.run("write") == "handled"
+    assert tool_loader.calls == []
+    assert history[1]["tool_calls"][0]["id"] == "broken-call"
+    assert history[2]["role"] == "tool"
+    assert history[2]["tool_call_id"] == "broken-call"
+    result = json.loads(history[2]["content"])
+    assert result["success"] is False
+    assert result["truncated"] is True
+    assert "Token" in result["error"]
+    assert "分批" in result["guidance"]
+
+
+def test_agent_loop_executes_complete_tool_call_even_when_response_hits_length_limit():
+    history = []
+    tool_loader = FakeToolLoader()
+    llm = FakeLLM(
+        responses=[
+            (
+                FakeMessage(
+                    content="",
+                    tool_calls=[FakeToolCall("complete-call", "write", '{"file_path":"workspace/a.txt","content":"ok"}')],
+                ),
+                "length",
+            ),
+            (FakeMessage(content="done"), "stop"),
+        ]
+    )
+    loop = AgentLoop(
+        llm=llm,
+        tools=[{"type": "function", "function": {"name": "write"}}],
+        tool_loader=tool_loader,
+        history=history,
+        system_prompt="system prompt",
+        max_turns=3,
+    )
+
+    assert loop.run("write") == "done"
+    assert tool_loader.calls == [("write", {"file_path": "workspace/a.txt", "content": "ok"})]
+    assert history[2]["tool_call_id"] == "complete-call"
+    assert "truncated" not in history[2]["content"]
+
+
+def test_agent_loop_handles_mixed_truncated_tool_calls_independently():
+    tmp_dir = make_test_dir("agent-loop-mixed-truncated-tool-calls")
+    try:
+        history = []
+        tool_loader = FakeToolLoader()
+        message = FakeMessage(
+            content="",
+            reasoning_content="I will perform three independent writes.",
+            tool_calls=[
+                FakeToolCall("good-1", "write", '{"file_path":"workspace/1.txt","content":"one"}'),
+                FakeToolCall("bad-2", "write", '{"file_path":"workspace/2.txt","content":"two'),
+                FakeToolCall("good-3", "write", '{"file_path":"workspace/3.txt","content":"three"}'),
+            ],
+        )
+        llm = FakeLLM(provider="deepseek", responses=[(message, "length"), (FakeMessage(content="done"), "stop")])
+        writer = SessionEventWriter(tmp_dir / "events", "abc123")
+        loop = AgentLoop(
+            llm=llm,
+            tools=[{"type": "function", "function": {"name": "write"}}],
+            tool_loader=tool_loader,
+            history=history,
+            system_prompt="system prompt",
+            max_turns=3,
+            event_writer=writer,
+        )
+
+        assert loop.run("write three") == "done"
+        assert tool_loader.calls == [
+            ("write", {"file_path": "workspace/1.txt", "content": "one"}),
+            ("write", {"file_path": "workspace/3.txt", "content": "three"}),
+        ]
+        assert history[1]["reasoning_content"] == "I will perform three independent writes."
+        assert [entry["tool_call_id"] for entry in history[2:5]] == ["good-1", "bad-2", "good-3"]
+        assert json.loads(history[3]["content"])["truncated"] is True
+
+        records = _read_event_records(tmp_dir / "events" / "abc123.jsonl")
+        events = [record["event"] for record in records if record.get("type") == "llm_output_truncated"]
+        assert events == [
+            {
+                "profile": "fake",
+                "max_tokens": 32000,
+                "tool_call_id": "bad-2",
+                "tool_name": "write",
+            }
+        ]
+    finally:
+        cleanup_test_dir(tmp_dir)
+
+
+def test_agent_loop_does_not_stop_after_repeated_truncated_tool_calls():
+    broken = lambda call_id: (
+        FakeMessage(content="", tool_calls=[FakeToolCall(call_id, "write", '{"file_path":"workspace/a.txt"')]),
+        "length",
+    )
+    llm = FakeLLM(
+        responses=[
+            broken("bad-1"),
+            broken("bad-2"),
+            broken("bad-3"),
+            (FakeMessage(content="eventually done"), "stop"),
+        ]
+    )
+    tool_loader = FakeToolLoader()
+    history = []
+    loop = AgentLoop(
+        llm=llm,
+        tools=[{"type": "function", "function": {"name": "write"}}],
+        tool_loader=tool_loader,
+        history=history,
+        system_prompt="system prompt",
+        max_turns=5,
+    )
+
+    assert loop.run("keep trying") == "eventually done"
+    assert len(llm.messages_seen) == 4
+    assert tool_loader.calls == []
+    assert [entry["tool_call_id"] for entry in history if entry.get("role") == "tool"] == [
+        "bad-1",
+        "bad-2",
+        "bad-3",
+    ]
+
+
+def test_agent_loop_returns_separate_results_for_multiple_broken_calls_in_one_response():
+    history = []
+    tool_loader = FakeToolLoader()
+    llm = FakeLLM(
+        responses=[
+            (
+                FakeMessage(
+                    content="",
+                    tool_calls=[
+                        FakeToolCall("bad-1", "write", '{"file_path":"workspace/1.txt"'),
+                        FakeToolCall("bad-2", "append", '{"file_path":"workspace/2.txt","content":"x'),
+                    ],
+                ),
+                "length",
+            ),
+            (FakeMessage(content="done"), "stop"),
+        ]
+    )
+    loop = AgentLoop(
+        llm=llm,
+        tools=[],
+        tool_loader=tool_loader,
+        history=history,
+        system_prompt="system prompt",
+        max_turns=3,
+    )
+
+    assert loop.run("two broken calls") == "done"
+    assert tool_loader.calls == []
+    tool_results = [entry for entry in history if entry.get("role") == "tool"]
+    assert [entry["tool_call_id"] for entry in tool_results] == ["bad-1", "bad-2"]
+    assert [json.loads(entry["content"])["tool"] for entry in tool_results] == ["write", "append"]
+
+
+def test_agent_loop_keeps_non_length_malformed_argument_behavior_unchanged():
+    tool_loader = FakeToolLoader()
+    llm = FakeLLM(
+        responses=[
+            (FakeMessage(content="", tool_calls=[FakeToolCall("bad", "write", '{"broken"')]), "tool_calls"),
+            (FakeMessage(content="done"), "stop"),
+        ]
+    )
+    loop = AgentLoop(
+        llm=llm,
+        tools=[],
+        tool_loader=tool_loader,
+        history=[],
+        system_prompt="system prompt",
+        max_turns=3,
+    )
+
+    assert loop.run("malformed but not truncated") == "done"
+    assert tool_loader.calls == [("write", {})]
+
+
+def test_agent_loop_keeps_legacy_provider_without_finish_reason_compatible():
+    history = []
+    loop = AgentLoop(
+        llm=FakeLLM(responses=[(FakeMessage(content="legacy answer"), None)]),
+        tools=[],
+        tool_loader=FakeToolLoader(),
+        history=history,
+        system_prompt="system prompt",
+        max_turns=2,
+    )
+
+    assert loop.run("legacy") == "legacy answer"
+    assert history[-1] == {"role": "assistant", "content": "legacy answer"}

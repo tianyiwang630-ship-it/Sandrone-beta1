@@ -18,6 +18,7 @@ class LLMProfile:
     base_url: str
     api_key: str
     model: str
+    max_tokens: int | None = None
 
 
 def load_llm_profile(profile_name: str | None = None) -> LLMProfile:
@@ -29,6 +30,12 @@ def load_llm_profile(profile_name: str | None = None) -> LLMProfile:
         raise ValueError(f"Unknown LLM profile: {selected_name}")
 
     raw_profile = profiles[selected_name]
+    max_tokens = raw_profile.get("max_tokens")
+    if "max_tokens" in raw_profile and (
+        isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or max_tokens <= 0
+    ):
+        raise ValueError(f"LLM profile max_tokens must be a positive integer: {selected_name}")
+
     api_key_env = raw_profile["api_key_env"]
     api_key = os.getenv(api_key_env)
     if not api_key:
@@ -40,6 +47,7 @@ def load_llm_profile(profile_name: str | None = None) -> LLMProfile:
         base_url=raw_profile["base_url"],
         api_key=api_key,
         model=raw_profile["model"],
+        max_tokens=max_tokens,
     )
 
 

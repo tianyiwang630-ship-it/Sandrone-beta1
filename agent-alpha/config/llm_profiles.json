@@ -5,25 +5,29 @@
       "provider": "zhipu",
       "base_url": "https://open.bigmodel.cn/api/paas/v4",
       "api_key_env": "ZHIPU_API_KEY",
-      "model": "glm-5-turbo"
+      "model": "glm-5-turbo",
+      "max_tokens": 32000
     },
     "minimax": {
       "provider": "minimax",
       "base_url": "https://api.minimax.chat/v1",
       "api_key_env": "MINIMAX_API_KEY",
-      "model": "MiniMax-M2.7"
+      "model": "MiniMax-M2.7",
+      "max_tokens": 32000
     },
       "deepseek-flash": {
       "provider": "deepseek",
       "base_url": "https://api.deepseek.com/v1",
       "api_key_env": "DEEPSEEK_API_KEY",
-      "model": "deepseek-v4-flash"
+      "model": "deepseek-v4-flash",
+      "max_tokens": 32000
     },
       "deepseek-pro": {
       "provider": "deepseek",
       "base_url": "https://api.deepseek.com/v1",
       "api_key_env": "DEEPSEEK_API_KEY",
-      "model": "deepseek-v4-pro"
+      "model": "deepseek-v4-pro",
+      "max_tokens": 32000
     }
   }
 }

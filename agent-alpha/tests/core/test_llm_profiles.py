@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import cleanup_test_dir, make_test_dir
+from agent.core.agent_loop import AgentLoop  # noqa: F401 - initialize the existing package import order
 from agent.api.llm_profiles import LLMProfile, load_llm_profile
 
 
@@ -67,6 +68,7 @@ def test_load_llm_profile_by_name(monkeypatch):
                             "base_url": "https://glm.example/v1",
                             "api_key_env": "TEST_GLM_API_KEY",
                             "model": "glm-4.5",
+                            "max_tokens": 32000,
                         },
                     },
                 }
@@ -84,6 +86,7 @@ def test_load_llm_profile_by_name(monkeypatch):
         assert profile.base_url == "https://glm.example/v1"
         assert profile.api_key == "glm-secret"
         assert profile.model == "glm-4.5"
+        assert profile.max_tokens == 32000
     finally:
         cleanup_test_dir(tmp_dir)
 
@@ -117,3 +120,70 @@ def test_load_llm_profile_requires_api_key_env(monkeypatch):
             load_llm_profile()
     finally:
         cleanup_test_dir(tmp_dir)
+
+
+def test_load_llm_profile_uses_global_token_fallback_when_omitted(monkeypatch):
+    tmp_dir = make_test_dir("llm-profile-token-fallback")
+    try:
+        profile_file = tmp_dir / "llm_profiles.json"
+        profile_file.write_text(
+            json.dumps(
+                {
+                    "default": "fallback",
+                    "profiles": {
+                        "fallback": {
+                            "provider": "openai",
+                            "base_url": "https://example.test/v1",
+                            "api_key_env": "TEST_FALLBACK_API_KEY",
+                            "model": "fallback-model",
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("agent.api.llm_profiles.LLM_PROFILES_PATH", profile_file)
+        monkeypatch.setenv("TEST_FALLBACK_API_KEY", "secret")
+
+        assert load_llm_profile().max_tokens is None
+    finally:
+        cleanup_test_dir(tmp_dir)
+
+
+@pytest.mark.parametrize("invalid_value", [0, -1, True, "32000", 32.5, None])
+def test_load_llm_profile_rejects_invalid_max_tokens(monkeypatch, invalid_value):
+    tmp_dir = make_test_dir(f"llm-profile-invalid-token-{type(invalid_value).__name__}-{invalid_value}")
+    try:
+        profile_file = tmp_dir / "llm_profiles.json"
+        profile_file.write_text(
+            json.dumps(
+                {
+                    "default": "invalid",
+                    "profiles": {
+                        "invalid": {
+                            "provider": "openai",
+                            "base_url": "https://example.test/v1",
+                            "api_key_env": "TEST_INVALID_API_KEY",
+                            "model": "invalid-model",
+                            "max_tokens": invalid_value,
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("agent.api.llm_profiles.LLM_PROFILES_PATH", profile_file)
+        monkeypatch.setenv("TEST_INVALID_API_KEY", "secret")
+
+        with pytest.raises(ValueError, match="max_tokens"):
+            load_llm_profile()
+    finally:
+        cleanup_test_dir(tmp_dir)
+
+
+def test_shipped_profiles_all_set_32000_output_tokens():
+    config_path = Path(__file__).resolve().parents[2] / "config" / "llm_profiles.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+
+    assert len(config["profiles"]) == 4
+    assert {profile["max_tokens"] for profile in config["profiles"].values()} == {32000}

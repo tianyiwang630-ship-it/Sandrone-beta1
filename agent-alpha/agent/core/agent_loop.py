@@ -11,6 +11,7 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from agent.core.config import LLM_MAX_TOKENS
 from agent.core.message_history import sanitize_tool_history
 from agent.core.session_events import SessionEventWriter, truncate_tool_result
 
@@ -61,12 +62,16 @@ class AgentLoop:
                     break
 
                 messages = self._build_messages()
-                message = self._call_llm_interruptible(messages)
-                if message is None:
+                choice = self._call_llm_interruptible(messages)
+                if choice is None:
                     break
+                message = choice.message
 
                 if getattr(message, "tool_calls", None):
-                    self._handle_tool_calls(message)
+                    self._handle_tool_calls(
+                        message,
+                        output_truncated=getattr(choice, "finish_reason", None) == "length",
+                    )
                     if self._interrupted.is_set():
                         break
                     continue
@@ -82,7 +87,8 @@ class AgentLoop:
 
     def _call_llm(self, messages: List[Dict[str, Any]]) -> Any:
         response = self.llm.generate_with_tools(messages=messages, tools=self.tools)
-        message = response.choices[0].message
+        choice = response.choices[0]
+        message = choice.message
 
         if hasattr(message, "tool_calls") and message.tool_calls:
             debug_mode = os.environ.get("DEBUG_AGENT", "0") == "1"
@@ -101,7 +107,25 @@ class AgentLoop:
                 }
                 debug_file.write_text(json.dumps(debug_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        return message
+        return choice
+
+    def _record_output_truncation(self, tool_call) -> None:
+        if self.event_writer is None:
+            return
+        profile = getattr(self.llm, "profile", None)
+        self.event_writer.write_event(
+            "llm_output_truncated",
+            {
+                "profile": getattr(profile, "name", "unknown"),
+                "max_tokens": self._output_token_limit(),
+                "tool_call_id": tool_call.id,
+                "tool_name": tool_call.function.name,
+            },
+        )
+
+    def _output_token_limit(self) -> int:
+        configured = getattr(getattr(self.llm, "profile", None), "max_tokens", None)
+        return configured if configured is not None else LLM_MAX_TOKENS
 
     def _call_llm_interruptible(self, messages: List[Dict[str, Any]]) -> Any:
         result: List[Any] = [None]
@@ -125,7 +149,7 @@ class AgentLoop:
             raise error[0]
         return result[0]
 
-    def _handle_tool_calls(self, message) -> None:
+    def _handle_tool_calls(self, message, *, output_truncated: bool = False) -> None:
         assistant_message = {
             "role": "assistant",
             "content": message.content,
@@ -158,7 +182,10 @@ class AgentLoop:
                 )
                 continue
 
-            result = self._execute_single_tool_interruptible(tool_call)
+            result = self._execute_single_tool_interruptible(
+                tool_call,
+                output_truncated=output_truncated,
+            )
             if result is self.TOOL_WAIT_INTERRUPTED:
                 self._append_history_entry(
                     {
@@ -197,7 +224,7 @@ class AgentLoop:
                 self._append_interrupted_tool_results(message.tool_calls[index + 1 :])
                 break
 
-    def _execute_single_tool(self, tool_call) -> Any:
+    def _execute_single_tool(self, tool_call, *, output_truncated: bool = False) -> Any:
         tool_name = tool_call.function.name
         raw_arguments = tool_call.function.arguments
 
@@ -207,17 +234,29 @@ class AgentLoop:
             try:
                 arguments = json.loads(raw_arguments.replace("'", '"'))
             except Exception:
+                if output_truncated:
+                    self._record_output_truncation(tool_call)
+                    return {
+                        "success": False,
+                        "error": "模型输出达到 Token 上限，tool call 参数被截断，未执行该工具。",
+                        "tool": tool_name,
+                        "truncated": True,
+                        "guidance": "请缩短参数内容或拆成多个完整调用；大文件请使用 write 和 append 分批写入。",
+                    }
                 arguments = {}
 
         return self.tool_loader.execute_tool(tool_name, arguments)
 
-    def _execute_single_tool_interruptible(self, tool_call) -> Any:
+    def _execute_single_tool_interruptible(self, tool_call, *, output_truncated: bool = False) -> Any:
         result: List[Any] = [None]
         error: List[Optional[Exception]] = [None]
 
         def call():
             try:
-                result[0] = self._execute_single_tool(tool_call)
+                result[0] = self._execute_single_tool(
+                    tool_call,
+                    output_truncated=output_truncated,
+                )
             except Exception as exc:  # pragma: no cover - passthrough branch
                 error[0] = exc
 

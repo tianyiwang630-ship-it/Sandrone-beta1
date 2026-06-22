@@ -155,6 +155,27 @@ class BlockingToolLoader:
         return {"ok": True}
 
 
+class RaisingToolLoader:
+    def __init__(self, error):
+        self.error = error
+        self.calls = []
+
+    def execute_tool(self, tool_name, arguments):
+        self.calls.append((tool_name, arguments))
+        raise self.error
+
+
+class MixedFailureToolLoader:
+    def __init__(self):
+        self.calls = []
+
+    def execute_tool(self, tool_name, arguments):
+        self.calls.append((tool_name, arguments))
+        if tool_name == "explode":
+            raise RuntimeError("first tool failed")
+        return {"success": True, "tool": tool_name}
+
+
 def test_agent_loop_runs_tool_then_returns_final_answer():
     history = []
     llm = FakeLLM()
@@ -174,6 +195,80 @@ def test_agent_loop_runs_tool_then_returns_final_answer():
     assert tool_loader.calls == [("load_skill", {"name": "pdf"})]
     assert history[0] == {"role": "user", "content": "please help with pdf"}
     assert history[-1] == {"role": "assistant", "content": "done"}
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_message"),
+    [
+        (RuntimeError("tool exploded"), "tool exploded"),
+        (TimeoutError("tool timed out"), "tool timed out"),
+        (OSError("disk disappeared"), "disk disappeared"),
+        (ValueError(), "ValueError"),
+    ],
+)
+def test_agent_loop_turns_tool_exception_into_tool_result(error, expected_message):
+    history = []
+    tool_loader = RaisingToolLoader(error)
+    llm = FakeLLM(
+        responses=[
+            (FakeMessage(content="", tool_calls=[FakeToolCall("call-1", "bash", '{"command": "boom"}')]), "tool_calls"),
+            (FakeMessage(content="handled failure"), "stop"),
+        ]
+    )
+    loop = AgentLoop(
+        llm=llm,
+        tools=[{"type": "function", "function": {"name": "bash"}}],
+        tool_loader=tool_loader,
+        history=history,
+        system_prompt="system prompt",
+        max_turns=3,
+    )
+
+    assert loop.run("run broken tool") == "handled failure"
+    assert tool_loader.calls == [("bash", {"command": "boom"})]
+    tool_result = json.loads(history[2]["content"])
+    assert tool_result == {
+        "success": False,
+        "error": expected_message,
+        "error_type": type(error).__name__,
+        "tool": "bash",
+    }
+
+
+def test_agent_loop_continues_remaining_tools_after_one_raises():
+    history = []
+    tool_loader = MixedFailureToolLoader()
+    llm = FakeLLM(
+        responses=[
+            (
+                FakeMessage(
+                    content="",
+                    tool_calls=[
+                        FakeToolCall("call-1", "explode", "{}"),
+                        FakeToolCall("call-2", "survivor", '{"value": 1}'),
+                    ],
+                ),
+                "tool_calls",
+            ),
+            (FakeMessage(content="recovered"), "stop"),
+        ]
+    )
+    loop = AgentLoop(
+        llm=llm,
+        tools=[],
+        tool_loader=tool_loader,
+        history=history,
+        system_prompt="system prompt",
+        max_turns=3,
+    )
+
+    assert loop.run("run both tools") == "recovered"
+    assert tool_loader.calls == [("explode", {}), ("survivor", {"value": 1})]
+    first_result = json.loads(history[2]["content"])
+    second_result = json.loads(history[3]["content"])
+    assert first_result["success"] is False
+    assert first_result["tool"] == "explode"
+    assert second_result == {"success": True, "tool": "survivor"}
 
 
 def test_agent_loop_appends_realtime_events_for_history_entries():

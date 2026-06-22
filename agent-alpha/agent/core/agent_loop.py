@@ -269,7 +269,13 @@ class AgentLoop:
                 return self.TOOL_WAIT_INTERRUPTED
 
         if error[0]:
-            raise error[0]
+            error_message = str(error[0]) or type(error[0]).__name__
+            return {
+                "success": False,
+                "error": error_message,
+                "error_type": type(error[0]).__name__,
+                "tool": tool_call.function.name,
+            }
         return result[0]
 
     def _is_deepseek_provider(self) -> bool:

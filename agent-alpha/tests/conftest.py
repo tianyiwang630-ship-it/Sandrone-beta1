@@ -17,7 +17,25 @@ if "openai" not in sys.modules:
         def __init__(self, *args, **kwargs):
             self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=lambda **_: None))
 
+    class APIConnectionError(Exception):
+        def __init__(self, message="Connection error.", request=None):
+            super().__init__(message)
+            self.request = request
+
+    class APITimeoutError(APIConnectionError):
+        pass
+
+    class RateLimitError(Exception):
+        pass
+
+    class InternalServerError(Exception):
+        pass
+
     openai_stub.OpenAI = DummyOpenAI
+    openai_stub.APIConnectionError = APIConnectionError
+    openai_stub.APITimeoutError = APITimeoutError
+    openai_stub.RateLimitError = RateLimitError
+    openai_stub.InternalServerError = InternalServerError
     sys.modules["openai"] = openai_stub
 
 

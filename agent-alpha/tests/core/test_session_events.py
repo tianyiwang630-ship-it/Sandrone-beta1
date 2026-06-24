@@ -176,3 +176,39 @@ def test_session_event_writer_compaction_event_continues_after_history_entries()
         assert records[2]["event"]["summary"] == '## 当前状态\n- "quoted" | json-ish {x}'
     finally:
         cleanup_test_dir(tmp_dir)
+
+
+def test_session_event_writer_appends_llm_diagnostics_with_seq_without_api_key():
+    tmp_dir = make_test_dir("session-events-llm-diagnostics")
+    try:
+        writer = SessionEventWriter(tmp_dir / "events", "abc123")
+        writer.write({"role": "user", "content": "hello"})
+        writer.write_event(
+            "llm_request_failed",
+            {
+                "attempt": 1,
+                "max_attempts": 2,
+                "elapsed_seconds": 121.0,
+                "error_type": "APIConnectionError",
+                "error_message": "Connection error.",
+                "model": "test-model",
+                "profile": "test",
+                "provider": "openai",
+                "base_url": "https://example.test/v1",
+                "max_tokens": 32000,
+                "has_tools": True,
+                "tool_count": 2,
+                "message_count": 8,
+                "estimated_input_chars": 2048,
+                "client_refreshed": False,
+                "slow_connection_recovery_injected": False,
+            },
+        )
+
+        records = _read_records(tmp_dir / "events" / "abc123.jsonl")
+        assert [record["seq"] for record in records] == [1, 2]
+        assert records[1]["type"] == "llm_request_failed"
+        assert records[1]["event"]["error_type"] == "APIConnectionError"
+        assert "api_key" not in json.dumps(records, ensure_ascii=False).lower()
+    finally:
+        cleanup_test_dir(tmp_dir)

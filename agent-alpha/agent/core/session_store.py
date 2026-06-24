@@ -5,6 +5,7 @@ Persistent session snapshots for CLI recovery.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -73,7 +74,17 @@ class SessionStore:
 
     def save(self, record: SessionRecord) -> SessionRecord:
         path = self._session_path(record.session_id)
-        path.write_text(json.dumps(record.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp_path = path.with_name(f"{path.name}.tmp")
+        payload = json.dumps(record.to_dict(), ensure_ascii=False, indent=2)
+        tmp_path.write_text(payload, encoding="utf-8")
+        try:
+            os.replace(tmp_path, path)
+        except Exception:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+            raise
         return record
 
     def load(self, session_id: str) -> SessionRecord | None:

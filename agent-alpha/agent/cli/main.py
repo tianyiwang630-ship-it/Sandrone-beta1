@@ -5,6 +5,8 @@ Single-agent CLI runner.
 from __future__ import annotations
 
 import json
+import os
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 import shlex
@@ -36,6 +38,72 @@ def create_cli_session(project_root: Path) -> tuple[Path, Path, Path]:
 def build_log_path(logs_dir: Path, session_id: str, started_at: datetime) -> Path:
     filename = f"{started_at.strftime('%Y-%m-%d_%H-%M-%S')}_session_{session_id}.json"
     return logs_dir / filename
+
+
+def _read_event_records(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8")
+    decoder = json.JSONDecoder()
+    index = 0
+    records: list[dict] = []
+    while index < len(text):
+        while index < len(text) and text[index].isspace():
+            index += 1
+        if index >= len(text):
+            break
+        record, next_index = decoder.raw_decode(text, index)
+        records.append(record)
+        index = next_index
+    return records
+
+
+def _history_stats(history: list[dict]) -> dict:
+    role_counts = Counter(str(message.get("role") or "unknown") for message in history)
+    return {
+        "total_messages": len(history),
+        "role_counts": dict(role_counts),
+        "user_turns": role_counts.get("user", 0),
+        "assistant_turns": role_counts.get("assistant", 0),
+        "tool_results": role_counts.get("tool", 0),
+        "assistant_tool_call_messages": sum(1 for message in history if message.get("tool_calls")),
+    }
+
+
+def _runtime_event_stats(runtime_events: list[dict], event_records: list[dict]) -> dict:
+    runtime_counts = Counter(str(event.get("type") or "unknown") for event in runtime_events)
+    realtime_counts = Counter(str(record.get("type") or "history_entry") for record in event_records)
+    return {
+        "runtime_event_count": len(runtime_events),
+        "runtime_event_type_counts": dict(runtime_counts),
+        "realtime_event_count": len(event_records),
+        "realtime_event_type_counts": dict(realtime_counts),
+    }
+
+
+def _recent_llm_diagnostics(event_records: list[dict], *, limit: int = 20) -> list[dict]:
+    diagnostics: list[dict] = []
+    for record in event_records:
+        event_type = str(record.get("type") or "")
+        if not event_type.startswith("llm_"):
+            continue
+        event = dict(record.get("event") or {})
+        event["type"] = event_type
+        event["seq"] = record.get("seq")
+        event["ts"] = record.get("ts")
+        diagnostics.append(event)
+    return diagnostics[-limit:]
+
+
+def _llm_log_info(agent: AgentRuntime) -> dict:
+    llm = getattr(agent, "llm", None)
+    profile = getattr(llm, "profile", None)
+    return {
+        "profile": getattr(profile, "name", None),
+        "provider": getattr(profile, "provider", None),
+        "model": getattr(llm, "model_name", None) or getattr(profile, "model", None),
+        "base_url": getattr(profile, "base_url", None),
+    }
 
 
 def append_session_index(
@@ -90,17 +158,46 @@ def save_session_log(
         return
 
     ended_at = datetime.now()
+    project_root = sessions_dir.parent.parent
+    events_path = log_path.parent.parent / "events" / f"{session_id}.jsonl"
+    event_read_error = None
+    try:
+        event_records = _read_event_records(events_path)
+    except Exception as exc:
+        event_records = []
+        event_read_error = {
+            "path": str(events_path),
+            "error_type": type(exc).__name__,
+            "message": str(exc),
+        }
+    runtime_data = agent.get_session_log_data()
+    history = list(runtime_data.get("history") or agent.history)
+    runtime_events = list(runtime_data.get("events") or [])
     log_data = {
+        "schema_version": 2,
         "session_id": session_id,
+        "session_kind": "interactive_cli",
+        "entrypoint": "cli",
+        "project_root": str(project_root),
+        "events_path": str(events_path),
         "start_time": started_at.isoformat(),
         "end_time": ended_at.isoformat(),
         "duration_seconds": (ended_at - started_at).total_seconds(),
-        "total_turns": len([msg for msg in agent.history if msg["role"] == "user"]),
+        "total_turns": len([msg for msg in history if msg.get("role") == "user"]),
+        "llm": _llm_log_info(agent),
+        "history_stats": _history_stats(history),
+        "runtime_event_stats": _runtime_event_stats(runtime_events, event_records),
+        "recent_llm_diagnostics": _recent_llm_diagnostics(event_records),
     }
-    log_data.update(agent.get_session_log_data())
+    if event_read_error is not None:
+        log_data["event_read_error"] = event_read_error
+    log_data.update(runtime_data)
 
+    tmp_path = log_path.with_name(f"{log_path.name}.tmp")
     try:
-        log_path.write_text(json.dumps(log_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        payload = json.dumps(log_data, ensure_ascii=False, indent=2)
+        tmp_path.write_text(payload, encoding="utf-8")
+        os.replace(tmp_path, log_path)
         print(f"Saved session log: {log_path}")
         append_session_index(
             sessions_dir=sessions_dir,
@@ -111,6 +208,10 @@ def save_session_log(
             log_path=log_path,
         )
     except Exception as exc:  # pragma: no cover - logging fallback
+        try:
+            tmp_path.unlink()
+        except Exception:
+            pass
         print(f"Failed to save session log: {exc}")
 
 
@@ -159,6 +260,33 @@ def _save_session_snapshot(
     return store.save(record)
 
 
+def _save_recoverable_session_snapshot(
+    *,
+    store: SessionStore,
+    session_id: str,
+    agent: AgentRuntime,
+    workspace: Path,
+    created_at: datetime,
+    metadata: dict | None = None,
+) -> bool:
+    if not getattr(agent, "history", None):
+        return False
+
+    try:
+        _save_session_snapshot(
+            store=store,
+            session_id=session_id,
+            agent=agent,
+            workspace=workspace,
+            created_at=created_at,
+            metadata=metadata,
+        )
+    except Exception as exc:  # pragma: no cover - defensive recovery path
+        print(f"Failed to save recoverable session snapshot: {exc}")
+        return False
+    return True
+
+
 def _merge_session_events(existing: list[dict], runtime_events: list[dict]) -> list[dict]:
     merged = [dict(event) for event in existing]
     seen = {json.dumps(event, ensure_ascii=False, sort_keys=True) for event in merged}
@@ -171,7 +299,7 @@ def _merge_session_events(existing: list[dict], runtime_events: list[dict]) -> l
     return merged
 
 
-def _record_runtime_error(*, events_dir: Path, session_id: str, exc: Exception) -> None:
+def _record_runtime_error(*, events_dir: Path, session_id: str, exc: Exception) -> dict:
     event = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "error_type": type(exc).__name__,
@@ -179,6 +307,7 @@ def _record_runtime_error(*, events_dir: Path, session_id: str, exc: Exception) 
     }
     writer = SessionEventWriter(events_dir, session_id)
     writer.write_event("runtime_error", event)
+    return {"type": "runtime_error", **event}
 
 
 def _append_session_event_and_history(
@@ -529,8 +658,28 @@ def run_single_agent_cli():
             print(f"\nError: {exc}")
             import traceback
 
-            traceback.print_exc()
-            _record_runtime_error(events_dir=events_dir, session_id=session_id, exc=exc)
+            traceback_text = traceback.format_exc()
+            print(traceback_text, end="")
+            _save_recoverable_session_snapshot(
+                store=session_store,
+                session_id=session_id,
+                agent=agent,
+                workspace=current_workspace,
+                created_at=started_at,
+                metadata={"project_root": str(project_root)},
+            )
+            runtime_error_event = _record_runtime_error(events_dir=events_dir, session_id=session_id, exc=exc)
+            runtime_error_event["traceback"] = traceback_text
+            if hasattr(agent, "runtime_events"):
+                agent.runtime_events.append(runtime_error_event)
+            save_session_log(
+                agent=agent,
+                session_id=session_id,
+                started_at=started_at,
+                sessions_dir=sessions_dir,
+                workspace=current_workspace,
+                log_path=log_path,
+            )
             print()
 
 

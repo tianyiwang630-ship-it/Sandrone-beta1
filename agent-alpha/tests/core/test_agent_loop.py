@@ -79,6 +79,128 @@ class FakeLLM:
         return type("Resp", (), {"choices": [choice]})()
 
 
+class DiagnosticRetryLLM:
+    def __init__(
+        self,
+        *,
+        error_type="APIConnectionError",
+        elapsed_seconds=121.0,
+        raise_final: Exception | None = None,
+    ):
+        self.profile = type(
+            "Profile",
+            (),
+            {"name": "fake", "provider": "openai", "max_tokens": 32000},
+        )()
+        self.event_callback = None
+        self.error_type = error_type
+        self.elapsed_seconds = elapsed_seconds
+        self.raise_final = raise_final
+        self.messages_seen = []
+
+    def generate_with_tools(self, messages, tools):
+        self.messages_seen.append(messages)
+        if self.event_callback is None:
+            raise AssertionError("event_callback was not installed")
+        self.event_callback(
+            {
+                "type": "llm_request_started",
+                "attempt": 1,
+                "max_attempts": 2,
+                "elapsed_seconds": 0.0,
+                "error_type": None,
+                "error_message": None,
+                "model": "fake-model",
+                "profile": "fake",
+                "provider": "openai",
+                "base_url": "https://example.test/v1",
+                "max_tokens": 32000,
+                "has_tools": bool(tools),
+                "tool_count": len(tools),
+                "message_count": len(messages),
+                "estimated_input_chars": 10,
+                "client_refreshed": False,
+                "slow_connection_recovery_injected": False,
+            }
+        )
+        callback_result = self.event_callback(
+            {
+                "type": "llm_request_failed",
+                "attempt": 1,
+                "max_attempts": 2,
+                "elapsed_seconds": self.elapsed_seconds,
+                "error_type": self.error_type,
+                "error_message": "Connection error.",
+                "model": "fake-model",
+                "profile": "fake",
+                "provider": "openai",
+                "base_url": "https://example.test/v1",
+                "max_tokens": 32000,
+                "has_tools": bool(tools),
+                "tool_count": len(tools),
+                "message_count": len(messages),
+                "estimated_input_chars": 10,
+                "client_refreshed": False,
+                "slow_connection_recovery_injected": False,
+            }
+        )
+        retry_messages = (
+            callback_result.get("retry_messages")
+            if isinstance(callback_result, dict) and callback_result.get("retry_messages") is not None
+            else messages
+        )
+        self.messages_seen.append(retry_messages)
+        self.event_callback(
+            {
+                "type": "llm_retry_scheduled",
+                "attempt": 1,
+                "max_attempts": 2,
+                "elapsed_seconds": self.elapsed_seconds,
+                "error_type": self.error_type,
+                "error_message": "Connection error.",
+                "model": "fake-model",
+                "profile": "fake",
+                "provider": "openai",
+                "base_url": "https://example.test/v1",
+                "max_tokens": 32000,
+                "has_tools": bool(tools),
+                "tool_count": len(tools),
+                "message_count": len(retry_messages),
+                "estimated_input_chars": 20,
+                "client_refreshed": True,
+                "slow_connection_recovery_injected": bool(
+                    isinstance(callback_result, dict)
+                    and callback_result.get("slow_connection_recovery_injected")
+                ),
+            }
+        )
+        if self.raise_final is not None:
+            raise self.raise_final
+        self.event_callback(
+            {
+                "type": "llm_request_succeeded",
+                "attempt": 2,
+                "max_attempts": 2,
+                "elapsed_seconds": 0.1,
+                "error_type": None,
+                "error_message": None,
+                "model": "fake-model",
+                "profile": "fake",
+                "provider": "openai",
+                "base_url": "https://example.test/v1",
+                "max_tokens": 32000,
+                "has_tools": bool(tools),
+                "tool_count": len(tools),
+                "message_count": len(retry_messages),
+                "estimated_input_chars": 20,
+                "client_refreshed": False,
+                "slow_connection_recovery_injected": False,
+            }
+        )
+        message = FakeMessage(content="recovered", tool_calls=[])
+        return type("Resp", (), {"choices": [type("Choice", (), {"message": message})()]})()
+
+
 class FakeToolLoader:
     def __init__(self):
         self.calls = []
@@ -329,6 +451,102 @@ def test_agent_loop_marks_truncated_tool_results_in_events():
         assert history[2]["content"] == tool_record["entry"]["content"]
     finally:
         cleanup_test_dir(tmp_dir)
+
+
+def test_agent_loop_injects_batching_prompt_after_slow_connection_failure():
+    tmp_dir = make_test_dir("agent-loop-slow-connection-recovery")
+    try:
+        history = []
+        llm = DiagnosticRetryLLM(error_type="APIConnectionError", elapsed_seconds=121.0)
+        writer = SessionEventWriter(tmp_dir / "events", "abc123")
+        loop = AgentLoop(
+            llm=llm,
+            tools=[],
+            tool_loader=FakeToolLoader(),
+            history=history,
+            system_prompt="system prompt",
+            max_turns=3,
+            event_writer=writer,
+        )
+
+        assert loop.run("write a long document") == "recovered"
+
+        recovery_messages = [message for message in history if message.get("content") == loop.SLOW_CONNECTION_RECOVERY_PROMPT]
+        assert len(recovery_messages) == 1
+        assert any(
+            message.get("role") == "user" and message.get("content") == loop.SLOW_CONNECTION_RECOVERY_PROMPT
+            for message in llm.messages_seen[1]
+        )
+        records = _read_event_records(tmp_dir / "events" / "abc123.jsonl")
+        event_types = [record.get("type") for record in records if record.get("type", "").startswith("llm_")]
+        assert event_types == [
+            "llm_request_started",
+            "llm_request_failed",
+            "llm_retry_scheduled",
+            "llm_request_succeeded",
+        ]
+        retry_event = next(record["event"] for record in records if record.get("type") == "llm_retry_scheduled")
+        assert retry_event["slow_connection_recovery_injected"] is True
+    finally:
+        cleanup_test_dir(tmp_dir)
+
+
+def test_agent_loop_does_not_inject_batching_prompt_for_fast_connection_failure():
+    history = []
+    llm = DiagnosticRetryLLM(error_type="APIConnectionError", elapsed_seconds=119.9)
+    loop = AgentLoop(
+        llm=llm,
+        tools=[],
+        tool_loader=FakeToolLoader(),
+        history=history,
+        system_prompt="system prompt",
+        max_turns=3,
+    )
+
+    assert loop.run("write a short document") == "recovered"
+    assert all(message.get("content") != loop.SLOW_CONNECTION_RECOVERY_PROMPT for message in history)
+    assert not any(
+        message.get("role") == "user" and message.get("content") == loop.SLOW_CONNECTION_RECOVERY_PROMPT
+        for message in llm.messages_seen[1]
+    )
+
+
+def test_agent_loop_injects_batching_prompt_after_slow_timeout_failure():
+    history = []
+    llm = DiagnosticRetryLLM(error_type="APITimeoutError", elapsed_seconds=180.0)
+    loop = AgentLoop(
+        llm=llm,
+        tools=[],
+        tool_loader=FakeToolLoader(),
+        history=history,
+        system_prompt="system prompt",
+        max_turns=3,
+    )
+
+    assert loop.run("write a long html") == "recovered"
+    assert any(message.get("content") == loop.SLOW_CONNECTION_RECOVERY_PROMPT for message in history)
+
+
+def test_agent_loop_does_not_inject_batching_prompt_for_non_connection_error():
+    history = []
+    llm = DiagnosticRetryLLM(
+        error_type="ValueError",
+        elapsed_seconds=180.0,
+        raise_final=ValueError("bad request shape"),
+    )
+    loop = AgentLoop(
+        llm=llm,
+        tools=[],
+        tool_loader=FakeToolLoader(),
+        history=history,
+        system_prompt="system prompt",
+        max_turns=3,
+    )
+
+    with pytest.raises(ValueError, match="bad request shape"):
+        loop.run("bad request")
+
+    assert all(message.get("content") != loop.SLOW_CONNECTION_RECOVERY_PROMPT for message in history)
 
 
 def test_deepseek_tool_call_reasoning_content_is_replayed():

@@ -28,6 +28,10 @@
   figcaption{font-size:0.82rem;color:var(--muted);margin-top:0.5rem;line-height:1.5;}
 
   .hl{background:#fefce8;border-left:3px solid #eab308;padding:0.6rem 1rem;margin:1rem 0;border-radius:0 6px 6px 0;font-size:0.9rem;}
+  .tag{display:inline-block;padding:0.1em 0.45em;border-radius:4px;font-size:0.78rem;font-weight:700;margin-right:0.2em;}
+  .sn{background:#dcfce7;color:#166534;}
+  .dmn{background:#ede9fe;color:#6d28d9;}
+  .cen{background:#dbeafe;color:#1e40af;}
   .box{background:var(--block);padding:1.1rem 1.3rem;margin:1rem 0;border-radius:8px;}
   .box0{background:#eff6ff;border-left:4px solid var(--b0);padding:1rem 1.2rem;margin:1rem 0;border-radius:0 8px 8px 0;}
   .boxG{background:#ecfdf5;border-left:4px solid var(--g0);padding:1rem 1.2rem;margin:1rem 0;border-radius:0 8px 8px 0;}
@@ -348,8 +352,105 @@
   <strong>关键观点：</strong>自我意识是<strong>涌现属性</strong>——低层交互产生高层属性，这些属性不可还原为低层组分的简单相加。这意味着：(1) 自我意识不是可定位的「东西」——它是过程，不是物件；(2) 随着认知复杂度降低（往下拆），主观体验在某个还原层次消失在计算中（Dennett, 2014）；(3) 自我意识是<strong>分级现象</strong>，不是二元的——从内隐的稳态监控一直到递归的元认知。最低等生物也能自我监控但没有高层自我意识；演化把低层自监控机制越叠越复杂，最终涌现出人类级别的反身思维。
 </div>
 
+<!-- ================================================================== -->
+<h2>4. 交互动力学：六个过程如何对话</h2>
 
-<h2>4. 临床验证：不同疾病打击不同过程</h2>
+<p>ISAM 的 Figure 1 给出了一个静态架构图——身体层嵌套、高阶层平行、两层之间有箭头。但<strong>当这六个过程同时在线，它们之间的信息流是怎样的？谁先动、谁后应？在什么时间尺度上？</strong></p>
+
+<h3>4.1 身体层的三层嵌套：为什么是这个顺序？</h3>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 340" width="800" height="340">
+  <rect x="0" y="0" width="800" height="340" fill="#fff" rx="8"/>
+  <text x="400" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#374151">图 4：身体自我意识的三层嵌套与神经基础</text>
+
+  <!-- Layer 0 -->
+  <rect x="160" y="40" width="480" height="70" rx="8" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+  <text x="200" y="66" font-size="13" font-weight="700" fill="#166534">内感受（材料层）</text>
+  <text x="200" y="84" font-size="10" fill="#374151">功能：感知身体生理状态（心跳、呼吸、血糖、内脏）</text>
+  <text x="200" y="100" font-size="10" fill="#6b7280">神经：中后岛叶接收内脏传入 → AI 做高阶整合 | 演化年龄：最老（单细胞膜感知）</text>
+  <text x="640" y="70" font-size="9" fill="#059669" text-anchor="middle">不依赖任何其他</text>
+  <text x="640" y="84" font-size="9" fill="#059669" text-anchor="middle">过程即可运作</text>
+
+  <!-- Arrow 0→1 -->
+  <path d="M 400,110 L 400,135" stroke="#166534" stroke-width="2.5" marker-end="url(#arrG)"/>
+  <defs><marker id="arrG" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#166534"/></marker></defs>
+  <text x="415" y="126" font-size="9" fill="#166534">内脏传入信号馈入</text>
+
+  <!-- Layer 1 -->
+  <rect x="160" y="140" width="480" height="70" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="200" y="166" font-size="13" font-weight="700" fill="#1e40af">身体所有权（归属标记层）</text>
+  <text x="200" y="184" font-size="10" fill="#374151">功能：「这具身体属于我」——多感官整合（视觉+触觉+本体）的打标过程</text>
+  <text x="200" y="200" font-size="10" fill="#6b7280">神经：顶叶（空间整合）+ 前运动皮层（图式更新）+ AI（归属标记）+ 颞顶交界（自/非自区分）</text>
+  <text x="640" y="170" font-size="9" fill="#2563eb" text-anchor="middle">岛叶归属标记</text>
+  <text x="640" y="184" font-size="9" fill="#2563eb" text-anchor="middle">出错→人格解体</text>
+
+  <!-- Arrow 1→2 -->
+  <path d="M 400,210 L 400,235" stroke="#1e40af" stroke-width="2.5" marker-end="url(#arrB)"/>
+  <defs><marker id="arrB" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#1e40af"/></marker></defs>
+  <text x="415" y="226" font-size="9" fill="#1e40af">归属完成后才能归因行动</text>
+
+  <!-- Layer 2 -->
+  <rect x="160" y="240" width="480" height="70" rx="8" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5"/>
+  <text x="200" y="266" font-size="13" font-weight="700" fill="#92400e">自主感（行动归因层）</text>
+  <text x="200" y="284" font-size="10" fill="#374151">功能：「是我发起这个动作」——传出副本预测 + 感觉反馈比较</text>
+  <text x="200" y="300" font-size="10" fill="#6b7280">神经：前 SMA（传出副本）→ 顶叶比较器 | 多巴胺系统调节自主体验强度</text>
+  <text x="640" y="270" font-size="9" fill="#d97706" text-anchor="middle">隐性通路先于显性</text>
+  <text x="640" y="284" font-size="9" fill="#d97706" text-anchor="middle">精分首先断隐性</text>
+</svg>
+<figcaption>图 4：身体自我意识三层嵌套——内感受提供原材料，身体所有权的岛叶给它打上归属标记，自主感在归属完成之后进行传出副本-反馈比对。精神分裂症通常先断最外层的隐性自主感通路。</figcaption>
+</figure>
+
+<h3>4.2 高阶层的平行交互：为什么不是层级？</h3>
+
+<p>元认知、情绪调节、自传体记忆之间<strong>没有严格的依赖链</strong>——你可以在元认知完好的情况下情绪调节崩解（某些强迫症），在自传体记忆严重损伤时保持基本情绪调节（早期阿尔茨海默症）。但它们是强耦合的，交叉耦合矩阵如下：</p>
+
+<table style="width:100%;font-size:0.88rem;">
+<tr><th style="width:22%;">耦合对</th><th style="width:10%;">方向</th><th>机制</th></tr>
+<tr><td>元认知 → 情绪调节</td><td>→</td><td>「我控制不了情绪」的元信念 → 放弃调节尝试</td></tr>
+<tr><td>情绪调节 → 元认知</td><td>→</td><td>高唤起状态 → 元认知判断精度下降（躯体标记影响认知评估）</td></tr>
+<tr><td>自传体记忆 → 元认知</td><td>→</td><td>「我上次做这个失败了」→ 低信心预期 → 自证预言</td></tr>
+<tr><td>元认知 → 自传体记忆</td><td>→</td><td>「我不会记得的」→ 编码不深 → 真的不记得</td></tr>
+<tr><td>情绪调节 → 自传体记忆</td><td>→</td><td>抑郁心境 → 过度概括化回忆（情绪一致性过滤）</td></tr>
+<tr><td>自传体记忆 → 情绪调节</td><td>→</td><td>PTSD 闯入记忆 → 情绪调节持续耗竭 → 记忆更牢固（恶性循环）</td></tr>
+</table>
+
+<h3>4.3 身体层与高阶层的双向环流</h3>
+
+<div class="box0">
+  <strong>自下而上路径（从内脏到叙事）：</strong>内感受 → 情绪调节（「心跳加速」→ AI 与概念知识匹配 → 「焦虑」）→ 自传体记忆（焦虑体验被编码为自传体事件）→ 元认知（「我的判断可能被情绪影响」）。神经通路：中后岛叶 → AI → 杏仁核 → 海马 → PCC。
+  <br><br>
+  <strong>自上而下路径（从叙事到内脏）：</strong>自传体记忆 → 情绪调节 → 内感受（PTSD 创伤记忆 → 杏仁核→岛叶通路 → 内感受系统持续过度警觉）。神经通路：海马 → 杏仁核 → AI/中后岛叶 → 脑干自主神经核。
+</div>
+
+<p><strong>三个枢纽脑区</strong>支撑双向环流：</p>
+<table style="width:100%;font-size:0.88rem;">
+<tr><th>枢纽</th><th>三网归属</th><th>角色</th></tr>
+<tr><td><strong>AI（前脑岛）</strong></td><td>SN 核心</td><td>内感受↔情绪的翻译站；也是情绪→内感受的下行调制目标</td></tr>
+<tr><td><strong>PCC/楔前叶</strong></td><td>DMN 核心 + FRIC</td><td>自传体记忆与自我参照的汇聚点；Deco (2021) 的全局工作空间核心</td></tr>
+<tr><td><strong>VMPFC</strong></td><td>DMN 节点</td><td>自上而下信念发源地；对 AI 和杏仁核发出约束信号</td></tr>
+</table>
+
+<h3>4.4 三网框架下的六过程映射</h3>
+
+<p>这是 Mograbi 原论文没有画但本工作区补全的关键拼图——将六个过程映射到 Bressler &amp; Menon (2010) 的三网上：</p>
+
+<table style="width:100%;font-size:0.87rem;">
+<tr><th>过程</th><th>主要网络</th><th>核心节点</th><th>动态角色</th></tr>
+<tr><td>内感受</td><td><span class="tag sn">SN</span>（接收端）</td><td>中后岛叶→AI、dACC</td><td>底层突显信号源</td></tr>
+<tr><td>身体所有权</td><td><span class="tag sn">SN</span> + <span class="tag dmn">DMN</span></td><td>AI（归属标记）、顶叶、PCC</td><td>SN→DMN 桥接</td></tr>
+<tr><td>自主感</td><td><span class="tag sn">SN</span> + <span class="tag cen">CEN</span></td><td>前SMA、顶叶比较器、多巴胺</td><td>SN→CEN 桥接</td></tr>
+<tr><td>元认知</td><td><span class="tag cen">CEN</span> + <span class="tag dmn">DMN</span></td><td>DLPFC（监测）、VMPFC、PCC</td><td>CEN 执行 + DMN 自我参照</td></tr>
+<tr><td>情绪调节</td><td><span class="tag sn">SN</span> + <span class="tag cen">CEN</span> + <span class="tag dmn">DMN</span></td><td>AI/杏仁核→DLPFC/VMPFC</td><td>唯一三网全参与的过程</td></tr>
+<tr><td>自传体记忆</td><td><span class="tag dmn">DMN</span></td><td>PCC、海马、角回、VMPFC</td><td>DMN「自我系统」核心</td></tr>
+</table>
+
+<div class="hl">
+  <strong>三个关键洞察：</strong>(1) <strong>情绪调节是唯一三网全参与的过程</strong>——它同时需要 SN 检测突显、CEN 执行策略、DMN 提供自我叙事上下文，这解释了为什么边缘型人格障碍的情绪崩解如此具有破坏性；(2) <strong>没有哪个过程只用一张网络</strong>——身体层和高阶层是连续的，不是分开的；(3) <strong>SN 的 AI 是整个六过程架构的「总调度」</strong>——AI 不仅切换「外部任务 vs 内部自我」，还决定在内部自我加工的此刻哪个过程占据前台。
+</div>
+
+
+<h2>5. 临床验证：不同疾病打击不同过程</h2>
 
 <!-- ==================== 图 3：临床全景 ==================== -->
 <figure>
@@ -438,8 +539,100 @@
   <strong>临床意义：</strong>不同损伤模式指向不同治疗策略。自上而下模式→认知干预；自下而上模式→药物/生理干预；双向循环→两个方向同时干预。抑郁症用 CBT（改变负面信念→修正内感受解释），AD 目前只能延缓自下而上的记忆系统衰退，精神分裂症需要综合方案。
 </div>
 
+<!-- ================================================================== -->
+<h2>5.5 涌现的动力学：从隐式自监控到「我是我」的七步</h2>
 
-<h2>5. 未来方向：八条路</h2>
+<p>前面讲交互架构——谁跟谁连着。这一节讲<strong>时间线上的涌现过程</strong>：从最低层的隐式自监控开始，逐层往上，在哪一步「自我」从非意识变成了意识。Mograbi 反复强调自我意识是<strong>涌现属性</strong>——低层交互产生高层属性，不可还原为低层组分相加。这不是魔术——是有步骤的。</p>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 720" width="820" height="720">
+  <rect x="0" y="0" width="820" height="720" fill="#fff" rx="8"/>
+  <text x="410" y="22" text-anchor="middle" font-size="13" font-weight="700" fill="#374151">图 5：涌现的七步——从隐式自监控到跨时间的自我身份</text>
+
+  <!-- Vertical backbone arrow -->
+  <line x1="100" y1="50" x2="100" y2="690" stroke="#d1d5db" stroke-width="3"/>
+  <defs><marker id="arrU" markerWidth="8" markerHeight="8" refX="4" refY="8" orient="auto"><path d="M0,8 L4,0 L8,8 Z" fill="#6b7280"/></marker></defs>
+
+  <!-- Step 0 -->
+  <rect x="120" y="38" width="580" height="65" rx="8" fill="#f9fafb" stroke="#e5e7eb" stroke-width="1.5"/>
+  <circle cx="100" cy="70" r="16" fill="#e5e7eb" stroke="#9ca3af" stroke-width="2"/><text x="100" y="75" text-anchor="middle" font-size="11" font-weight="800" fill="#6b7280">0</text>
+  <text x="140" y="58" font-size="12" font-weight="700" fill="#374151">隐式自监控</text><text x="240" y="58" font-size="9" fill="#9ca3af">Implicit Self-Monitoring</text>
+  <text x="140" y="75" font-size="10" fill="#4b5563">脑干自主神经核 + 下丘脑 + 脊髓：心率、呼吸、血糖、体温自动调节</text>
+  <text x="140" y="90" font-size="9" fill="#9ca3af">无主观体验 | 所有脊椎动物都有 | 纯自主神经衰竭者自我意识可完好</text>
+
+  <!-- Step 1 -->
+  <rect x="120" y="118" width="580" height="75" rx="8" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+  <circle cx="100" cy="155" r="16" fill="#dcfce7" stroke="#86efac" stroke-width="2"/><text x="100" y="160" text-anchor="middle" font-size="11" font-weight="800" fill="#166534">1</text>
+  <text x="140" y="138" font-size="12" font-weight="700" fill="#166534">预测误差生成</text><text x="260" y="138" font-size="9" fill="#9ca3af">Prediction Error Generation</text>
+  <text x="140" y="155" font-size="10" fill="#374151">岛叶皮层（特别是背侧中岛叶）：预测 vs 实际内脏传入 → 不匹配 → 预测误差</text>
+  <text x="140" y="170" font-size="9" fill="#6b7280">【精度加权是关键参数】焦虑症对内感受信号精度权重过高 → 正常波动被放大</text>
+  <text x="140" y="185" font-size="9" fill="#9ca3af">大多数误差在隐式层面消除——只有超出精度权重的才会向上传递</text>
+
+  <!-- Step 2 -->
+  <rect x="120" y="208" width="580" height="75" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <circle cx="100" cy="245" r="16" fill="#dbeafe" stroke="#93c5fd" stroke-width="2"/><text x="100" y="250" text-anchor="middle" font-size="11" font-weight="800" fill="#1e40af">2</text>
+  <text x="140" y="228" font-size="12" font-weight="700" fill="#1e40af">突显检测与注意定向</text><text x="290" y="228" font-size="9" fill="#9ca3af">Salience Detection</text>
+  <text x="140" y="245" font-size="10" fill="#374151">AI（前脑岛）：评估误差的「稳态紧迫程度」→ 超过阈值 → 定向注意</text>
+  <text x="140" y="260" font-size="9" fill="#6b7280">AI 同时接收内感受预测误差、外感受突显、边缘输入（杏仁核/伏隔核）</text>
+  <text x="140" y="275" font-size="9" fill="#9ca3af">【意识前的最后一步】AI 阈值决定什么能进入意识——焦虑阈值过低，自闭症对社会线索阈值过高</text>
+
+  <!-- Step 3 -->
+  <rect x="120" y="298" width="580" height="75" rx="8" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5"/>
+  <circle cx="100" cy="335" r="16" fill="#fef3c7" stroke="#fcd34d" stroke-width="2"/><text x="100" y="340" text-anchor="middle" font-size="11" font-weight="800" fill="#92400e">3</text>
+  <text x="140" y="318" font-size="12" font-weight="700" fill="#92400e">跨网络切换</text><text x="240" y="318" font-size="9" fill="#9ca3af">Network Switching</text>
+  <text x="140" y="335" font-size="10" fill="#374151">AI→dACC：检测到突显 → 抑制 DMN（暂停自我参照）+ 激活 CEN（认知资源调向事件）</text>
+  <text x="140" y="350" font-size="9" fill="#6b7280">Sridharan (2008) Granger 因果证实：AI → CEN/DMN 是定向因果——AI 是切换驱动者</text>
+  <text x="140" y="365" font-size="9" fill="#9ca3af">不仅切换「外部 vs 内部」，还决定内部加工的哪个方面占据前台</text>
+
+  <!-- Step 4 -->
+  <rect x="120" y="388" width="580" height="75" rx="8" fill="#fdf2f8" stroke="#f9a8d4" stroke-width="1.5"/>
+  <circle cx="100" cy="425" r="16" fill="#fce7f3" stroke="#f9a8d4" stroke-width="2"/><text x="100" y="430" text-anchor="middle" font-size="11" font-weight="800" fill="#9d174d">4</text>
+  <text x="140" y="408" font-size="12" font-weight="700" fill="#9d174d">信息整合与全局可得</text><text x="300" y="408" font-size="9" fill="#9ca3af">Global Integration</text>
+  <text x="140" y="425" font-size="10" fill="#374151">Deco (2021) FRIC 八区：PCC/楔前叶 + 扣带回峡 + 海马 + 杏仁核 + 伏隔核</text>
+  <text x="140" y="440" font-size="9" fill="#6b7280">PRESENT + PAST + VALUE + FOCUSING 四系统信息在此汇聚 → 全局可得</text>
+  <text x="140" y="455" font-size="9" fill="#9ca3af">【GWT「点燃」的神经实现】不在前额叶——在中线 | 信息已被标记「关于我」</text>
+
+  <!-- Step 5 -->
+  <rect x="120" y="478" width="580" height="75" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5"/>
+  <circle cx="100" cy="515" r="16" fill="#fee2e2" stroke="#fca5a5" stroke-width="2"/><text x="100" y="520" text-anchor="middle" font-size="11" font-weight="800" fill="#991b1b">5</text>
+  <text x="140" y="498" font-size="12" font-weight="700" fill="#991b1b">自我归因</text><text x="220" y="498" font-size="9" fill="#9ca3af">Self-Attribution</text>
+  <text x="140" y="515" font-size="10" fill="#374151">三系统并行：身体所有权（顶叶+岛叶+前运动皮层）+ 自主感（前SMA+比较器）+ 元认知（DLPFC+VMPFC）</text>
+  <text x="140" y="530" font-size="9" fill="#6b7280">三系统结果在 PCC/VMPFC 汇合 → 统一的「自我归属」标签</text>
+  <text x="140" y="545" font-size="9" fill="#9ca3af">【自我浮现的关键步】精神分裂症在此多处断裂 → 统一的「我」无法浮现 → 体验碎片化</text>
+
+  <!-- Step 6 -->
+  <rect x="120" y="568" width="580" height="75" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <circle cx="100" cy="605" r="16" fill="#ede9fe" stroke="#c4b5fd" stroke-width="2"/><text x="100" y="610" text-anchor="middle" font-size="11" font-weight="800" fill="#6d28d9">6</text>
+  <text x="140" y="588" font-size="12" font-weight="700" fill="#6d28d9">叙事整合</text><text x="220" y="588" font-size="9" fill="#9ca3af">Narrative Integration</text>
+  <text x="140" y="605" font-size="10" fill="#374151">海马（事件编码）→ PCC/楔前叶（自我参照检索）→ 角回（个人语义）→ VMPFC（叙事一致性）</text>
+  <text x="140" y="620" font-size="9" fill="#6b7280">过去的我 + 现在的我 + 预期的未来的我 → 编织成一条连续的线 = 「跨时间的自我身份」</text>
+  <text x="140" y="635" font-size="9" fill="#9ca3af">【AD 攻击此步】海马萎缩 → 不能编码新事件 → 叙事线停在过去 | 抑郁：负面叙事过滤记忆</text>
+
+  <!-- Bottom summary -->
+  <rect x="120" y="660" width="580" height="50" rx="10" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1"/>
+  <text x="410" y="680" text-anchor="middle" font-size="10" fill="#374151">信息复杂度递增 ↑ | 意识参与度递增 ↑ | 不可还原性递增 ↑ | <tspan fill="#6b7280">精度加权决定一个信号能走到哪一步</tspan></text>
+</svg>
+<figcaption>图 5：自我意识涌现的七步动力学——从脑干隐式自监控到 PCC/VMPFC 叙事整合的完整时间线。每一步都有明确的输入、输出和神经底物。</figcaption>
+</figure>
+
+<h3>精度加权：决定一个信号能走多远</h3>
+
+<p>七步走完，核心问题是：<strong>什么决定了一个预测误差在 Step 1 被静默消除，还是逐层向上直到 Step 6 成为「我是谁」的一部分？</strong></p>
+
+<div class="box0">
+  答案在 <strong>精度加权（precision weighting）</strong>——PC 框架最关键但最容易被忽略的参数。每个层级的预测都带有一个<strong>精度估计</strong>——大脑不只预测「心率应该是 70」，还预测「我对心率预测的置信度有多高」。精度越高 → 该通道的预测误差越不容忍 → 越容易被向上传递。
+  <br><br>
+  精度是<strong>可学习的</strong>——通过反复经验。如果一个人反复经历「心跳加速→恐慌→濒死感」，岛叶对内感受信号的精度权重越来越高。最终，微小的心率变化就会产生巨大的加权预测误差 → 经过全部七步 → 被编码为「我差点又死了」→ 进一步推高精度权重。这就是<strong>焦虑症的正反馈动力学</strong>。
+  <br><br>
+  反之，正念冥想的作用机制之一，可能就是<strong>降低内感受信号的精度权重</strong>——训练岛叶以更低精度处理内感受 → 相同身体感觉产生更小的加权误差 → 更少触发灾难化级联。
+</div>
+
+<h3>涌现的总结逻辑</h3>
+
+<p>自我意识不是某一层的产物——是 Step 0→6 全部在并行运行、每一步都向上传递加权预测误差的结果。Step 0 的稳态监控是「材料」，Step 1-2 的预测编码和突显检测是「筛选」，Step 3-4 的网络切换和信息整合是「场景构建」，Step 5 的自我归因是「归属」，Step 6 的叙事整合是「跨时间缝合」。<strong>拆掉任何一步，自我意识不会消失，但会变样</strong>——拆掉 Step 6（AD）→失去跨时间身份；拆掉 Step 5（精神分裂症）→体验碎片化；拆掉 Step 2-3（自闭症）→外部社会自我受损但叙事自我可以完好。</p>
+
+
+<h2>6. 未来方向：八条路</h2>
 
 <!-- ==================== 图 4：未来方向 ==================== -->
 <figure>
@@ -524,7 +717,7 @@
 
 <hr>
 
-<h2>6. 结论</h2>
+<h2>7. 结论</h2>
 
 <p>自我意识不是前额叶的广播台（这个你已经从 Deco 2021 知道了），也不是任何一个脑区的专属活动。Mograbi 2023/2024 补上了另一半：<strong>自我意识是六个过程——内感受、身体所有权、自主感、元认知、情绪调节、自传体记忆——在预测编码框架下动态交互中涌现的分级现象。</strong>它不是可定位的「东西」，不是单一脑区的活动，不是二元的开关。最低等生物有内隐自监控但没有高层自我意识——演化把低层自监控机制越叠越复杂，最终在人类这里涌现出了递归的反身思维。</p>
 
@@ -584,7 +777,7 @@
 
 <p><strong>临床覆盖：</strong>表 1 是全文最有实用价值的贡献——一张六过程×十几个疾病的对照表。精神分裂症的六个过程全中不是偶然的，BPD 的情绪调节独中也不是偶然的。</p>
 
-<p><strong>局限：</strong>(1) 没有跨疾病的直接对比研究——综述的局限也是领域的局限。(2) PC 框架既有广度也有代价——广度在于它能套到任何事情上，代价在于它可能什么都解释得了但什么都没精确预测。(3) 缺乏神经网络的深层讨论。</p>
+<p><strong>局限：</strong>(1) 没有跨疾病的直接对比研究——综述的局限也是领域的局限。(2) PC 框架既有广度也有代价——广度在于它能套到任何事情上，代价在于它可能什么都解释得了但什么都没精确预测。(3) 神经网络细节薄弱——原论文几乎没有讨论三网（DMN/SN/CEN）在自我意识中的角色。<strong>本文已在 §4（交互动力学）和 §5.5（涌现动力学）中补充了这一分析</strong>，将 Mograbi 的六过程框架与 Bressler &amp; Menon (2010) 的三网框架、Deco et al. (2021) 的全局工作空间重定位进行了对接。</p>
 
 <p><strong>判决：</strong>这是一篇好的路线图，不是好的终点站。它的价值是帮研究者看清楚：自我意识不是可定位的脑区，是分布在六个过程中、由预测编码统一架构的一簇能力。需要下一步的实证来夯实。</p>
 

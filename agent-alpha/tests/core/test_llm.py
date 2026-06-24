@@ -1,6 +1,7 @@
 from agent.core.agent_loop import AgentLoop  # noqa: F401 - initialize the existing package import order
 from agent.api.llm import LLMClient
 from agent.api.llm_profiles import LLMProfile
+import json
 import pytest
 from openai import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
 
@@ -144,7 +145,6 @@ def test_generate_with_tools_raises_after_retry_budget(monkeypatch):
     clients = [
         FlakyClient(FlakyCompletions([APIConnectionError(request=None)])),
         FlakyClient(FlakyCompletions([APIConnectionError(request=None)])),
-        FlakyClient(FlakyCompletions([APIConnectionError(request=None)])),
     ]
     client.client = clients[0]
     refreshes = iter(clients[1:])
@@ -154,7 +154,7 @@ def test_generate_with_tools_raises_after_retry_budget(monkeypatch):
     with pytest.raises(APIConnectionError):
         client.generate_with_tools(messages=[{"role": "user", "content": "hello"}], tools=[])
 
-    assert [len(item.chat.completions.calls) for item in clients] == [1, 1, 1]
+    assert [len(item.chat.completions.calls) for item in clients] == [1, 1]
 
 
 def test_generate_with_tools_does_not_retry_non_retryable_error(monkeypatch):
@@ -190,7 +190,6 @@ def test_generate_raises_after_retry_budget_and_refreshes_each_retry(monkeypatch
     clients = [
         FlakyClient(FlakyCompletions([APIConnectionError(request=None)])),
         FlakyClient(FlakyCompletions([APIConnectionError(request=None)])),
-        FlakyClient(FlakyCompletions([APIConnectionError(request=None)])),
     ]
     client.client = clients[0]
     refreshes = iter(clients[1:])
@@ -200,7 +199,7 @@ def test_generate_raises_after_retry_budget_and_refreshes_each_retry(monkeypatch
     with pytest.raises(APIConnectionError):
         client.generate("summarize", max_tokens=6000)
 
-    assert [len(item.chat.completions.calls) for item in clients] == [1, 1, 1]
+    assert [len(item.chat.completions.calls) for item in clients] == [1, 1]
 
 
 def test_retryable_errors_include_openai_transient_failures():
@@ -230,3 +229,55 @@ def test_new_client_disables_sdk_internal_retries(monkeypatch):
     )
 
     assert captured["max_retries"] == 0
+
+
+def test_generate_with_tools_emits_retry_diagnostics_without_api_key(monkeypatch):
+    client = _client()
+    events = []
+    first = FlakyCompletions([APIConnectionError(request=None)])
+    second = FlakyCompletions([_ok_response("ok")])
+    client.client = FlakyClient(first)
+    client.event_callback = lambda event: events.append(event) or None
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    monkeypatch.setattr(client, "_new_client", lambda: FlakyClient(second), raising=False)
+
+    response = client.generate_with_tools(messages=[{"role": "user", "content": "hello"}], tools=[])
+
+    assert response.choices[0].message.content == "ok"
+    assert [event["type"] for event in events] == [
+        "llm_request_started",
+        "llm_request_failed",
+        "llm_retry_scheduled",
+        "llm_request_started",
+        "llm_request_succeeded",
+    ]
+    assert events[1]["error_type"] == "APIConnectionError"
+    assert events[2]["client_refreshed"] is True
+    assert all("api_key" not in json.dumps(event).lower() for event in events)
+
+
+def test_generate_with_tools_emits_exhausted_after_second_connection_failure(monkeypatch):
+    client = _client()
+    events = []
+    clients = [
+        FlakyClient(FlakyCompletions([APIConnectionError(request=None)])),
+        FlakyClient(FlakyCompletions([APIConnectionError(request=None)])),
+    ]
+    client.client = clients[0]
+    refreshes = iter(clients[1:])
+    client.event_callback = lambda event: events.append(event) or None
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    monkeypatch.setattr(client, "_new_client", lambda: next(refreshes), raising=False)
+
+    with pytest.raises(APIConnectionError):
+        client.generate_with_tools(messages=[{"role": "user", "content": "hello"}], tools=[])
+
+    assert [event["type"] for event in events] == [
+        "llm_request_started",
+        "llm_request_failed",
+        "llm_retry_scheduled",
+        "llm_request_started",
+        "llm_request_failed",
+        "llm_request_exhausted",
+    ]
+    assert events[-1]["attempt"] == 2

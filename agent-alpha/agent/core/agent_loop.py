@@ -21,6 +21,13 @@ class AgentLoop:
 
     INTERRUPTED_TOOL_RESULT = "[用户中断] 此工具调用未执行"
     TOOL_WAIT_INTERRUPTED = object()
+    SLOW_CONNECTION_RECOVERY_SECONDS = 120.0
+    SLOW_CONNECTION_ERROR_TYPES = {"APIConnectionError", "APITimeoutError"}
+    SLOW_CONNECTION_RECOVERY_PROMPT = (
+        "[系统恢复提示] 上一次模型请求在长时间等待后连接失败。"
+        "请把接下来的回答或文件修改拆成小批次完成："
+        "每次只输出/调用工具处理一小段内容，完成后再继续下一批，避免单次生成过长。"
+    )
 
     def __init__(
         self,
@@ -46,6 +53,7 @@ class AgentLoop:
         self.event_writer = event_writer
         self._interrupted = interrupt_event or threading.Event()
         self._start_interrupt_listener = start_interrupt_listener
+        self._llm_recovery_prompt_injected = False
 
     def run(self, user_input: str) -> str:
         """Execute the multi-turn loop for one user input."""
@@ -86,7 +94,13 @@ class AgentLoop:
             self._interrupted.set()
 
     def _call_llm(self, messages: List[Dict[str, Any]]) -> Any:
-        response = self.llm.generate_with_tools(messages=messages, tools=self.tools)
+        previous_callback = getattr(self.llm, "event_callback", None)
+        self._llm_recovery_prompt_injected = False
+        try:
+            setattr(self.llm, "event_callback", self._handle_llm_diagnostic_event)
+            response = self.llm.generate_with_tools(messages=messages, tools=self.tools)
+        finally:
+            setattr(self.llm, "event_callback", previous_callback)
         choice = response.choices[0]
         message = choice.message
 
@@ -108,6 +122,44 @@ class AgentLoop:
                 debug_file.write_text(json.dumps(debug_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
         return choice
+
+    def _handle_llm_diagnostic_event(self, event: dict[str, Any]) -> dict[str, Any] | None:
+        event_type = str(event.get("type") or "")
+        payload = {key: value for key, value in event.items() if key != "type"}
+        if self.event_writer is not None and event_type:
+            self.event_writer.write_event(event_type, payload)
+
+        if not self._should_inject_slow_connection_recovery(event):
+            return None
+
+        self._llm_recovery_prompt_injected = True
+        self._append_history_entry(
+            {"role": "user", "content": self.SLOW_CONNECTION_RECOVERY_PROMPT},
+            llm_recovery_prompt=True,
+        )
+        return {
+            "retry_messages": self._build_messages(),
+            "slow_connection_recovery_injected": True,
+        }
+
+    def _should_inject_slow_connection_recovery(self, event: dict[str, Any]) -> bool:
+        if self._llm_recovery_prompt_injected:
+            return False
+        if event.get("type") != "llm_request_failed":
+            return False
+        if event.get("attempt") != 1:
+            return False
+        if event.get("error_type") not in self.SLOW_CONNECTION_ERROR_TYPES:
+            return False
+        try:
+            elapsed_seconds = float(event.get("elapsed_seconds") or 0)
+        except (TypeError, ValueError):
+            elapsed_seconds = 0.0
+        if elapsed_seconds < self.SLOW_CONNECTION_RECOVERY_SECONDS:
+            return False
+        if int(event.get("max_attempts") or 0) <= int(event.get("attempt") or 0):
+            return False
+        return True
 
     def _record_output_truncation(self, tool_call) -> None:
         if self.event_writer is None:

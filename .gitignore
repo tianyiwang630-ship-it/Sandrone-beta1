@@ -1,7 +1,12 @@
 # 临时文件
 /temp/
+/.pytest_cache/
 
 # 学习项目
 /learning proj/
+
+# 本地 Codex/Claude 配置
+/.codex/
+/.claude/
 
 /调试.txt

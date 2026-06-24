@@ -29,6 +29,7 @@ ENV/
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
@@ -36,14 +37,8 @@ ENV/
 # MCP 自动生成的配置
 .auto-config.json
 
-# 工作空间
-workspace/generated/*
-workspace/temp/*
-workspace/debug/*
-workspace/test*.py
-workspace/*.py
-!workspace/generated/.gitkeep
-!workspace/temp/.gitkeep
+# 工作空间：agent 运行和个人产物，不进 git
+/workspace/
 
 # agent-alpha 本地运行目录
 /bin/
@@ -79,6 +74,7 @@ mcp-servers/playwright/temp/
 # 日志
 *.log
 logs/
+/session-log/
 
 # 环境变量
 .env

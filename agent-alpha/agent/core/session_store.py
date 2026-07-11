@@ -30,6 +30,8 @@ class SessionRecord:
     kind: SessionKind = SessionKind.INTERACTIVE
     workspace: str = ""
     history: list[dict[str, Any]] = field(default_factory=list)
+    runtime_history: list[dict[str, Any]] = field(default_factory=list)
+    runtime_checkpoint: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
     events: list[dict[str, Any]] = field(default_factory=list)
     created_at: str = field(default_factory=_now_iso)
@@ -55,6 +57,8 @@ class SessionRecord:
             kind=kind if isinstance(kind, SessionKind) else SessionKind(str(kind)),
             workspace=str(data.get("workspace") or ""),
             history=list(data.get("history", [])),
+            runtime_history=list(data.get("runtime_history", [])),
+            runtime_checkpoint=dict(data.get("runtime_checkpoint", {})),
             metadata=dict(data.get("metadata", {})),
             events=list(data.get("events", [])),
             created_at=data.get("created_at") or _now_iso(),
@@ -93,6 +97,13 @@ class SessionStore:
             return None
         data = json.loads(path.read_text(encoding="utf-8"))
         return SessionRecord.from_dict(data)
+
+    def delete(self, session_id: str) -> bool:
+        path = self._session_path(session_id)
+        if not path.exists():
+            return False
+        path.unlink()
+        return True
 
     def list_recent(
         self,

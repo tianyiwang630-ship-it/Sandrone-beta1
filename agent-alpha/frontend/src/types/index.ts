@@ -1,0 +1,111 @@
+export interface Project {
+  id: string
+  name: string
+  workspace_path: string
+  workspace_kind: 'managed' | 'external'
+  description?: string | null
+  created_at: string
+  updated_at: string
+  is_pinned: boolean
+  is_archived: boolean
+}
+
+export interface Session {
+  id: string
+  project_id: string | null
+  title: string
+  workspace_path: string
+  created_at: string
+  updated_at: string
+  message_count: number
+  is_pinned: boolean
+  is_archived: boolean
+}
+
+export interface Message {
+  role: string
+  content?: unknown
+  tool_calls?: Array<Record<string, unknown>> | null
+  tool_call_id?: string | null
+}
+
+export interface SessionEvent {
+  ts?: string
+  seq?: number
+  session_id?: string
+  type?: string
+  entry?: Record<string, unknown>
+  event?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface SessionDetail extends Session {
+  messages: Message[]
+}
+
+export interface ChatStart {
+  request_id: string
+  session_id: string
+}
+
+export interface ChatStatus {
+  request_id: string
+  session_id: string
+  status: 'running' | 'success' | 'failed' | 'interrupted' | 'recoverable'
+  operation?: 'chat' | 'compact'
+  started_after_seq?: number
+  response?: string | null
+  error?: string | null
+  tool_calls_count: number
+  recovery_stage?: string | null
+  can_resume?: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface Settings {
+  llm_provider: 'openai' | 'deepseek' | 'minimax' | 'zhipu' | 'kimi' | 'siliconflow' | 'custom'
+  llm_base_url: string
+  llm_api_key: string
+  llm_api_keys: Record<string, string>
+  llm_model_name: string
+  has_api_key: boolean
+  permission_mode: string
+  theme: string
+}
+
+export interface User {
+  id: string
+  name: string
+  role: 'admin' | 'operator' | 'viewer'
+}
+
+export interface CapabilityItem {
+  name: string
+  kind: 'skill' | 'mcp'
+  path: string
+  summary?: string | null
+}
+
+export interface FileInfo {
+  name: string
+  path: string
+  size: number
+  is_dir: boolean
+}
+
+export interface UploadConflictItem {
+  path: string
+  name: string
+  is_dir: boolean
+}
+
+export interface FileContent {
+  path: string
+  name: string
+  size: number
+  language: string
+  content: string | null
+  previewable: boolean
+  message?: string | null
+}

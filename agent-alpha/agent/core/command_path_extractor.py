@@ -15,6 +15,8 @@ SCRIPT_RUNNERS = {"python", "python3", "py", "node"}
 PACKAGE_INSTALL_PATTERNS = {
     ("pip", "install"),
     ("pip", "uninstall"),
+    ("pip3", "install"),
+    ("pip3", "uninstall"),
     ("npm", "install"),
     ("npm", "uninstall"),
     ("pnpm", "install"),
@@ -220,8 +222,8 @@ def classify_package_install_scope(command: str, *, project_root: Path) -> str:
     if first == "uv" and len(lowered) >= 3 and lowered[1:3] == ["pip", "install"]:
         return _classify_uv_pip_install(tokens, project_root=project_root)
 
-    if first == "pip" and len(lowered) >= 2 and lowered[1] == "install":
-        return "allowed_alpha_venv"
+    if _is_bare_pip_launcher(first) and len(lowered) >= 2 and lowered[1] in {"install", "uninstall"}:
+        return "deny"
 
     if _is_python_pip_install(tokens):
         return "allowed_alpha_venv" if _is_allowed_python_launcher(tokens[0], project_root=project_root) else "deny"
@@ -260,7 +262,8 @@ def explain_alpha_venv_command_guidance(project_root: Path) -> str:
     return (
         "Run Python tools through agent-alpha's virtual environment. "
         f"Use {windows_python} -m <module> ... on Windows or {posix_python} -m <module> ... on Linux/macOS. "
-        "For package installs, use agent-alpha/.venv's python -m pip install ... ."
+        "For package installs, use agent-alpha/.venv's python -m pip install ... or uv pip install --python "
+        "agent-alpha/.venv's python ... . Do not use bare pip or pip3 because they can resolve to a host Python."
     )
 
 
@@ -404,6 +407,8 @@ def _is_package_install(tokens: list[str]) -> bool:
     lowered = tuple(token.lower() for token in tokens[:2])
     if lowered in PACKAGE_INSTALL_PATTERNS:
         return True
+    if len(tokens) >= 2 and _is_bare_pip_launcher(tokens[0].lower()) and tokens[1].lower() in {"install", "uninstall"}:
+        return True
     return _is_python_pip_install(tokens)
 
 
@@ -463,6 +468,10 @@ def _is_python_module_command(tokens: list[str]) -> bool:
 
 def _is_bare_python(token: str) -> bool:
     return token.lower() in {"python", "python3", "py"}
+
+
+def _is_bare_pip_launcher(token: str) -> bool:
+    return bool(re.fullmatch(r"pip(?:\d+(?:\.\d+)?)?", Path(_strip_quotes(token)).name.lower()))
 
 
 def _is_allowed_python_launcher(token: str, *, project_root: Path) -> bool:
@@ -531,7 +540,7 @@ def _has_inline_path_override(command: str) -> bool:
 def _classify_uv_pip_install(tokens: list[str], *, project_root: Path) -> str:
     lowered = [token.lower() for token in tokens]
     if "--python" not in lowered:
-        return "allowed_alpha_venv"
+        return "deny"
     index = lowered.index("--python")
     if index + 1 >= len(tokens):
         return "deny"

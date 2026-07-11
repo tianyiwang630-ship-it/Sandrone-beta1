@@ -1,6 +1,6 @@
 ---
 name: pdf
-description: Comprehensive PDF manipulation toolkit for extracting text and tables, creating new PDFs, merging/splitting documents, and handling forms. When Claude needs to fill in a PDF form or programmatically process, generate, or analyze PDF documents at scale.
+description: PDF manipulation toolkit for extracting text and tables, creating new PDFs, merging/splitting documents, and handling forms using the bundled Python dependencies only.
 license: Proprietary. LICENSE.txt has complete terms
 ---
 
@@ -8,7 +8,19 @@ license: Proprietary. LICENSE.txt has complete terms
 
 ## Overview
 
-This guide covers essential PDF processing operations using Python libraries and command-line tools. For advanced features, JavaScript libraries, and detailed examples, see reference.md. If you need to fill out a PDF form, read forms.md and follow its instructions.
+This guide covers essential PDF processing operations using bundled Python libraries. The product is for non-technical users, so do not install new PDF dependencies or require external system tools during a task.
+
+Use these libraries as the default PDF toolkit:
+
+- `pypdf`: merge, split, rotate, metadata, simple text extraction, watermarks, encryption.
+- `pymupdf` (`fitz`): robust text extraction, page rendering, image extraction, page inspection.
+- `pdfplumber`: layout-aware text extraction and table extraction.
+- `reportlab`: create new PDFs.
+- `pandas`: use only if it is already available for table cleanup/export; otherwise write CSV or plain structured data.
+
+Do not install or require extra tools such as `tesseract`, `pdf2image`, Poppler utilities, `qpdf`, or `pdftk`. If an external tool is already installed and the user explicitly wants to use it, it is acceptable to use it. Otherwise, degrade gracefully: explain that the current environment can only extract embedded PDF text and cannot reliably read image-only pages.
+
+If you need to fill out a PDF form, read forms.md and follow its instructions, but still do not install additional dependencies.
 
 ## Quick Start
 
@@ -118,6 +130,56 @@ if all_tables:
     combined_df.to_excel("extracted_tables.xlsx", index=False)
 ```
 
+If `pandas` is not available, keep the table as rows and write CSV with the Python standard library:
+
+```python
+import csv
+import pdfplumber
+
+with pdfplumber.open("document.pdf") as pdf, open("tables.csv", "w", newline="", encoding="utf-8") as output:
+    writer = csv.writer(output)
+    for page in pdf.pages:
+        for table in page.extract_tables():
+            writer.writerows(table)
+            writer.writerow([])
+```
+
+### pymupdf - Robust Reading and Rendering
+
+#### Extract Text
+```python
+import fitz
+
+doc = fitz.open("document.pdf")
+text = ""
+for page in doc:
+    text += page.get_text()
+```
+
+#### Render a Page to an Image
+```python
+import fitz
+
+doc = fitz.open("document.pdf")
+page = doc[0]
+pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+pix.save("page_1.png")
+```
+
+#### Extract Images
+```python
+import fitz
+
+doc = fitz.open("document.pdf")
+for page_index, page in enumerate(doc):
+    for image_index, image in enumerate(page.get_images(full=True)):
+        xref = image[0]
+        image_data = doc.extract_image(xref)
+        ext = image_data["ext"]
+        with open(f"page_{page_index + 1}_image_{image_index + 1}.{ext}", "wb") as output:
+            output.write(image_data["image"])
+```
+
 ### reportlab - Create PDFs
 
 #### Basic PDF Creation
@@ -166,68 +228,7 @@ story.append(Paragraph("Content for page 2", styles['Normal']))
 doc.build(story)
 ```
 
-## Command-Line Tools
-
-### pdftotext (poppler-utils)
-```bash
-# Extract text
-pdftotext input.pdf output.txt
-
-# Extract text preserving layout
-pdftotext -layout input.pdf output.txt
-
-# Extract specific pages
-pdftotext -f 1 -l 5 input.pdf output.txt  # Pages 1-5
-```
-
-### qpdf
-```bash
-# Merge PDFs
-qpdf --empty --pages file1.pdf file2.pdf -- merged.pdf
-
-# Split pages
-qpdf input.pdf --pages . 1-5 -- pages1-5.pdf
-qpdf input.pdf --pages . 6-10 -- pages6-10.pdf
-
-# Rotate pages
-qpdf input.pdf output.pdf --rotate=+90:1  # Rotate page 1 by 90 degrees
-
-# Remove password
-qpdf --password=mypassword --decrypt encrypted.pdf decrypted.pdf
-```
-
-### pdftk (if available)
-```bash
-# Merge
-pdftk file1.pdf file2.pdf cat output merged.pdf
-
-# Split
-pdftk input.pdf burst
-
-# Rotate
-pdftk input.pdf rotate 1east output rotated.pdf
-```
-
 ## Common Tasks
-
-### Extract Text from Scanned PDFs
-```python
-# Requires: pip install pytesseract pdf2image
-import pytesseract
-from pdf2image import convert_from_path
-
-# Convert PDF to images
-images = convert_from_path('scanned.pdf')
-
-# OCR each page
-text = ""
-for i, image in enumerate(images):
-    text += f"Page {i+1}:\n"
-    text += pytesseract.image_to_string(image)
-    text += "\n\n"
-
-print(text)
-```
 
 ### Add Watermark
 ```python
@@ -249,11 +250,17 @@ with open("watermarked.pdf", "wb") as output:
 ```
 
 ### Extract Images
-```bash
-# Using pdfimages (poppler-utils)
-pdfimages -j input.pdf output_prefix
+```python
+import fitz
 
-# This extracts all images as output_prefix-000.jpg, output_prefix-001.jpg, etc.
+doc = fitz.open("document.pdf")
+for page_index, page in enumerate(doc):
+    for image_index, image in enumerate(page.get_images(full=True)):
+        xref = image[0]
+        image_data = doc.extract_image(xref)
+        ext = image_data["ext"]
+        with open(f"page_{page_index + 1}_image_{image_index + 1}.{ext}", "wb") as output:
+            output.write(image_data["image"])
 ```
 
 ### Password Protection
@@ -282,13 +289,11 @@ with open("encrypted.pdf", "wb") as output:
 | Extract text | pdfplumber | `page.extract_text()` |
 | Extract tables | pdfplumber | `page.extract_tables()` |
 | Create PDFs | reportlab | Canvas or Platypus |
-| Command line merge | qpdf | `qpdf --empty --pages ...` |
-| OCR scanned PDFs | pytesseract | Convert to image first |
-| Fill PDF forms | pdf-lib or pypdf (see forms.md) | See forms.md |
+| Render pages | pymupdf | `page.get_pixmap()` |
+| Extract images | pymupdf | `doc.extract_image(xref)` |
+| Fill PDF forms | pypdf (see forms.md) | See forms.md |
 
 ## Next Steps
 
-- For advanced pypdfium2 usage, see reference.md
-- For JavaScript libraries (pdf-lib), see reference.md
 - If you need to fill out a PDF form, follow the instructions in forms.md
-- For troubleshooting guides, see reference.md
+- For advanced examples, use reference.md only when they stay within the dependency policy above

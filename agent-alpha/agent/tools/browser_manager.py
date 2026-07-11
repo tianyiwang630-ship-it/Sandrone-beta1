@@ -376,7 +376,15 @@ class BrowserManager:
         return self._alpha_browser_process_using_path(profile_dir)
 
     def _alpha_browser_process_using_path(self, path: str) -> bool:
+        return bool(self._alpha_browser_processes_using_path(path))
+
+    def _alpha_browser_command_lines_using_path(self, path: str) -> list[str]:
+        return [item["command_line"] for item in self._alpha_browser_processes_using_path(path)]
+
+    def _alpha_browser_processes_using_path(self, path: str) -> list[dict[str, Any]]:
         marker = self._normalized_path_text(path)
+        if not marker:
+            return []
         if os.name == "nt":
             script = (
                 "$ErrorActionPreference='SilentlyContinue'; "
@@ -395,19 +403,31 @@ class BrowserManager:
                     check=False,
                 )
             except Exception:
-                return False
+                return []
             output = (proc.stdout or "").strip()
             if not output:
-                return False
+                return []
             try:
                 data = json.loads(output)
             except json.JSONDecodeError:
-                return False
+                return []
             items = data if isinstance(data, list) else [data]
-            return any(marker in self._normalized_path_text(str(item.get("CommandLine") or "")) for item in items if isinstance(item, dict))
+            processes: list[dict[str, Any]] = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                command_line = str(item.get("CommandLine") or "")
+                if marker not in self._normalized_path_text(command_line):
+                    continue
+                try:
+                    pid = int(item["ProcessId"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                processes.append({"pid": pid, "command_line": command_line})
+            return processes
         try:
             proc = subprocess.run(
-                ["ps", "-eo", "args="],
+                ["ps", "-eo", "pid=,args="],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
@@ -416,8 +436,49 @@ class BrowserManager:
                 check=False,
             )
         except Exception:
-            return False
-        return marker in self._normalized_path_text(proc.stdout or "")
+            return []
+        processes = []
+        for line in (proc.stdout or "").splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            pid_text, _, command_line = stripped.partition(" ")
+            if marker not in self._normalized_path_text(command_line):
+                continue
+            try:
+                pid = int(pid_text)
+            except ValueError:
+                continue
+            processes.append({"pid": pid, "command_line": command_line})
+        return processes
+
+    def _terminate_alpha_browser_processes_using_path(self, path: Path | str) -> int:
+        stopped = 0
+        for item in self._alpha_browser_processes_using_path(str(path)):
+            pid = item["pid"]
+            if os.name == "nt":
+                result = subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/T", "/F"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                if result.returncode == 0:
+                    stopped += 1
+                continue
+            try:
+                os.kill(int(pid), signal.SIGTERM)
+            except (OSError, ValueError):
+                continue
+            stopped += 1
+        return stopped
+
+    def _profile_has_headless_browser(self, profile_dir: Path) -> bool:
+        return any(
+            "--headless" in self._normalized_path_text(command_line)
+            for command_line in self._alpha_browser_command_lines_using_path(str(profile_dir))
+        )
 
     def _refresh_interactive_lock(self, *, cleanup_headless_base: bool = True) -> dict[str, Any] | None:
         lock = self._read_interactive_lock()
@@ -911,13 +972,15 @@ class BrowserManager:
             "note": note,
         }
 
-    def _browser_env(self) -> dict[str, str]:
+    def _browser_env(self, *, headed: bool | None = None) -> dict[str, str]:
         env = dict(os.environ)
         info = self.browser_executable_info()
         if info.get("mode") == "configured" and info.get("path"):
             env["AGENT_BROWSER_EXECUTABLE_PATH"] = str(info["path"])
         else:
             env.pop("AGENT_BROWSER_EXECUTABLE_PATH", None)
+        if headed is not None:
+            env["AGENT_BROWSER_HEADED"] = "true" if headed else "false"
         return env
 
     def _session_args(self, session: BrowserSession, *, headed: bool = False) -> list[str]:
@@ -945,11 +1008,12 @@ class BrowserManager:
         socket_dir.mkdir(parents=True, exist_ok=True)
         download_dir = self.downloads_dir / session.session_id
         download_dir.mkdir(parents=True, exist_ok=True)
+        effective_headed = False if session.cdp_url else bool(headed or session.mode == "local-headed-login")
 
         stdout_path = socket_dir / "_stdout.txt"
         stderr_path = socket_dir / "_stderr.txt"
-        cmd = self._command_prefix() + self._session_args(session, headed=headed) + command_args
-        env = self._browser_env()
+        cmd = self._command_prefix() + self._session_args(session, headed=effective_headed) + command_args
+        env = self._browser_env(headed=effective_headed)
         env["AGENT_BROWSER_SOCKET_DIR"] = str(socket_dir)
         env["AGENT_BROWSER_DOWNLOAD_PATH"] = str(download_dir)
 
@@ -1139,6 +1203,20 @@ class BrowserManager:
                 "mode": session.mode,
                 "result": result,
                 "error": "headed browser launch failed",
+            }
+        if self._profile_has_headless_browser(profile_dir):
+            self._remove_interactive_lock()
+            self.active_sessions.pop(session.session_id, None)
+            self.current_headed_session_id = None
+            self._write_session_metadata(session, "failed")
+            return {
+                "success": False,
+                "session_id": session.session_id,
+                "profile": profile,
+                "profile_dir": str(profile_dir),
+                "mode": session.mode,
+                "result": result,
+                "error": "headed browser launch produced a headless Chrome process",
             }
         lock_payload["status"] = "running"
         lock_payload["browser_pid"] = result.get("browser_pid")
@@ -1342,6 +1420,85 @@ class BrowserManager:
             "session_id": session.session_id,
             "profile": profile,
             "closed": closed,
+            "interactive_lock_released": True,
+        }
+
+    def profile_force_close_headed(
+        self,
+        *,
+        user_confirmed_close_visible_browser: bool = False,
+        wait_timeout: float = 10.0,
+    ) -> dict[str, Any]:
+        if not user_confirmed_close_visible_browser:
+            return {
+                "success": False,
+                "error": "Refusing to force-close visible headed browser without user_confirmed_close_visible_browser=true.",
+            }
+        lock = self._refresh_interactive_lock(cleanup_headless_base=False)
+        if not lock:
+            return {
+                "success": True,
+                "closed": False,
+                "interactive_lock_released": False,
+                "message": "No recorded headed browser to close.",
+            }
+        if lock.get("kind") != "headed":
+            return {
+                "success": False,
+                "error": "Refusing to close interactive browser because the current lock is not a headed browser.",
+                "interactive_lock": lock,
+                **self._interactive_lock_guidance(lock),
+            }
+        if lock.get("status") == "starting" and self._is_owner_process_alive(lock.get("owner_pid")):
+            return {
+                "success": False,
+                "error": "Headed browser is still starting; wait for startup to finish before force-closing it.",
+                "interactive_lock": lock,
+            }
+
+        profile = str(lock.get("profile") or "default")
+        profile_dir = Path(str(lock.get("profile_dir") or self._profile_dir(profile)))
+        stopped = self._terminate_alpha_browser_processes_using_path(profile_dir)
+
+        started = time.monotonic()
+        while time.monotonic() - started <= wait_timeout:
+            if not self._alpha_browser_process_using_path(str(profile_dir)):
+                break
+            time.sleep(0.1)
+        else:
+            return {
+                "success": False,
+                "error": "headed browser is still running; interactive lock was not released.",
+                "profile": profile,
+                "profile_dir": str(profile_dir),
+                "stopped_processes": stopped,
+                "interactive_lock": lock,
+            }
+
+        with self._profile_copy_lock(timeout=5):
+            shutil.rmtree(self._headless_base_dir(profile), ignore_errors=True)
+            shutil.rmtree(self._headless_base_next_dir(profile), ignore_errors=True)
+        try:
+            self._headed_state_file(profile).unlink()
+        except FileNotFoundError:
+            pass
+        self._remove_interactive_lock()
+        session_id = str(lock.get("session_id") or "")
+        if session_id:
+            self.active_sessions.pop(session_id, None)
+            try:
+                self._session_metadata_path(session_id).unlink()
+            except FileNotFoundError:
+                pass
+        if self.current_headed_session_id == session_id:
+            self.current_headed_session_id = None
+        return {
+            "success": True,
+            "closed": stopped > 0,
+            "session_id": session_id or None,
+            "profile": profile,
+            "profile_dir": str(profile_dir),
+            "stopped_processes": stopped,
             "interactive_lock_released": True,
         }
 

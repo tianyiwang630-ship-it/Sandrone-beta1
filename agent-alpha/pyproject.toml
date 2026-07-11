@@ -8,10 +8,19 @@ version = "0.1.0"
 description = "Single-agent runtime for local skill and tool orchestration."
 requires-python = ">=3.12"
 dependencies = [
+  "fastapi>=0.129.0",
   "fastmcp>=2.14.0",
   "openai>=1.0.0",
+  "pdfplumber>=0.11.10",
+  "pillow>=12.3.0",
+  "pymupdf>=1.28.0",
+  "pypdf>=6.14.2",
+  "pytesseract>=0.3.13",
+  "python-docx>=1.0.0",
   "pyyaml>=6.0",
+  "reportlab>=5.0.0",
   "tiktoken>=0.5.0",
+  "uvicorn>=0.30.0",
   "watchdog>=3.0.0",
 ]
 
@@ -23,6 +32,7 @@ dev = [
 
 [project.scripts]
 agent-alpha = "agent.cli.main:run_single_agent_cli"
+agent-alpha-web = "agent.server.app:main"
 
 [tool.setuptools.packages.find]
 include = ["agent", "agent.*"]

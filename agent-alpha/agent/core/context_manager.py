@@ -17,6 +17,7 @@ from agent.core.config import (
     LLM_SUMMARY_MAX_TOKENS
 )
 from agent.core.message_history import collect_recent_complete_groups, sanitize_tool_history
+from agent.core.message_pipeline import SUMMARY_KIND, prepare_runtime_history
 from agent.core.session_events import truncate_tool_result
 
 
@@ -31,10 +32,25 @@ class ContextCompressionResult:
     after_tokens: int
     success: bool
     fallback: bool
+    skipped: bool = False
     error: str | None = None
 
     @property
+    def outcome(self) -> str:
+        if self.skipped:
+            return "skipped"
+        if self.success:
+            return "compacted"
+        if self.fallback:
+            return "fallback"
+        if self.error == "interrupted":
+            return "interrupted"
+        return "failed"
+
+    @property
     def event_type(self) -> str:
+        if self.skipped:
+            return "context_compaction_skipped"
         return "context_compacted" if self.success else "context_compaction_failed"
 
     def to_event(self) -> dict[str, Any]:
@@ -48,6 +64,8 @@ class ContextCompressionResult:
             "after_tokens": self.after_tokens,
             "success": self.success,
             "fallback": self.fallback,
+            "skipped": self.skipped,
+            "outcome": self.outcome,
             "error": self.error,
         }
 
@@ -181,7 +199,12 @@ class ContextManager:
         before_tokens = self.count_history_tokens(history)
 
         # 1. 分离旧对话和最近对话，保留完整 tool-call 消息组
-        valid_history = sanitize_tool_history(history)
+        valid_history = prepare_runtime_history(history, request_id=f"compact_{trigger}").history
+        existing_summary = None
+        if valid_history and _is_compaction_summary(valid_history[0]):
+            existing_summary = dict(valid_history[0])
+            existing_summary["_runtime_kind"] = SUMMARY_KIND
+            valid_history = valid_history[1:]
         recent_history = collect_recent_complete_groups(
             valid_history,
             max_groups=self.keep_recent_turns,
@@ -190,23 +213,27 @@ class ContextManager:
         old_history = valid_history[: len(valid_history) - len(recent_history)]
 
         if not old_history:
-            print("⚠️  没有需要压缩的历史")
+            print("ℹ️  当前上下文已经足够紧凑，无需压缩")
+            unchanged = ([existing_summary] if existing_summary else []) + valid_history
             return ContextCompressionResult(
                 trigger=trigger,
-                history=history,
-                summary="",
+                history=unchanged,
+                summary=str(existing_summary.get("content") or "") if existing_summary else "",
                 before_message_count=before_message_count,
-                after_message_count=len(history),
+                after_message_count=len(unchanged),
                 before_tokens=before_tokens,
-                after_tokens=before_tokens,
-                success=False,
+                after_tokens=self.count_history_tokens(unchanged),
+                success=True,
                 fallback=False,
-                error="没有需要压缩的历史",
+                skipped=True,
+                error=None,
             )
+
+        summary_source = ([existing_summary] if existing_summary else []) + old_history
 
         old_tokens = sum(
             self.count_tokens(msg.get("content", ""))
-            for msg in old_history
+            for msg in summary_source
             if msg.get("content")
         )
 
@@ -214,16 +241,23 @@ class ContextManager:
 
         # 2. 调用 LLM 生成压缩摘要文本
         try:
-            summary_md = self._generate_summary(old_history)
+            summary_md = self._generate_summary(summary_source)
             summary_tokens = self.count_tokens(summary_md)
 
             # 3. 重组 history
             new_history = [
                 {
                     "role": "user",
-                    "content": summary_md
+                    "content": summary_md,
+                    "_runtime_kind": SUMMARY_KIND,
                 }
             ] + recent_history
+            validated_history = prepare_runtime_history(
+                new_history,
+                request_id=f"compact_result_{trigger}",
+            ).history
+            if not validated_history or validated_history[0].get("_runtime_kind") != SUMMARY_KIND:
+                raise ValueError("压缩结果未通过消息结构校验")
 
             compression_ratio = (1 - summary_tokens / old_tokens) * 100 if old_tokens > 0 else 0
 
@@ -233,12 +267,12 @@ class ContextManager:
 
             return ContextCompressionResult(
                 trigger=trigger,
-                history=new_history,
+                history=validated_history,
                 summary=summary_md,
                 before_message_count=before_message_count,
-                after_message_count=len(new_history),
+                after_message_count=len(validated_history),
                 before_tokens=before_tokens,
-                after_tokens=self.count_history_tokens(new_history),
+                after_tokens=self.count_history_tokens(validated_history),
                 success=True,
                 fallback=False,
                 error=None,
@@ -262,11 +296,18 @@ class ContextManager:
 
             print(f"❌ 压缩失败: {e}，压缩失败，已退回最近短上下文")
             fallback_target = int(self.available_for_history * self.compression_threshold * 0.3)
+            fallback_source = self._slim_history_for_fallback(history)
             fallback_history = collect_recent_complete_groups(
-                history,
+                fallback_source,
                 max_tokens=fallback_target,
                 count_message_tokens=self._count_history_message_tokens,
             )
+            if not fallback_history and fallback_source:
+                fallback_history = collect_recent_complete_groups(
+                    fallback_source,
+                    max_groups=1,
+                    count_message_tokens=self._count_history_message_tokens,
+                )
             return ContextCompressionResult(
                 trigger=trigger,
                 history=fallback_history,
@@ -398,6 +439,44 @@ class ContextManager:
         content, _ = truncate_tool_result(content, max_chars=3000, max_lines=80)
         return [f"[{index}] {role}: {content}"]
 
+    def _slim_history_for_fallback(self, history: List[Dict]) -> List[Dict]:
+        slimmed: list[dict[str, Any]] = []
+        for message in sanitize_tool_history(history):
+            item = dict(message)
+            role = item.get("role")
+
+            if item.get("content") is not None:
+                if role == "tool":
+                    item["content"], _ = truncate_tool_result(
+                        item.get("content", ""),
+                        max_chars=2000,
+                        max_lines=60,
+                    )
+                else:
+                    item["content"], _ = truncate_tool_result(
+                        item.get("content", ""),
+                        max_chars=3000,
+                        max_lines=80,
+                    )
+
+            tool_calls = item.get("tool_calls")
+            if role == "assistant" and isinstance(tool_calls, list):
+                item["tool_calls"] = [self._slim_tool_call_for_fallback(tool_call) for tool_call in tool_calls]
+
+            slimmed.append(item)
+        return slimmed
+    def _slim_tool_call_for_fallback(self, tool_call: Dict) -> Dict:
+        slimmed = dict(tool_call)
+        function = dict(slimmed.get("function") or {})
+        if "arguments" in function:
+            function["arguments"], _ = truncate_tool_result(
+                function.get("arguments", ""),
+                max_chars=1000,
+                max_lines=20,
+            )
+        slimmed["function"] = function
+        return slimmed
+
     def _count_history_message_tokens(self, message: Dict) -> int:
         total = self.count_tokens(str(message.get("content", "") or ""))
         if message.get("tool_calls"):
@@ -406,4 +485,14 @@ class ContextManager:
 
     def _count_transcript_message_tokens(self, message: Dict) -> int:
         return self.count_tokens("\n".join(self._message_to_transcript_lines(0, message)))
+
+
+def _is_compaction_summary(message: Dict[str, Any]) -> bool:
+    if message.get("_runtime_kind") == SUMMARY_KIND:
+        return True
+    if message.get("role") != "user":
+        return False
+    content = str(message.get("content") or "")
+    legacy_headings = ("## 任务时间线", "## 当前状态", "## 关键用户意图")
+    return all(heading in content for heading in legacy_headings)
 

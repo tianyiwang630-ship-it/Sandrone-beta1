@@ -11,7 +11,8 @@ COMPRESSION_INPUT_RATIO = 0.9  # Summary LLM can receive up to 90% of max tokens
 
 # ========== Tool Execution ==========
 MAX_TOOL_RESULT_CHARS = 30000  # Truncate individual tool results to 30K chars
-BASH_TOOL_TIMEOUT = 300  # Bash tool execution timeout (seconds)
+BASH_TOOL_TIMEOUT = 30  # Default bash tool execution timeout (seconds)
+BASH_TOOL_MAX_TIMEOUT = 300  # Maximum per-call bash timeout (seconds)
 
 # ========== LLM Responses ==========
 LLM_MAX_TOKENS = 20000  # Default max tokens for LLM generation

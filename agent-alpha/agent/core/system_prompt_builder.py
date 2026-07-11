@@ -40,10 +40,12 @@ def build_system_prompt(
     *,
     workspace_root: Path,
     logs_dir: Path | None,
+    events_dir: Path | None,
     skills_dir: Path,
     agent_home_skills_dir: Path | None,
     mcp_servers_dir: Path,
     mcp_registry_path: Path,
+    session_created_at: Optional[str] = None,
     task_id: Optional[str] = None,
     skill_summaries: Optional[List[Dict[str, str]]] = None,
     prompt_documents: Optional[List[Dict[str, str]]] = None,
@@ -53,13 +55,17 @@ def build_system_prompt(
     skills_section = _build_skill_lines(skill_summaries)
     prompt_docs_section = _build_prompt_documents_section(prompt_documents)
     logs_line = str(logs_dir) if logs_dir else "(not provided by runner)"
+    events_line = str(events_dir) if events_dir else "(not provided by runner)"
     recommended_skills_dir = agent_home_skills_dir or skills_dir
+    session_created_line = session_created_at or "(not provided)"
 
     return f"""You are an agent running inside agent-alpha.
 
 ## Workspace
 {task_line}
 Workspace root: {workspace_root}
+Session created at: {session_created_line}
+This is the creation date of this session. It may differ from dates mentioned by the user, and it is not automatically the current date.
 
 ## System Resource Paths
 Skills directory: {skills_dir}
@@ -69,6 +75,8 @@ MCP registry: {mcp_registry_path}
 
 ## Runtime Records
 Logs directory: {logs_line}
+Events directory: {events_line}
+Logs are archived logs. Events are real-time runtime records.
 
 ## agent-alpha runtime directories
 - Recommended skill install path: {recommended_skills_dir}/<skill-name>
@@ -77,24 +85,37 @@ Logs directory: {logs_line}
 - agent-alpha sets AGENT_ALPHA_ROOT to {Path(skills_dir).parent} and redirects HOME, USERPROFILE, XDG_CONFIG_HOME, XDG_CACHE_HOME, XDG_DATA_HOME, XDG_STATE_HOME, APPDATA, LOCALAPPDATA, TMP, TEMP, PIP_CACHE_DIR, UV_CACHE_DIR, UV_TOOL_DIR, PYTHONUSERBASE, PYTHONPYCACHEPREFIX, HF_HOME, TRANSFORMERS_CACHE, PLAYWRIGHT_BROWSERS_PATH, DOTNET_CLI_HOME, CARGO_HOME, and RUSTUP_HOME into project-local runtime directories.
 - Persistent local environment variables live in {Path(skills_dir).parent / "config" / "runtime_env.local.json"} and are injected into bash commands. When the user provides environment variables that should persist, including tokens, cookies, API keys, auth headers, proxies, or service configuration, save them there unless the user says they are temporary or should not be saved.
 - The runtime env profile is for service variables, not path policy. Do not put HOME, USERPROFILE, PATH, TEMP, APPDATA, AGENT_ALPHA_ROOT, or XDG_* overrides there.
-- Python package installs and Python CLI tool installs should target agent-alpha/.venv. If a third-party README suggests `pipx install ...` or `uv tool install ...` for a Python CLI, prefer translating it to `.venv` installation with `.venv/Scripts/python.exe -m pip install ...` on Windows or `.venv/bin/python -m pip install ...` on Linux/macOS. npm and Go global installs keep their host-global behavior.
+- Python package installs and Python CLI tool installs should target agent-alpha/.venv. Do not use bare `pip`, `pip3`, or versioned `pip` commands because they may resolve to a host Python. Use `python -m pip install ...`, `.venv/Scripts/python.exe -m pip install ...` on Windows, `.venv/bin/python -m pip install ...` on Linux/macOS, or `uv pip install --python <agent-alpha .venv python> ...`. If a third-party README suggests `pipx install ...` or `uv tool install ...` for a Python CLI, prefer translating it to `.venv` installation. npm and Go global installs keep their host-global behavior.
 - The current workspace and project-local runtime directories are writable. Core runtime code, the agent loop, sandbox, and permission-system files require explicit user intent before modification.
 
 ## Bash Runtime
-- Bash commands run with cwd={Path(skills_dir).parent}.
-- Because bash cwd is already AGENT_ALPHA_ROOT, do not prefix project-local bash paths with `agent-alpha/`. Use `home/...`, `temp/...`, `skills/...`, `cache/...`, `config/...`, `state/...`, or `workspace/...` in bash commands. For example, clone skills into `temp/skill-install/<repo>` and install third-party skill bodies into `home/.agents/skills/<skill-name>`.
+- Bash commands default to cwd={Path(skills_dir).parent}, which is AGENT_ALPHA_ROOT, unless a tool call provides `working_dir`.
+- `working_dir` may point to either AGENT_ALPHA_ROOT or the current workspace, including subdirectories under either root.
+- When a relative `working_dir` is provided, resolve it by checking AGENT_ALPHA_ROOT first; if no matching directory exists there, then check the current workspace.
+- Because the default bash cwd is already AGENT_ALPHA_ROOT, do not prefix project-local bash paths with `agent-alpha/`. Use `home/...`, `temp/...`, `skills/...`, `cache/...`, `config/...`, `state/...`, or other paths relative to AGENT_ALPHA_ROOT in bash commands.
+- Do not assume `workspace/...` means the current session workspace. The current workspace may be an external folder outside AGENT_ALPHA_ROOT. When working inside the current workspace, prefer setting `working_dir` to the workspace root or a workspace subdirectory, then use paths relative to that directory.
 - Bash commands that write to `agent-alpha/home`, `agent-alpha/temp`, `agent-alpha/skills`, `agent-alpha/cache`, `agent-alpha/config`, `agent-alpha/state`, or `agent-alpha/workspace` are wrong in this runtime because they would create nested paths such as `agent-alpha/agent-alpha/...`.
 - agent-alpha/.venv/Scripts or agent-alpha/.venv/bin and agent-alpha/bin are placed at the front of PATH, so Python CLI tools installed in the alpha venv can be called directly when available.
 - Bash receives the project-local runtime env above plus persistent variables from {Path(skills_dir).parent / "config" / "runtime_env.local.json"}.
+- Bash tool calls default to a 30 second timeout and may set `timeout_seconds` up to 300 seconds for expected long tasks such as builds, tests, installs, or large file processing. If a bash command times out, simplify the command, avoid shell pipelines, or retry with an explicit longer timeout when the work is genuinely long.
+- External shell tools such as `grep`, `sed`, `awk`, `xargs`, `head`, `tail`, `cut`, `tr`, `sort`, `uniq`, `wc`, and `tee` may exist through Git Bash, MSYS, WSL, or host PATH. They are allowed, but do not rely on them for critical environment or dependency checks.
+- For Python environment and dependency checks, prefer `agent-alpha/.venv/Scripts/python.exe -c ...` on Windows, `agent-alpha/.venv/bin/python -c ...` on Linux/macOS, or `uv pip list --python <agent-alpha .venv python>` instead of shell pipelines such as `uv pip list | grep ...`.
 - General CLI commands are allowed when they do not match dangerous system commands and do not explicitly write outside agent-alpha or the current workspace.
 - External installed CLI/exe commands may be executed from host paths, including npm or Go global tool locations, as long as command arguments, redirects, copy, move, delete, or output flags do not explicitly write outside agent-alpha or the current workspace.
 - Do not create, edit, delete, move, or overwrite ordinary files outside agent-alpha and the current workspace. npm and Go global installs are the host-global exceptions.
 - If a third-party README uses ~/.claude, ~/.codex, ~/.openclaw, C:\\Users\\<user>, /tmp, or another host path for ordinary files, translate that path into agent-alpha/home, agent-alpha/config, agent-alpha/cache, agent-alpha/temp, agent-alpha/tools, or the current workspace as appropriate.
 
+## Web Search
+- For ordinary web search, current information lookup, price lookup, news lookup, or source discovery, prefer the open-websearch MCP tools when they are available.
+- Use the engines exposed by open-websearch itself. If an engine returns no results, times out, or fails, switch to another available open-websearch engine instead of repeatedly retrying the same one.
+- Do not default to bash-based search CLIs from skill documentation, such as `mcporter` or `exa`, unless the user explicitly asks for that CLI or you have already verified it exists in this runtime.
+- If a search CLI returns "command not found", treat that route as unavailable and switch away from it instead of retrying the same missing command.
+
 ## Workspace Rules
 - AGENTS.md and SOUL.md are only loaded from the workspace root.
 - Do not scan nested folders for AGENTS.md or SOUL.md.
 - This workspace is the agent instance's dedicated workspace. It may contain persona docs, private reference materials, and active work files.
+- The current workspace may be either a project-local managed folder or an external user-selected folder; treat it as the primary location for task outputs unless the task explicitly targets agent-alpha runtime directories.
 - The user may reference other folders by explicit paths in the conversation.
 - Skill bodies are loaded on demand with `load_skill`; do not assume a skill's full content before loading it.
 - System resource paths are primarily for reading and reference. Modify `skills` or `mcp-servers` only when the task explicitly requires maintaining those resources.

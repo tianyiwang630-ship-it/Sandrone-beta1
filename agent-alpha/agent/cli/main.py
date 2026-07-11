@@ -219,6 +219,7 @@ def _create_runtime(
     workspace: Path,
     logs_dir: Path,
     events_dir: Path,
+    session_created_at: str | None = None,
     history: list[dict] | None = None,
     permission_mode: str | None = None,
 ) -> AgentRuntime:
@@ -226,6 +227,7 @@ def _create_runtime(
         workspace_root=str(workspace),
         logs_dir=str(logs_dir),
         events_dir=str(events_dir),
+        session_created_at=session_created_at,
     )
     agent.history = [dict(message) for message in (history or [])]
     if permission_mode and agent.tool_loader.permission_manager is not None:
@@ -241,17 +243,21 @@ def _save_session_snapshot(
     workspace: Path,
     created_at: datetime,
     metadata: dict | None = None,
+    latest_user_message: str | None = None,
 ) -> SessionRecord:
     existing = store.load(session_id)
     events = _merge_session_events(
         list(existing.events) if existing is not None else [],
         list(getattr(agent, "runtime_events", [])),
     )
+    history = _display_history_for_snapshot(existing, agent.history, latest_user_message)
     record = SessionRecord(
         session_id=session_id,
         kind=SessionKind.INTERACTIVE,
         workspace=str(workspace),
-        history=[dict(message) for message in agent.history],
+        history=history,
+        runtime_history=[dict(message) for message in agent.history],
+        runtime_checkpoint=dict(existing.runtime_checkpoint) if existing is not None else {},
         metadata=metadata or {},
         events=events,
         created_at=created_at.isoformat(),
@@ -299,6 +305,46 @@ def _merge_session_events(existing: list[dict], runtime_events: list[dict]) -> l
     return merged
 
 
+def _runtime_history_for_record(record: SessionRecord) -> list[dict]:
+    source = record.runtime_history if record.runtime_history else record.history
+    return [dict(message) for message in source]
+
+
+def _last_user_index(history: list[dict], message: str) -> int | None:
+    for index in range(len(history) - 1, -1, -1):
+        item = history[index]
+        if item.get("role") == "user" and item.get("content") == message:
+            return index
+    return None
+
+
+def _merge_display_history(base_history: list[dict], runtime_history: list[dict], message: str) -> list[dict]:
+    history = [dict(item) for item in base_history]
+    runtime = [dict(item) for item in runtime_history]
+    runtime_user_index = _last_user_index(runtime, message)
+    if runtime_user_index is None:
+        return history
+
+    base_has_user = _last_user_index(history, message) is not None
+    delta_start = runtime_user_index + 1 if base_has_user else runtime_user_index
+    history.extend(dict(item) for item in runtime[delta_start:])
+    return history
+
+
+def _display_history_for_snapshot(
+    existing: SessionRecord | None,
+    runtime_history: list[dict],
+    latest_user_message: str | None,
+) -> list[dict]:
+    if existing is None:
+        return [dict(message) for message in runtime_history]
+    if latest_user_message is not None:
+        return _merge_display_history(existing.history, runtime_history, latest_user_message)
+    if not runtime_history:
+        return []
+    return [dict(message) for message in existing.history]
+
+
 def _record_runtime_error(*, events_dir: Path, session_id: str, exc: Exception) -> dict:
     event = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
@@ -322,7 +368,7 @@ def _append_session_event_and_history(
         return
     payload = dict(event)
     payload["timestamp"] = str(payload.get("timestamp") or datetime.now().isoformat(timespec="seconds"))
-    record.history = [dict(message) for message in agent.history]
+    record.runtime_history = [dict(message) for message in agent.history]
     record.events.append(payload)
     record.updated_at = payload["timestamp"]
     store.save(record)
@@ -440,6 +486,7 @@ def _handle_workspace_command(
     logs_dir: Path,
     events_dir: Path,
     current_session_id: str,
+    session_created_at: datetime,
     store: SessionStore,
 ) -> tuple[AgentRuntime, Path]:
     if command in {"/workspace", "/workspace show"}:
@@ -453,7 +500,14 @@ def _handle_workspace_command(
             if agent.tool_loader.permission_manager is not None
             else None
         )
-        next_agent = _create_runtime(new_workspace, logs_dir, events_dir, agent.history, permission_mode)
+        next_agent = _create_runtime(
+            new_workspace,
+            logs_dir,
+            events_dir,
+            session_created_at=session_created_at.isoformat(),
+            history=agent.history,
+            permission_mode=permission_mode,
+        )
         store.update_workspace(
             current_session_id,
             str(new_workspace),
@@ -487,7 +541,7 @@ def run_single_agent_cli():
     log_path = build_log_path(logs_dir, session_id, started_at)
     session_store = SessionStore(sessions_dir)
     current_workspace = workspace_root
-    agent = _create_runtime(current_workspace, logs_dir, events_dir)
+    agent = _create_runtime(current_workspace, logs_dir, events_dir, session_created_at=started_at.isoformat())
     _save_session_snapshot(
         store=session_store,
         session_id=session_id,
@@ -563,7 +617,14 @@ def run_single_agent_cli():
                     else None
                 )
                 agent.close()
-                agent = _create_runtime(current_workspace, logs_dir, events_dir, record.history, permission_mode)
+                agent = _create_runtime(
+                    current_workspace,
+                    logs_dir,
+                    events_dir,
+                    session_created_at=record.created_at,
+                    history=_runtime_history_for_record(record),
+                    permission_mode=permission_mode,
+                )
                 log_path = build_log_path(logs_dir, session_id, datetime.now())
                 print(f"Resumed session {session_id}.\n")
                 _print_current_workspace(current_workspace)
@@ -577,6 +638,7 @@ def run_single_agent_cli():
                         logs_dir=logs_dir,
                         events_dir=events_dir,
                         current_session_id=session_id,
+                        session_created_at=started_at,
                         store=session_store,
                     )
                 except ValueError as exc:
@@ -641,6 +703,7 @@ def run_single_agent_cli():
                 workspace=current_workspace,
                 created_at=started_at,
                 metadata={"project_root": str(project_root)},
+                latest_user_message=user_input,
             )
         except KeyboardInterrupt:
             print("\n\nInterrupted by Ctrl+C.")

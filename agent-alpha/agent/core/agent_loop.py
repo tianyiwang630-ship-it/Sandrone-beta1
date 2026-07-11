@@ -9,17 +9,24 @@ import os
 import re
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Optional
 
+from openai import OpenAIError
+
 from agent.core.config import LLM_MAX_TOKENS
-from agent.core.message_history import sanitize_tool_history
+from agent.core.message_history import collect_recent_complete_groups, sanitize_tool_history
+from agent.core.message_pipeline import UNKNOWN_TOOL_RESULT, prepare_runtime_history, validate_assistant_message
 from agent.core.session_events import SessionEventWriter, truncate_tool_result
+from agent.errors import LLMInterrupted, LLMInvalidResponse
 
 
 class AgentLoop:
     """Run the agent message loop while reusing the caller's history list."""
 
     INTERRUPTED_TOOL_RESULT = "[用户中断] 此工具调用未执行"
+    INTERRUPTED_RESPONSE = "[用户中断] 已停止当前任务。"
+    RECOVERABLE_RESPONSE = "当前模型请求未能完成，已保护本轮消息和工具现场。网络或配置恢复后可直接继续。"
     TOOL_WAIT_INTERRUPTED = object()
     SLOW_CONNECTION_RECOVERY_SECONDS = 120.0
     SLOW_CONNECTION_ERROR_TYPES = {"APIConnectionError", "APITimeoutError"}
@@ -27,6 +34,10 @@ class AgentLoop:
         "[系统恢复提示] 上一次模型请求在长时间等待后连接失败。"
         "请把接下来的回答或文件修改拆成小批次完成："
         "每次只输出/调用工具处理一小段内容，完成后再继续下一批，避免单次生成过长。"
+    )
+    INVALID_RESPONSE_RECOVERY_PROMPT = (
+        "[临时恢复提示] 上一次模型返回的 assistant 消息结构无效。"
+        "请重新生成本轮回复：必须返回非空正文，或返回字段完整且参数为有效 JSON 对象的 tool_calls。"
     )
 
     def __init__(
@@ -42,6 +53,7 @@ class AgentLoop:
         event_writer: SessionEventWriter | None = None,
         interrupt_event: Optional[threading.Event] = None,
         start_interrupt_listener: Optional[Callable[[], Any]] = None,
+        request_id: str = "runtime",
     ):
         self.llm = llm
         self.tools = tools
@@ -53,10 +65,19 @@ class AgentLoop:
         self.event_writer = event_writer
         self._interrupted = interrupt_event or threading.Event()
         self._start_interrupt_listener = start_interrupt_listener
+        self.request_id = request_id
         self._llm_recovery_prompt_injected = False
+        self.was_interrupted = False
+        self.was_recoverable = False
+        self.recovery_stage: str | None = None
+        self.recovery_error: str | None = None
 
     def run(self, user_input: str) -> str:
         """Execute the multi-turn loop for one user input."""
+        self.was_interrupted = False
+        self.was_recoverable = False
+        self.recovery_stage = None
+        self.recovery_error = None
         self._fill_missing_tool_results()
         self._append_history_entry({"role": "user", "content": user_input})
 
@@ -70,7 +91,21 @@ class AgentLoop:
                     break
 
                 messages = self._build_messages()
-                choice = self._call_llm_interruptible(messages)
+                try:
+                    choice = self._call_llm_with_recovery(messages)
+                except (OpenAIError, LLMInvalidResponse) as exc:
+                    self.was_recoverable = True
+                    self.recovery_stage = "exhausted"
+                    self.recovery_error = str(exc) or type(exc).__name__
+                    self._write_event(
+                        "run_recoverable",
+                        {
+                            "recovery_stage": self.recovery_stage,
+                            "error_type": type(exc).__name__,
+                            "error_message": self.recovery_error,
+                        },
+                    )
+                    return self.RECOVERABLE_RESPONSE
                 if choice is None:
                     break
                 message = choice.message
@@ -88,7 +123,8 @@ class AgentLoop:
                 return message.content
 
             if self._interrupted.is_set():
-                return "[用户中断] 已停止当前任务。"
+                self.was_interrupted = True
+                return self.INTERRUPTED_RESPONSE
             return "抱歉，任务太复杂，已达到最大处理轮次。"
         finally:
             self._interrupted.set()
@@ -103,6 +139,45 @@ class AgentLoop:
             setattr(self.llm, "event_callback", previous_callback)
         choice = response.choices[0]
         message = choice.message
+
+        validation = validate_assistant_message(
+            message,
+            tools=self.tools,
+            request_id=self.request_id,
+            finish_reason=getattr(choice, "finish_reason", None),
+        )
+        if not validation.valid:
+            self._write_event(
+                "assistant_message_rejected",
+                {
+                    "error": validation.error,
+                    "repairs": validation.repairs,
+                    "finish_reason": getattr(choice, "finish_reason", None),
+                },
+            )
+            raise LLMInvalidResponse(
+                validation.error or "assistant response is invalid",
+                finish_reason=getattr(choice, "finish_reason", None),
+            )
+        if validation.repairs:
+            self._write_event(
+                "assistant_message_repaired",
+                {"repairs": validation.repairs},
+            )
+        normalized = validation.message or {}
+        message = SimpleNamespace(
+            content=normalized.get("content"),
+            reasoning_content=normalized.get("reasoning_content"),
+            tool_calls=[
+                SimpleNamespace(
+                    id=call["id"],
+                    type=call["type"],
+                    function=SimpleNamespace(**call["function"]),
+                )
+                for call in normalized.get("tool_calls", [])
+            ],
+        )
+        choice = SimpleNamespace(message=message, finish_reason=getattr(choice, "finish_reason", None))
 
         if hasattr(message, "tool_calls") and message.tool_calls:
             debug_mode = os.environ.get("DEBUG_AGENT", "0") == "1"
@@ -122,6 +197,53 @@ class AgentLoop:
                 debug_file.write_text(json.dumps(debug_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
         return choice
+
+    def _call_llm_with_recovery(self, messages: List[Dict[str, Any]]) -> Any:
+        attempts = [
+            ("normal", messages),
+            ("corrected", self._with_recovery_instruction(messages)),
+            ("degraded", self._build_degraded_messages()),
+        ]
+        last_error: Exception | None = None
+        for stage, attempt_messages in attempts:
+            if stage != "normal":
+                refresh = getattr(self.llm, "refresh_client", None)
+                if refresh is not None:
+                    refresh()
+                self._write_event("agent_recovery_started", {"recovery_stage": stage})
+            try:
+                return self._call_llm_interruptible(attempt_messages)
+            except (OpenAIError, LLMInvalidResponse) as exc:
+                last_error = exc
+                self._write_event(
+                    "agent_recovery_attempt_failed",
+                    {
+                        "recovery_stage": stage,
+                        "error_type": type(exc).__name__,
+                        "error_message": str(exc) or type(exc).__name__,
+                    },
+                )
+                if type(exc).__name__ in {"AuthenticationError", "PermissionDeniedError"}:
+                    break
+        if last_error is None:
+            raise LLMInvalidResponse("LLM recovery exited without a response")
+        raise last_error
+
+    def _with_recovery_instruction(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not messages:
+            return [{"role": "system", "content": self.INVALID_RESPONSE_RECOVERY_PROMPT}]
+        return [messages[0], {"role": "system", "content": self.INVALID_RESPONSE_RECOVERY_PROMPT}, *messages[1:]]
+
+    def _build_degraded_messages(self) -> List[Dict[str, Any]]:
+        recent = collect_recent_complete_groups(self.history, max_groups=6)
+        prepared = prepare_runtime_history(
+            recent,
+            request_id=self.request_id,
+            provider=str(getattr(getattr(self.llm, "profile", None), "provider", "")),
+        )
+        return self._with_recovery_instruction(
+            [{"role": "system", "content": self.system_prompt}, *prepared.provider_messages]
+        )
 
     def _handle_llm_diagnostic_event(self, event: dict[str, Any]) -> dict[str, Any] | None:
         event_type = str(event.get("type") or "")
@@ -186,6 +308,8 @@ class AgentLoop:
         def call():
             try:
                 result[0] = self._call_llm(messages)
+            except LLMInterrupted as exc:
+                error[0] = exc
             except Exception as exc:  # pragma: no cover - passthrough branch
                 error[0] = exc
 
@@ -195,9 +319,15 @@ class AgentLoop:
         while thread.is_alive():
             thread.join(timeout=0.1)
             if self._interrupted.is_set():
+                cancel = getattr(self.llm, "cancel_current_request", None)
+                if cancel is not None:
+                    cancel()
                 return None
 
         if error[0]:
+            if isinstance(error[0], LLMInterrupted):
+                self._interrupted.set()
+                return None
             raise error[0]
         return result[0]
 
@@ -234,6 +364,10 @@ class AgentLoop:
                 )
                 continue
 
+            self._write_event(
+                "tool_execution_started",
+                {"tool_call_id": tool_call.id, "tool_name": tool_call.function.name},
+            )
             result = self._execute_single_tool_interruptible(
                 tool_call,
                 output_truncated=output_truncated,
@@ -243,8 +377,12 @@ class AgentLoop:
                     {
                         "role": "tool",
                         "tool_call_id": tool_call.id,
-                        "content": self.INTERRUPTED_TOOL_RESULT,
+                        "content": UNKNOWN_TOOL_RESULT,
                     }
+                )
+                self._write_event(
+                    "tool_execution_uncertain",
+                    {"tool_call_id": tool_call.id, "tool_name": tool_call.function.name},
                 )
                 self._append_interrupted_tool_results(message.tool_calls[index + 1 :])
                 break
@@ -272,6 +410,14 @@ class AgentLoop:
                 },
                 **event_metadata,
             )
+            self._write_event(
+                "tool_execution_completed",
+                {
+                    "tool_call_id": tool_call.id,
+                    "tool_name": tool_call.function.name,
+                    "success": not (isinstance(result, dict) and result.get("success") is False),
+                },
+            )
             if self._interrupted.is_set():
                 self._append_interrupted_tool_results(message.tool_calls[index + 1 :])
                 break
@@ -283,19 +429,22 @@ class AgentLoop:
         try:
             arguments = json.loads(raw_arguments)
         except json.JSONDecodeError:
-            try:
-                arguments = json.loads(raw_arguments.replace("'", '"'))
-            except Exception:
-                if output_truncated:
-                    self._record_output_truncation(tool_call)
-                    return {
-                        "success": False,
-                        "error": "模型输出达到 Token 上限，tool call 参数被截断，未执行该工具。",
-                        "tool": tool_name,
-                        "truncated": True,
-                        "guidance": "请缩短参数内容或拆成多个完整调用；大文件请使用 write 和 append 分批写入。",
-                    }
-                arguments = {}
+            if output_truncated:
+                self._record_output_truncation(tool_call)
+            return {
+                "success": False,
+                "error": "tool call 参数不是有效 JSON 对象，未执行该工具。",
+                "tool": tool_name,
+                "truncated": output_truncated,
+                "guidance": "请重新生成字段完整的工具调用；不要猜测或省略必填参数。",
+            }
+
+        if not isinstance(arguments, dict):
+            return {
+                "success": False,
+                "error": "tool call 参数必须是 JSON 对象，未执行该工具。",
+                "tool": tool_name,
+            }
 
         return self.tool_loader.execute_tool(tool_name, arguments)
 
@@ -336,18 +485,30 @@ class AgentLoop:
         return "deepseek" in str(provider).lower()
 
     def _build_messages(self) -> List[Dict[str, Any]]:
-        self._fill_missing_tool_results()
-        self._drop_orphan_tool_results()
-        return [{"role": "system", "content": self.system_prompt}, *self.history]
+        prepared = prepare_runtime_history(
+            self.history,
+            request_id=self.request_id,
+            provider=str(getattr(getattr(self.llm, "profile", None), "provider", "")),
+        )
+        if prepared.changed:
+            self.history[:] = prepared.history
+            self._write_event("runtime_history_repaired", {"repairs": prepared.repairs})
+        return [{"role": "system", "content": self.system_prompt}, *prepared.provider_messages]
+
+    def _write_event(self, event_type: str, payload: dict[str, Any]) -> None:
+        if self.event_writer is not None:
+            self.event_writer.write_event(event_type, {"request_id": self.request_id, **payload})
 
     def _append_history_entry(self, entry: dict[str, Any], **event_metadata: Any) -> None:
         self.history.append(entry)
         if self.event_writer is not None:
+            event_metadata.setdefault("request_id", self.request_id)
             self.event_writer.write(entry, **event_metadata)
 
     def _insert_history_entry(self, index: int, entry: dict[str, Any], **event_metadata: Any) -> None:
         self.history.insert(index, entry)
         if self.event_writer is not None:
+            event_metadata.setdefault("request_id", self.request_id)
             self.event_writer.write(entry, **event_metadata)
 
     def _fill_missing_tool_results(self) -> None:

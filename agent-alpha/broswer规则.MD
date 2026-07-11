@@ -6,10 +6,12 @@ alpha下目录写一个md，browser管理规则
 3. 当 alpha A 正在用有头或 CDP 时，alpha B / C 仍然可以开无头。
 4. 无头永远使用临时运行目录，不直接写 default。
 5. 有头不会被 AI 通过 browser_close 自动关闭。
-6. 有头关闭或保存后，同一个alpha实例的新开的无头能拿到最新登录态。
-7. ESC / Ctrl+C / 异常退出后，下次能安全清理旧副本。
-8. browser 状态绑定 alpha 运行空间，不绑定 workspace，也不绑定 CLI。
-9. 单个 alpha 内部模式顺序任意：
+6. 有头如果由当前 alpha/session 打开，关闭走 profile_close_headed；如果是旧 session / 旧 alpha 残留，关闭走 profile_force_close_headed。
+7. profile_close_headed / profile_force_close_headed 使用前都必须先问用户确认。
+8. 有头关闭或保存后，同一个alpha实例的新开的无头能拿到最新登录态。
+9. ESC / Ctrl+C / 异常退出后，下次能安全清理旧副本。
+10. browser 状态绑定 alpha 运行空间，不绑定 workspace，也不绑定 CLI。
+11. 单个 alpha 内部模式顺序任意：
    无头 -> 有头
    有头 -> 无头
    CDP -> 无头 -> 有头
@@ -28,7 +30,10 @@ alpha下目录写一个md，browser管理规则
 - 同一时间只能一个 alpha 使用。
 - 负责人工登录、验证码、2FA。
 - 不能被 browser_close 自动关闭。
-- 关闭必须走明确的 profile_close_headed。
+- 当前 alpha/session 自己开的有头，关闭必须走明确的 profile_close_headed。
+- 旧 session / 旧 alpha 残留的有头，关闭必须走明确的 profile_force_close_headed。
+- profile_force_close_headed 不接收 profile 参数，只按 interactive.lock 记录的有头 profile 关闭。
+- profile_close_headed 和 profile_force_close_headed 都必须先问用户确认。
 - 关闭或保存时，把登录态更新到 default 的稳定状态。
 
 CDP：

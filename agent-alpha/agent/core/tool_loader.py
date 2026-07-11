@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from agent.core.bm25 import BM25Index
-from agent.core.config import BASH_TOOL_TIMEOUT, DEFAULT_MCP_CATEGORY
+from agent.core.config import BASH_TOOL_MAX_TIMEOUT, BASH_TOOL_TIMEOUT, DEFAULT_MCP_CATEGORY
 from agent.core.role_config import RoleConfig
 from agent.core.sandbox_guard import SandboxGuard
 from agent.core.skill_loader import SkillLoader
@@ -49,13 +49,14 @@ class ToolLoader:
         "profile_login_headed": "browser_profile",
         "profile_save_headed": "browser_profile",
         "profile_close_headed": "browser_profile",
+        "profile_force_close_headed": "browser_profile",
         "browser_connect_cdp": "browser_cdp",
         "browser_disconnect_cdp": "browser_cdp",
         "browser_cdp_status": "browser_cdp",
     }
 
     BUILTIN_TOOLS = [
-        ("agent.tools.bash_tool", "BashTool", {"timeout": BASH_TOOL_TIMEOUT}),
+        ("agent.tools.bash_tool", "BashTool", {"timeout": BASH_TOOL_TIMEOUT, "max_timeout": BASH_TOOL_MAX_TIMEOUT}),
         ("agent.tools.read_tool", "ReadTool", {}),
         ("agent.tools.write_tool", "WriteTool", {}),
         ("agent.tools.append_tool", "AppendTool", {}),
@@ -75,6 +76,7 @@ class ToolLoader:
         ("agent.tools.browser_tool", "ProfileLoginHeadedTool", {}),
         ("agent.tools.browser_tool", "ProfileSaveHeadedTool", {}),
         ("agent.tools.browser_tool", "ProfileCloseHeadedTool", {}),
+        ("agent.tools.browser_tool", "ProfileForceCloseHeadedTool", {}),
         ("agent.tools.browser_tool", "BrowserConnectCdpTool", {}),
         ("agent.tools.browser_tool", "BrowserDisconnectCdpTool", {}),
         ("agent.tools.browser_tool", "BrowserCdpStatusTool", {}),
@@ -209,7 +211,10 @@ class ToolLoader:
     def configure_runtime(self, workspace_root: Path) -> None:
         """Bind workspace-aware tool instances to the active runtime."""
         self.workspace_root = Path(workspace_root).resolve()
+        self.sandbox_guard = SandboxGuard(project_root=self.project_root, workspace_root=self.workspace_root)
         for tool in self.tool_instances.values():
+            if hasattr(tool, "set_workspace_root"):
+                tool.set_workspace_root(self.workspace_root)
             if hasattr(tool, "temp_dir"):
                 tool.temp_dir = self.workspace_root
 
@@ -417,7 +422,7 @@ class ToolLoader:
                 module = importlib.import_module(module_path)
                 tool_class = getattr(module, class_name)
                 if class_name == "BashTool":
-                    init_kwargs = {**init_kwargs, "project_root": self.project_root}
+                    init_kwargs = {**init_kwargs, "project_root": self.project_root, "workspace_root": self.workspace_root}
                 elif class_name.startswith(("Browser", "Profile")):
                     init_kwargs = {**init_kwargs, "project_root": self.project_root}
                 tool_instance = tool_class(**init_kwargs)

@@ -391,6 +391,39 @@ class ProfileCloseHeadedTool(_BrowserTool):
         )
 
 
+class ProfileForceCloseHeadedTool(_BrowserTool):
+    @property
+    def name(self) -> str:
+        return "profile_force_close_headed"
+
+    def get_tool_definition(self) -> Dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": (
+                    "Force-close the recorded visible headed browser for this project after explicit user confirmation. "
+                    "Use this only to recover from a headed browser left by another session or alpha instance."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "user_confirmed_close_visible_browser": {
+                            "type": "boolean",
+                            "description": "Must be true only after the user confirmed closing the visible headed browser.",
+                        },
+                    },
+                    "required": ["user_confirmed_close_visible_browser"],
+                },
+            },
+        }
+
+    def execute(self, **kwargs) -> Any:
+        return self.manager.profile_force_close_headed(
+            user_confirmed_close_visible_browser=bool(kwargs.get("user_confirmed_close_visible_browser", False)),
+        )
+
+
 class BrowserConnectCdpTool(_BrowserTool):
     @property
     def name(self) -> str:

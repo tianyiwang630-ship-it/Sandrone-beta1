@@ -59,7 +59,7 @@ class XxxTool(BaseTool):
 
 ```python
 BUILTIN_TOOLS = [
-    ("agent.tools.bash_tool", "BashTool", {"timeout": 300}),
+    ("agent.tools.bash_tool", "BashTool", {"timeout": 30, "max_timeout": 300}),
     ("agent.tools.read_tool", "ReadTool", {}),
     # ...
     ("agent.tools.xxx_tool", "XxxTool", {}),  # <-- 加这一行

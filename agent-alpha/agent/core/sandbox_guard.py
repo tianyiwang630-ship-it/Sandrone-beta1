@@ -122,7 +122,10 @@ class SandboxGuard:
                     action="write",
                     zone="outside",
                     reason="This dependency install would target an external Python environment or unsupported host path",
-                    guidance="Use agent-alpha/.venv for Python installs. npm/go global installs are allowed host exceptions.",
+                    guidance=(
+                        f"{explain_alpha_venv_command_guidance(self.project_root)} "
+                        "npm/go global installs are allowed host exceptions."
+                    ),
                 )
             return SandboxCheckResult(
                 decision="ask",

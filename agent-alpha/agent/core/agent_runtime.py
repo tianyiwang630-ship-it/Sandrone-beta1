@@ -22,6 +22,7 @@ from agent.api.llm import LLMClient
 from agent.core.agent_loop import AgentLoop
 from agent.core.config import KEEP_RECENT_TURNS, MAX_CONTEXT_TOKENS, MAX_TOOL_RESULT_CHARS
 from agent.core.context_manager import ContextManager
+from agent.core.message_pipeline import prepare_runtime_history
 from agent.core.prompt_docs_loader import load_workspace_prompt_documents
 from agent.core.role_config import RoleConfig
 from agent.core.runtime_paths import apply_runtime_env
@@ -44,21 +45,25 @@ class AgentRuntime:
         workspace_root: str | None = None,
         logs_dir: str | None = None,
         events_dir: str | None = None,
+        session_created_at: str | None = None,
         task_id: str | None = None,
         llm_profile_name: str | None = None,
+        llm_settings: dict[str, Any] | None = None,
         role_config: RoleConfig | None = None,
     ):
         self.workspace_root = Path(workspace_root).resolve() if workspace_root else PROJECT_ROOT.resolve()
         self.runtime_logs_dir = Path(logs_dir).resolve() if logs_dir else None
         self.runtime_events_dir = Path(events_dir).resolve() if events_dir else None
+        self.session_created_at = session_created_at
         self.task_id = task_id
         self.llm_profile_name = llm_profile_name
+        self.llm_settings = dict(llm_settings or {})
         self.role_config = role_config or RoleConfig()
 
         apply_runtime_env(PROJECT_ROOT)
         self.workspace_root.mkdir(parents=True, exist_ok=True)
 
-        self.llm = LLMClient.from_profile(llm_profile_name)
+        self.llm = LLMClient.from_settings(self.llm_settings, llm_profile_name)
         self.skills_dir = PROJECT_ROOT / "skills"
         self.agent_home_skills_dir = PROJECT_ROOT / "home" / ".agents" / "skills"
         self.skill_loader = SkillLoader(
@@ -74,6 +79,7 @@ class AgentRuntime:
         self.history: List[Dict[str, Any]] = []
         self.runtime_events: List[Dict[str, Any]] = []
         self._interrupted = threading.Event()
+        self.llm.set_interrupt_event(self._interrupted)
         self.tool_loader.set_interrupt_event(self._interrupted)
 
         print("Loading Agent Runtime...")
@@ -96,10 +102,12 @@ class AgentRuntime:
         return build_system_prompt(
             workspace_root=self.workspace_root,
             logs_dir=self.runtime_logs_dir,
+            events_dir=self.runtime_events_dir,
             skills_dir=self.skills_dir,
             agent_home_skills_dir=self.agent_home_skills_dir,
             mcp_servers_dir=PROJECT_ROOT / "mcp-servers",
             mcp_registry_path=PROJECT_ROOT / "mcp-servers" / "registry.json",
+            session_created_at=self.session_created_at,
             task_id=self.task_id,
             skill_summaries=self.skill_loader.get_summaries(),
             prompt_documents=self.prompt_documents,
@@ -109,6 +117,24 @@ class AgentRuntime:
         runtime_request = request if isinstance(request, RuntimeRequest) else RuntimeRequest(content=request)
 
         event_writer = self._create_event_writer(runtime_request.session_id)
+        self._interrupted.clear()
+        request_id = str(runtime_request.metadata.get("request_id") or runtime_request.session_id or "runtime")
+        prepared = prepare_runtime_history(
+            self.history,
+            request_id=request_id,
+            provider=str(getattr(getattr(self.llm, "profile", None), "provider", "")),
+        )
+        if prepared.changed:
+            self.history = prepared.history
+            repair_event = {
+                "type": "runtime_history_repaired",
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+                "request_id": request_id,
+                "repairs": prepared.repairs,
+            }
+            self.runtime_events.append(repair_event)
+            if event_writer is not None:
+                event_writer.write_event("runtime_history_repaired", repair_event)
         if self.context_manager.should_compress(self.history):
             result = self.compact_history(trigger="auto-threshold", allow_fallback=True)
             self._record_compression_event(result, event_writer=event_writer)
@@ -125,13 +151,33 @@ class AgentRuntime:
             event_writer=event_writer,
             interrupt_event=self._interrupted,
             start_interrupt_listener=self._start_esc_listener,
+            request_id=request_id,
         )
         result = loop.run(runtime_request.content)
         return RuntimeResponse(
             content=result,
             session_id=runtime_request.session_id,
-            metadata={"source": runtime_request.source, **runtime_request.metadata},
+            metadata={
+                "source": runtime_request.source,
+                "interrupted": loop.was_interrupted,
+                "recoverable": bool(getattr(loop, "was_recoverable", False)),
+                "recovery_stage": getattr(loop, "recovery_stage", None),
+                "recovery_error": getattr(loop, "recovery_error", None),
+                **runtime_request.metadata,
+            },
         )
+
+    def interrupt(self) -> None:
+        self._interrupted.set()
+        cancel = getattr(self.llm, "cancel_current_request", None)
+        if cancel is not None:
+            cancel()
+
+    def clear_interrupt(self) -> None:
+        self._interrupted.clear()
+
+    def is_interrupted(self) -> bool:
+        return self._interrupted.is_set()
 
     def _start_esc_listener(self):
         if not HAS_MSVCRT:

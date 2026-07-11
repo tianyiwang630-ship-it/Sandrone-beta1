@@ -70,6 +70,15 @@ foreach ($Property in $RuntimeEnv.PSObject.Properties) {
     [System.Environment]::SetEnvironmentVariable($Property.Name, [string]$Property.Value, "Process")
 }
 
+$SystemDrive = $env:SystemDrive
+if (-not $SystemDrive) {
+    $SystemDrive = "C:"
+}
+$UvTempDir = Join-Path $SystemDrive "tmp\agent-alpha-uv"
+New-Item -ItemType Directory -Force -Path $UvTempDir | Out-Null
+$env:TEMP = $UvTempDir
+$env:TMP = $UvTempDir
+
 Write-Host "Installing/updating requirements..." -ForegroundColor Cyan
 Invoke-NativeCommand uv @("pip", "install", "--python", $PythonExe, "-r", "requirements.txt")
 

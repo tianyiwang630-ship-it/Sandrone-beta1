@@ -21,6 +21,23 @@ class LLMProfile:
     max_tokens: int | None = None
 
 
+def build_llm_profile_from_settings(settings: dict[str, Any], profile_name: str = "runtime") -> LLMProfile | None:
+    provider = str(settings.get("llm_provider") or "").strip().lower()
+    base_url = str(settings.get("llm_base_url") or "").strip()
+    api_key = str(settings.get("llm_api_key") or "").strip()
+    model = str(settings.get("llm_model_name") or "").strip()
+    if not (provider and base_url and api_key and model):
+        return None
+    return LLMProfile(
+        name=profile_name,
+        provider=provider,
+        base_url=base_url,
+        api_key=api_key,
+        model=model,
+        max_tokens=None,
+    )
+
+
 def load_llm_profile(profile_name: str | None = None) -> LLMProfile:
     config = _load_profiles_config()
     selected_name = profile_name or config["default"]

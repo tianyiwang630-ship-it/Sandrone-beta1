@@ -120,7 +120,12 @@ class SessionEventWriter:
             if index >= len(text):
                 break
 
-            _, next_index = decoder.raw_decode(text, index)
+            try:
+                _, next_index = decoder.raw_decode(text, index)
+            except json.JSONDecodeError:
+                # A crash can leave the final append incomplete. Earlier records
+                # are still valid and should remain available for recovery.
+                break
             seq += 1
             index = next_index
 
@@ -154,3 +159,28 @@ class SessionEventWriter:
             handle.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n\n")
 
         self._next_seq += 1
+
+
+def read_session_events(events_dir: Path, session_id: str, *, after_seq: int = 0) -> list[dict[str, Any]]:
+    """Read concatenated JSON event records without assuming one JSON object per line."""
+    path = Path(events_dir).resolve() / f"{session_id}.jsonl"
+    if not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8")
+    decoder = json.JSONDecoder()
+    index = 0
+    records: list[dict[str, Any]] = []
+    while index < len(text):
+        while index < len(text) and text[index].isspace():
+            index += 1
+        if index >= len(text):
+            break
+        try:
+            record, index = decoder.raw_decode(text, index)
+        except json.JSONDecodeError:
+            # Keep every complete record even if the process stopped halfway
+            # through the final append.
+            break
+        if isinstance(record, dict) and int(record.get("seq") or 0) > after_seq:
+            records.append(record)
+    return records

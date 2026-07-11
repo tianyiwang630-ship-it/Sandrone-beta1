@@ -27,24 +27,32 @@ class BashTool(BaseTool):
 
     def __init__(
         self,
-        timeout: int = 300,
+        timeout: int = 30,
+        max_timeout: int = 300,
         project_root: str | Path | None = None,
+        workspace_root: str | Path | None = None,
         interrupt_event: threading.Event | None = None,
     ):
         """
         初始化 Bash Tool
 
         Args:
-            timeout: 命令超时时间（秒，默认 300 秒 = 5 分钟）
+            timeout: default command timeout in seconds.
+            max_timeout: maximum per-call timeout in seconds.
         """
         self.timeout = timeout
+        self.max_timeout = max_timeout
         self.project_root = Path(project_root).resolve() if project_root else Path(__file__).resolve().parents[2]
+        self.workspace_root = Path(workspace_root).resolve() if workspace_root else self.project_root
         self.interrupt_event = interrupt_event
         ensure_runtime_directories(self.project_root)
         self._detect_shell()
 
     def set_interrupt_event(self, interrupt_event: threading.Event | None) -> None:
         self.interrupt_event = interrupt_event
+
+    def set_workspace_root(self, workspace_root: str | Path) -> None:
+        self.workspace_root = Path(workspace_root).resolve()
 
     def _detect_shell(self):
         """检测可用的 shell"""
@@ -125,8 +133,19 @@ class BashTool(BaseTool):
                             "type": "string",
                             "description": (
                                 "可选。本次命令的执行目录；相对路径按 project_root 解析，"
-                                "绝对路径必须位于 project_root 内。不传则默认使用 project_root。"
+                                "找不到时按当前 workspace 解析；绝对路径必须位于 project_root 或当前 workspace 内。"
+                                "不传则默认使用 project_root。"
                             )
+                        },
+                        "timeout_seconds": {
+                            "type": "integer",
+                            "description": (
+                                f"Optional per-command timeout in seconds. Defaults to {self.timeout} seconds; "
+                                "use a larger value for builds, tests, installs, or long file processing. "
+                                f"Maximum is {self.max_timeout} seconds."
+                            ),
+                            "minimum": 1,
+                            "maximum": self.max_timeout,
                         }
                     },
                     "required": ["command"]
@@ -146,6 +165,11 @@ class BashTool(BaseTool):
         """
         command = kwargs.get('command', '')
         working_dir = kwargs.get('working_dir')
+        timeout_result = self._resolve_timeout_seconds(kwargs.get("timeout_seconds"))
+        if isinstance(timeout_result, dict):
+            timeout_result["command"] = command
+            return timeout_result
+        timeout_seconds = timeout_result
 
         prepared = self._prepare_command(command, working_dir)
         if prepared.get("error"):
@@ -199,19 +223,22 @@ class BashTool(BaseTool):
                         "working_dir": str(cwd),
                     }
 
-                if time.monotonic() - started_at > self.timeout:
+                if time.monotonic() - started_at > timeout_seconds:
                     terminate_process_tree(proc)
                     self._wait_after_stop(proc)
                     self._join_output_readers(reader_threads)
                     stdout, stderr = self._truncate_output("".join(stdout_parts), "".join(stderr_parts))
                     return {
                         "success": False,
-                        "error": f"命令超时（>{self.timeout}秒）",
+                        "timed_out": True,
+                        "timeout_seconds": timeout_seconds,
+                        "error": f"Command timed out after {timeout_seconds}s.",
                         "stdout": stdout,
                         "stderr": stderr,
                         "returncode": proc.returncode,
                         "command": command,
                         "working_dir": str(cwd),
+                        "guidance": self._timeout_guidance(timeout_seconds),
                     }
 
                 time.sleep(0.05)
@@ -239,6 +266,38 @@ class BashTool(BaseTool):
                 "command": command,
                 "working_dir": str(cwd),
             }
+
+    def _resolve_timeout_seconds(self, value: Any) -> int | Dict[str, Any]:
+        if value is None:
+            return self.timeout
+        if isinstance(value, bool) or not isinstance(value, int):
+            return self._timeout_argument_error(value)
+        if value < 1 or value > self.max_timeout:
+            return self._timeout_argument_error(value)
+        return value
+
+    def _timeout_argument_error(self, value: Any) -> Dict[str, Any]:
+        return {
+            "success": False,
+            "error": f"timeout_seconds must be an integer between 1 and {self.max_timeout}.",
+            "stdout": "",
+            "stderr": "",
+            "returncode": None,
+            "command": "",
+            "guidance": (
+                f"Use timeout_seconds only when a command is expected to run longer than the "
+                f"{self.timeout}s default. The maximum allowed value is {self.max_timeout}s."
+            ),
+            "invalid_timeout_seconds": value,
+        }
+
+    def _timeout_guidance(self, timeout_seconds: int) -> str:
+        return (
+            f"The command timed out after {timeout_seconds}s. For quick checks, try a simpler command, "
+            "avoid shell pipelines, and prefer agent-alpha .venv Python for environment checks. "
+            f"For expected long tasks such as builds, tests, installs, or large file processing, retry with "
+            f"a larger timeout_seconds value up to {self.max_timeout}s."
+        )
 
     def _prepare_command(self, command: str, working_dir: str | Path | None) -> Dict[str, Any]:
         try:
@@ -312,18 +371,36 @@ class BashTool(BaseTool):
 
         path = self._path_from_user_input(working_dir).expanduser()
         if not path.is_absolute():
-            path = self.project_root / path
+            project_candidate = (self.project_root / path).resolve()
+            workspace_candidate = (self.workspace_root / path).resolve()
+            if project_candidate.is_dir():
+                path = project_candidate
+            elif workspace_candidate.is_dir():
+                path = workspace_candidate
+            elif project_candidate.exists():
+                path = project_candidate
+            else:
+                path = project_candidate
 
         resolved = path.resolve()
-        try:
-            resolved.relative_to(self.project_root)
-        except ValueError as exc:
-            raise ValueError("working_dir 必须位于 project_root 内部。") from exc
+        if not self._is_inside_allowed_root(resolved):
+            raise ValueError("working_dir 必须位于 project_root 或当前 workspace 内部。")
 
         if not resolved.is_dir():
             raise ValueError("working_dir 必须是已存在的目录。")
 
         return resolved
+
+    def _is_inside_allowed_root(self, path: Path) -> bool:
+        return self._is_relative_to(path, self.project_root) or self._is_relative_to(path, self.workspace_root)
+
+    @staticmethod
+    def _is_relative_to(path: Path, root: Path) -> bool:
+        try:
+            path.resolve().relative_to(root.resolve())
+            return True
+        except ValueError:
+            return False
 
     def _path_from_user_input(self, path: str | Path) -> Path:
         text = str(path)

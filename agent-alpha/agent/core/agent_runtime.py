@@ -23,6 +23,7 @@ from agent.core.agent_loop import AgentLoop
 from agent.core.config import KEEP_RECENT_TURNS, MAX_CONTEXT_TOKENS, MAX_TOOL_RESULT_CHARS
 from agent.core.context_manager import ContextManager
 from agent.core.message_pipeline import prepare_runtime_history
+from agent.core.realtime_log import RealtimeLogWriter
 from agent.core.prompt_docs_loader import load_workspace_prompt_documents
 from agent.core.role_config import RoleConfig
 from agent.core.runtime_paths import apply_runtime_env
@@ -117,55 +118,101 @@ class AgentRuntime:
         runtime_request = request if isinstance(request, RuntimeRequest) else RuntimeRequest(content=request)
 
         event_writer = self._create_event_writer(runtime_request.session_id)
+        log_writer = self._create_log_writer(runtime_request.session_id)
         self._interrupted.clear()
         request_id = str(runtime_request.metadata.get("request_id") or runtime_request.session_id or "runtime")
-        prepared = prepare_runtime_history(
-            self.history,
-            request_id=request_id,
-            provider=str(getattr(getattr(self.llm, "profile", None), "provider", "")),
-        )
-        if prepared.changed:
-            self.history = prepared.history
-            repair_event = {
-                "type": "runtime_history_repaired",
-                "timestamp": datetime.now().isoformat(timespec="seconds"),
-                "request_id": request_id,
-                "repairs": prepared.repairs,
-            }
-            self.runtime_events.append(repair_event)
-            if event_writer is not None:
-                event_writer.write_event("runtime_history_repaired", repair_event)
-        if self.context_manager.should_compress(self.history):
-            result = self.compact_history(trigger="auto-threshold", allow_fallback=True)
-            self._record_compression_event(result, event_writer=event_writer)
-            self._print_compression_result(result)
+        try:
+            if log_writer is not None:
+                log_writer.write_session_header(
+                    {
+                        "source": runtime_request.source,
+                        "workspace": str(self.workspace_root),
+                        "session_created_at": self.session_created_at,
+                        "system_prompt": self.system_prompt,
+                        "tools": self.tools,
+                        "model": getattr(self.llm, "model_name", None),
+                    }
+                )
+                log_writer.write_event(
+                    "run_started",
+                    {"source": runtime_request.source, "metadata": runtime_request.metadata},
+                    request_id=request_id,
+                )
+            prepared = prepare_runtime_history(
+                self.history,
+                request_id=request_id,
+                provider=str(getattr(getattr(self.llm, "profile", None), "provider", "")),
+            )
+            if prepared.changed:
+                self.history = prepared.history
+                repair_event = {
+                    "type": "runtime_history_repaired",
+                    "timestamp": datetime.now().isoformat(timespec="seconds"),
+                    "request_id": request_id,
+                    "repairs": prepared.repairs,
+                }
+                self.runtime_events.append(repair_event)
+                if event_writer is not None:
+                    event_writer.write_event("runtime_history_repaired", repair_event)
+                if log_writer is not None:
+                    log_writer.write_event("runtime_history_repaired", repair_event, request_id=request_id)
+            if self.context_manager.should_compress(self.history):
+                result = self.compact_history(trigger="auto-threshold", allow_fallback=True)
+                if log_writer is None:
+                    self._record_compression_event(result, event_writer=event_writer, request_id=request_id)
+                else:
+                    self._record_compression_event(
+                        result,
+                        event_writer=event_writer,
+                        log_writer=log_writer,
+                        request_id=request_id,
+                    )
+                self._print_compression_result(result)
 
-        loop = AgentLoop(
-            llm=self.llm,
-            tools=self.tools,
-            tool_loader=self.tool_loader,
-            history=self.history,
-            system_prompt=self.system_prompt,
-            max_turns=self.max_turns,
-            max_tool_result_chars=MAX_TOOL_RESULT_CHARS,
-            event_writer=event_writer,
-            interrupt_event=self._interrupted,
-            start_interrupt_listener=self._start_esc_listener,
-            request_id=request_id,
-        )
-        result = loop.run(runtime_request.content)
-        return RuntimeResponse(
-            content=result,
-            session_id=runtime_request.session_id,
-            metadata={
-                "source": runtime_request.source,
-                "interrupted": loop.was_interrupted,
-                "recoverable": bool(getattr(loop, "was_recoverable", False)),
-                "recovery_stage": getattr(loop, "recovery_stage", None),
-                "recovery_error": getattr(loop, "recovery_error", None),
-                **runtime_request.metadata,
-            },
-        )
+            loop = AgentLoop(
+                llm=self.llm,
+                tools=self.tools,
+                tool_loader=self.tool_loader,
+                history=self.history,
+                system_prompt=self.system_prompt,
+                max_turns=self.max_turns,
+                max_tool_result_chars=MAX_TOOL_RESULT_CHARS,
+                event_writer=event_writer,
+                log_writer=log_writer,
+                interrupt_event=self._interrupted,
+                start_interrupt_listener=self._start_esc_listener,
+                request_id=request_id,
+            )
+            result = loop.run(runtime_request.content)
+            if log_writer is not None:
+                log_writer.write_event(
+                    "run_finished",
+                    {
+                        "interrupted": loop.was_interrupted,
+                        "recoverable": bool(getattr(loop, "was_recoverable", False)),
+                    },
+                    request_id=request_id,
+                )
+            return RuntimeResponse(
+                content=result,
+                session_id=runtime_request.session_id,
+                metadata={
+                    "source": runtime_request.source,
+                    "interrupted": loop.was_interrupted,
+                    "recoverable": bool(getattr(loop, "was_recoverable", False)),
+                    "recovery_stage": getattr(loop, "recovery_stage", None),
+                    "recovery_error": getattr(loop, "recovery_error", None),
+                    **runtime_request.metadata,
+                },
+            )
+        except Exception as exc:
+            if log_writer is not None:
+                log_writer.write_event(
+                    "run_failed",
+                    {"error_type": type(exc).__name__, "error_message": str(exc)},
+                    request_id=request_id,
+                )
+            raise
 
     def interrupt(self) -> None:
         self._interrupted.set()
@@ -240,17 +287,29 @@ class AgentRuntime:
             return None
         return SessionEventWriter(self.runtime_events_dir, session_id)
 
+    def _create_log_writer(self, session_id: str | None) -> RealtimeLogWriter | None:
+        logs_dir = getattr(self, "runtime_logs_dir", None)
+        if logs_dir is None or not session_id:
+            return None
+        return RealtimeLogWriter(logs_dir, session_id)
+
     def _record_compression_event(
         self,
         result,
         *,
         event_writer: SessionEventWriter | None = None,
+        log_writer: RealtimeLogWriter | None = None,
+        request_id: str | None = None,
     ) -> dict[str, Any]:
         event = result.to_event()
         event["timestamp"] = datetime.now().isoformat(timespec="seconds")
+        if request_id:
+            event["request_id"] = request_id
         self.runtime_events.append(event)
         if event_writer is not None:
             event_writer.write_event(event["type"], event)
+        if log_writer is not None:
+            log_writer.write_event(event["type"], event, request_id=request_id)
         return event
 
     def _print_compression_result(self, result) -> None:

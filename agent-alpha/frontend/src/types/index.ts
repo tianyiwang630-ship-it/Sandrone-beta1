@@ -48,6 +48,11 @@ export interface ChatStart {
   session_id: string
 }
 
+export interface RetrospectiveStart {
+  session: Session
+  run: ChatStart
+}
+
 export interface ChatStatus {
   request_id: string
   session_id: string

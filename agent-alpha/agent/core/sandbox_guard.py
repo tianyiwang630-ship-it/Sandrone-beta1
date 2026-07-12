@@ -22,6 +22,8 @@ from agent.core.sandbox_types import AccessAction, SandboxCheckResult
 class SandboxGuard:
     FILE_TOOL_ACTIONS: dict[str, AccessAction] = {
         "read": "read",
+        "glob": "read",
+        "grep": "read",
         "write": "write",
         "append": "write",
         "edit": "write",
@@ -44,8 +46,8 @@ class SandboxGuard:
             )
 
         action = self.FILE_TOOL_ACTIONS[tool_name]
-        target_path = self._extract_path(arguments)
-        decision, zone = decide_path_access(
+        target_path = self._extract_path(arguments, tool_name)
+        decision, zone = self._decide_path_access(
             target_path,
             action=action,
             workspace_root=self.workspace_root,
@@ -60,7 +62,7 @@ class SandboxGuard:
             if decision == "allow":
                 reason = "Read access is allowed inside the agent-alpha project"
             else:
-                reason = "Write access to protected agent-alpha runtime code requires user approval"
+                reason = "The target is protected agent-alpha runtime data"
         elif zone == "outside":
             reason = "Target path is outside both the agent workspace and the agent-alpha project"
         else:
@@ -226,7 +228,7 @@ class SandboxGuard:
                 )
 
             decisions = [
-                decide_path_access(
+                self._decide_path_access(
                     path,
                     action=action,
                     workspace_root=self.workspace_root,
@@ -267,7 +269,7 @@ class SandboxGuard:
         general_write_paths = extract_general_write_paths(command)
         if general_write_paths:
             decisions = [
-                decide_path_access(
+                self._decide_path_access(
                     path,
                     action="write",
                     workspace_root=self.workspace_root,
@@ -317,6 +319,32 @@ class SandboxGuard:
             reason="General shell command is allowed because it does not match dangerous commands or explicit external file writes",
         )
 
+    def _decide_path_access(
+        self,
+        path: Path | None,
+        *,
+        action: AccessAction,
+        workspace_root: Path,
+        project_root: Path,
+    ) -> tuple[str, str]:
+        if path is not None:
+            resolved = Path(path).resolve()
+            logs_root = (self.project_root / "session-log" / "logs").resolve()
+            try:
+                resolved.relative_to(logs_root)
+            except ValueError:
+                pass
+            else:
+                if action != "read":
+                    return "deny", "project"
+                return "allow", "project"
+        return decide_path_access(
+            path,
+            action=action,
+            workspace_root=workspace_root,
+            project_root=project_root,
+        )
+
     def _write_path_guidance(self, paths: list[Path], *, working_dir: str | None = None) -> str:
         cwd = self._resolve_working_dir_for_guidance(working_dir)
         allowed_roots = [self.workspace_root, self.project_root / "temp"]
@@ -357,8 +385,8 @@ class SandboxGuard:
         except Exception:
             return self.project_root
 
-    def _extract_path(self, arguments: Dict[str, Any]) -> Path | None:
-        raw_path = arguments.get("file_path")
+    def _extract_path(self, arguments: Dict[str, Any], tool_name: str = "") -> Path | None:
+        raw_path = arguments.get("path") if tool_name in {"glob", "grep"} else arguments.get("file_path")
         if not raw_path:
             return None
         try:

@@ -10,7 +10,8 @@ from typing import Any
 from agent.core.agent_runtime import AgentRuntime, PROJECT_ROOT
 from agent.core.message_pipeline import prepare_runtime_history
 from agent.core.runtime_types import RuntimeRequest
-from agent.core.session_events import SessionEventWriter, read_session_events
+from agent.core.realtime_log import RealtimeLogWriter
+from agent.core.session_events import SessionEventWriter, migrate_event_file, read_session_events
 from agent.core.session_paths import create_cli_session_paths
 from agent.core.session_store import SessionKind, SessionRecord, SessionStore
 from agent.server.stores.app_state import now_iso, new_id
@@ -27,6 +28,7 @@ class AgentManager:
         self._lock = threading.RLock()
         self._executor = ThreadPoolExecutor(max_workers=4)
         self.cleanup_legacy_sessions()
+        self.migrate_historical_events()
 
     def create_session(self, *, project_id: str, workspace: Path, title: str | None = None) -> SessionRecord:
         session_id = new_id("sess")
@@ -91,6 +93,10 @@ class AgentManager:
         for log_path in self.logs_dir.glob(f"*_session_{session_id}.json"):
             log_path.unlink()
             removed = True
+        realtime_log_path = self.logs_dir / f"{session_id}.jsonl"
+        if realtime_log_path.exists():
+            realtime_log_path.unlink()
+            removed = True
         self.release(session_id)
         return removed
 
@@ -105,6 +111,7 @@ class AgentManager:
         message: str,
         permission_mode: str = "ask",
         llm_settings: dict[str, Any] | None = None,
+        runtime_metadata: dict[str, Any] | None = None,
     ) -> str:
         record = self.get_session(session_id)
         if record is None:
@@ -134,7 +141,15 @@ class AgentManager:
                 "created_at": timestamp,
                 "updated_at": timestamp,
             }
-        self._executor.submit(self._run_chat, request_id, record, message, permission_mode, dict(llm_settings or {}))
+        self._executor.submit(
+            self._run_chat,
+            request_id,
+            record,
+            message,
+            permission_mode,
+            dict(llm_settings or {}),
+            dict(runtime_metadata or {}),
+        )
         return request_id
 
     def start_compact(
@@ -219,7 +234,24 @@ class AgentManager:
                 event_path.unlink()
             for log_path in self.logs_dir.glob(f"*_session_{record.session_id}.json"):
                 log_path.unlink()
+            realtime_log_path = self.logs_dir / f"{record.session_id}.jsonl"
+            if realtime_log_path.exists():
+                realtime_log_path.unlink()
         return removed
+
+    def migrate_historical_events(self) -> int:
+        migrated = 0
+        for record in self.store.list_recent(kind=SessionKind.INTERACTIVE, limit=None):
+            checkpoint_status = str((record.runtime_checkpoint or {}).get("status") or "")
+            if checkpoint_status in {"running", "failed", "recoverable"}:
+                continue
+            event_path = self.events_dir / f"{record.session_id}.jsonl"
+            try:
+                if migrate_event_file(event_path, cleanup_completed=True):
+                    migrated += 1
+            except Exception:
+                continue
+        return migrated
 
     def _get_agent(self, record: SessionRecord, permission_mode: str, llm_settings: dict[str, Any]) -> AgentRuntime:
         with self._lock:
@@ -251,6 +283,7 @@ class AgentManager:
         message: str,
         permission_mode: str,
         llm_settings: dict[str, Any],
+        runtime_metadata: dict[str, Any] | None = None,
     ) -> None:
         agent: AgentRuntime | None = None
         runtime_event_start = 0
@@ -262,7 +295,11 @@ class AgentManager:
                     content=message,
                     session_id=record.session_id,
                     source="web",
-                    metadata={"project_id": record.metadata.get("project_id"), "request_id": request_id},
+                    metadata={
+                        "project_id": record.metadata.get("project_id"),
+                        "request_id": request_id,
+                        **dict(runtime_metadata or {}),
+                    },
                 )
             )
             latest = self.store.load(record.session_id) or record
@@ -296,6 +333,11 @@ class AgentManager:
                 updated_at=datetime.now().isoformat(timespec="seconds"),
             )
             self.store.save(saved)
+            if not response.metadata.get("interrupted") and not response.metadata.get("recoverable"):
+                try:
+                    SessionEventWriter(self.events_dir, record.session_id).compact_completed_request(request_id)
+                except Exception:
+                    pass
             self._set_run(
                 request_id,
                 status=(
@@ -334,6 +376,8 @@ class AgentManager:
         agent: AgentRuntime | None = None
         runtime_event_start = 0
         event_writer = SessionEventWriter(self.events_dir, record.session_id)
+        logs_dir = getattr(self, "logs_dir", None)
+        log_writer = RealtimeLogWriter(logs_dir, record.session_id) if logs_dir is not None else None
         try:
             agent = self._get_agent(record, permission_mode, llm_settings)
             runtime_event_start = len(getattr(agent, "runtime_events", []))
@@ -346,6 +390,8 @@ class AgentManager:
             }
             agent.runtime_events.append(started_event)
             event_writer.write_event("context_compaction_started", started_event)
+            if log_writer is not None:
+                log_writer.write_event("context_compaction_started", started_event, request_id=request_id)
 
             result = agent.compact_history(trigger="manual-web", allow_fallback=False)
 
@@ -359,6 +405,8 @@ class AgentManager:
                 }
                 agent.runtime_events.append(interrupted_event)
                 event_writer.write_event("context_compaction_interrupted", interrupted_event)
+                if log_writer is not None:
+                    log_writer.write_event("context_compaction_interrupted", interrupted_event, request_id=request_id)
                 self._save_compact_run_snapshot(
                     record=record,
                     agent=agent,
@@ -373,7 +421,13 @@ class AgentManager:
                 )
                 return
 
-            self._record_compaction_event(agent, result, request_id=request_id, event_writer=event_writer)
+            self._record_compaction_event(
+                agent,
+                result,
+                request_id=request_id,
+                event_writer=event_writer,
+                log_writer=log_writer,
+            )
             if getattr(result, "skipped", False):
                 self._save_compact_run_snapshot(
                     record=record,
@@ -429,6 +483,8 @@ class AgentManager:
                 agent.runtime_events.append(failed_event)
                 try:
                     event_writer.write_event("context_compaction_failed", failed_event)
+                    if log_writer is not None:
+                        log_writer.write_event("context_compaction_failed", failed_event, request_id=request_id)
                 except Exception:
                     pass
                 self._save_compact_run_snapshot(
@@ -588,12 +644,15 @@ class AgentManager:
         *,
         request_id: str,
         event_writer: SessionEventWriter,
+        log_writer: RealtimeLogWriter | None = None,
     ) -> dict[str, Any]:
         event = result.to_event()
         event["timestamp"] = now_iso()
         event["request_id"] = request_id
         agent.runtime_events.append(event)
         event_writer.write_event(event["type"], event)
+        if log_writer is not None:
+            log_writer.write_event(event["type"], event, request_id=request_id)
         return event
 
     def _latest_event_seq(self, session_id: str) -> int:

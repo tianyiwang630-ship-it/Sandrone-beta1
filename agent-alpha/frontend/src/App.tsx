@@ -626,6 +626,7 @@ export default function App() {
   const [apiKeyVisible, setApiKeyVisible] = useState(false)
   const [emptyStateQuotesByKey, setEmptyStateQuotesByKey] = useState<Record<string, string>>({})
   const [composerMenuOpen, setComposerMenuOpen] = useState(false)
+  const [retrospectiveStarting, setRetrospectiveStarting] = useState(false)
   const [composerUploading, setComposerUploading] = useState(false)
   const [composerConflicts, setComposerConflicts] = useState<UploadConflictItem[]>([])
   const [composerPendingUpload, setComposerPendingUpload] = useState<UploadEntry[] | null>(null)
@@ -1429,6 +1430,36 @@ export default function App() {
     await runSessionCompact(selectedSessionId, selectedProjectId)
   }
 
+  const startRetrospective = async (scope: 'session' | 'project') => {
+    setComposerMenuOpen(false)
+    if (!selectedProjectId) {
+      setNotice('请先选择项目。')
+      return
+    }
+    if (scope === 'session' && !selectedSessionId) {
+      setNotice('请先选择需要复盘的会话。')
+      return
+    }
+
+    setRetrospectiveStarting(true)
+    setNotice(null)
+    try {
+      const result = await api.startRetrospective({
+        project_id: selectedProjectId,
+        scope,
+        ...(scope === 'session' && selectedSessionId ? { source_session_id: selectedSessionId } : {}),
+      })
+      await loadSessions(selectedProjectId, result.session.id)
+      setSelectedSessionId(result.session.id)
+      setView('chat')
+      setNotice(scope === 'session' ? '已开始复盘此会话。' : '已开始复盘此项目。')
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRetrospectiveStarting(false)
+    }
+  }
+
   const sendMessage = async () => {
     const content = draft.trim()
     if (!content) return
@@ -1833,6 +1864,23 @@ export default function App() {
                   <button type="button" disabled={!selectedSessionId || Boolean(selectedRun)} onClick={() => void startCompact()}>
                     <strong>手动压缩上下文</strong>
                     <span>立即整理当前会话的模型上下文</span>
+                  </button>
+                  <div className="composer-menu-section">复盘</div>
+                  <button
+                    type="button"
+                    disabled={!selectedSessionId || retrospectiveStarting}
+                    onClick={() => void startRetrospective('session')}
+                  >
+                    <strong>复盘此会话</strong>
+                    <span>新建会话，总结当前会话的工作与经验</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedProjectId || retrospectiveStarting}
+                    onClick={() => void startRetrospective('project')}
+                  >
+                    <strong>复盘此项目</strong>
+                    <span>新建会话，汇总当前项目的历史工作</span>
                   </button>
                   <div className="composer-menu-section">Skill 选择区</div>
                   {composerSkillItems.map((skill) => (

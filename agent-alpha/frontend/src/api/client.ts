@@ -5,6 +5,7 @@ import type {
   FileContent,
   FileInfo,
   Project,
+  RetrospectiveStart,
   Session,
   SessionDetail,
   SessionEvent,
@@ -56,6 +57,8 @@ export const api = {
     request<Session>(`/sessions/${sessionId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteSession: (sessionId: string) => request<{ ok: boolean }>(`/sessions/${sessionId}`, { method: 'DELETE' }),
   getSessionEvents: (sessionId: string) => request<{ events: SessionEvent[] }>(`/sessions/${sessionId}/events`),
+  startRetrospective: (body: { project_id: string; scope: 'session' | 'project'; source_session_id?: string }) =>
+    request<RetrospectiveStart>('/sessions/retrospective', { method: 'POST', body: JSON.stringify(body) }),
   sendMessage: (sessionId: string, message: string) =>
     request<ChatStart>('/chat', { method: 'POST', body: JSON.stringify({ session_id: sessionId, message }) }),
   compactSession: (sessionId: string) =>

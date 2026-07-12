@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -10,12 +11,16 @@ from agent.core.session_store import SessionRecord
 from agent.server.deps import agent_manager, state_store
 from agent.server.models import (
     MessageItem,
+    ChatStartResponse,
+    RetrospectiveRequest,
+    RetrospectiveStartResponse,
     SessionCreate,
     SessionDetail,
     SessionInfo,
     SessionListResponse,
     SessionPatch,
 )
+from agent.server.routes.settings import normalize_settings
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -101,6 +106,93 @@ def create_session(body: SessionCreate):
         title=body.title,
     )
     return to_session_info(record)
+
+
+@router.post("/retrospective", response_model=RetrospectiveStartResponse)
+def create_retrospective(body: RetrospectiveRequest):
+    project = state_store.get_project(body.project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if body.scope == "session":
+        if not body.source_session_id:
+            raise HTTPException(status_code=422, detail="source_session_id is required for session retrospective")
+        source = agent_manager.store.load(body.source_session_id)
+        if source is None or source.metadata.get("project_id") != body.project_id:
+            raise HTTPException(status_code=404, detail="Source session not found in project")
+        source_records = [source]
+    else:
+        source_records = agent_manager.list_sessions(project_id=body.project_id, include_archived=True)
+
+    source_records = list(source_records)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    scope_id = body.source_session_id if body.scope == "session" else body.project_id
+    scope_label = "会话" if body.scope == "session" else "项目"
+    review_key = f"{timestamp}-{body.scope}-{scope_id}"
+    review_root = Path(project["workspace_path"]) / "复盘"
+    process_dir = review_root / ".过程" / review_key
+    human_report = review_root / f"{review_key}-工作复盘.md"
+    ai_report = review_root / f"{review_key}-AI交接报告.md"
+
+    source_lines: list[str] = []
+    active_sessions: list[str] = []
+    for source in source_records:
+        title = str(source.metadata.get("title") or source.title or source.session_id)
+        event_path = agent_manager.events_dir / f"{source.session_id}.jsonl"
+        log_path = agent_manager.logs_dir / f"{source.session_id}.jsonl"
+        source_lines.append(f"- 会话 {source.session_id}：{title}")
+        source_lines.append(f"  - event：{event_path if event_path.exists() else '不存在'}")
+        source_lines.append(f"  - log：{log_path if log_path.exists() else '不存在'}")
+        if agent_manager.get_active_run_for_session(source.session_id) is not None:
+            active_sessions.append(source.session_id)
+
+    active_notice = (
+        "以下来源会话仍在运行，本次复盘以读取时已经落盘的内容为准：" + "、".join(active_sessions)
+        if active_sessions
+        else "所有来源会话当前均未运行。"
+    )
+    prompt = "\n".join(
+        [
+            "[系统复盘任务]",
+            "",
+            f"这是一次{scope_label}复盘。请显式加载 retrospective Skill，并严格按照 Skill 执行。",
+            "复盘过程中必须显式加载 planwithfile Skill，使用文件保存计划、发现和进度。",
+            active_notice,
+            "",
+            "来源资料（event 是主要材料，只有信息不足时才读取对应 log）：",
+            *(source_lines or ["- 当前范围没有可读取的历史会话。"]),
+            "",
+            f"过程文件目录：{process_dir}",
+            f"给人看的工作复盘：{human_report}",
+            f"给 AI 看的交接报告：{ai_report}",
+            "",
+            "项目复盘时，跳过第一条用户消息包含 [系统复盘任务] 的历史复盘会话，也不要读取复盘目录中的旧报告作为来源。",
+        ]
+    )
+
+    title_source = project["name"] if body.scope == "project" else str(source_records[0].metadata.get("title") or scope_id)
+    record = agent_manager.create_session(
+        project_id=body.project_id,
+        workspace=Path(project["workspace_path"]),
+        title=f"{scope_label}复盘 · {title_source}",
+    )
+    settings = normalize_settings(state_store.get_settings())
+    try:
+        request_id = agent_manager.start_chat(
+            session_id=record.session_id,
+            message=prompt,
+            permission_mode=str(settings.get("permission_mode") or "ask"),
+            llm_settings=settings,
+            runtime_metadata={"retrospective_scope": body.scope},
+        )
+    except Exception:
+        agent_manager.delete_session(record.session_id)
+        raise
+
+    return RetrospectiveStartResponse(
+        session=to_session_info(record),
+        run=ChatStartResponse(request_id=request_id, session_id=record.session_id),
+    )
 
 
 @router.get("/{session_id}", response_model=SessionDetail)

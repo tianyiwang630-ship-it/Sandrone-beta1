@@ -68,6 +68,17 @@ class SessionListResponse(BaseModel):
     total: int
 
 
+class RetrospectiveRequest(BaseModel):
+    project_id: str
+    scope: Literal["session", "project"]
+    source_session_id: str | None = None
+
+
+class RetrospectiveStartResponse(BaseModel):
+    session: SessionInfo
+    run: "ChatStartResponse"
+
+
 class ChatRequest(BaseModel):
     session_id: str
     message: str = Field(min_length=1)

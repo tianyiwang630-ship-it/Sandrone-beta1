@@ -18,6 +18,7 @@ from agent.core.config import LLM_MAX_TOKENS
 from agent.core.message_history import collect_recent_complete_groups, sanitize_tool_history
 from agent.core.message_pipeline import UNKNOWN_TOOL_RESULT, prepare_runtime_history, validate_assistant_message
 from agent.core.session_events import SessionEventWriter, truncate_tool_result
+from agent.core.realtime_log import RealtimeLogWriter
 from agent.errors import LLMInterrupted, LLMInvalidResponse
 
 
@@ -51,6 +52,7 @@ class AgentLoop:
         max_turns: int,
         max_tool_result_chars: int = 12000,
         event_writer: SessionEventWriter | None = None,
+        log_writer: RealtimeLogWriter | None = None,
         interrupt_event: Optional[threading.Event] = None,
         start_interrupt_listener: Optional[Callable[[], Any]] = None,
         request_id: str = "runtime",
@@ -63,6 +65,7 @@ class AgentLoop:
         self.max_turns = max_turns
         self.max_tool_result_chars = max_tool_result_chars
         self.event_writer = event_writer
+        self.log_writer = log_writer
         self._interrupted = interrupt_event or threading.Event()
         self._start_interrupt_listener = start_interrupt_listener
         self.request_id = request_id
@@ -130,6 +133,12 @@ class AgentLoop:
             self._interrupted.set()
 
     def _call_llm(self, messages: List[Dict[str, Any]]) -> Any:
+        if self.log_writer is not None:
+            self.log_writer.write_event(
+                "llm_input",
+                {"messages": messages, "tool_count": len(self.tools)},
+                request_id=self.request_id,
+            )
         previous_callback = getattr(self.llm, "event_callback", None)
         self._llm_recovery_prompt_injected = False
         try:
@@ -178,6 +187,18 @@ class AgentLoop:
             ],
         )
         choice = SimpleNamespace(message=message, finish_reason=getattr(choice, "finish_reason", None))
+
+        if self.log_writer is not None:
+            self.log_writer.write_event(
+                "llm_response",
+                {
+                    "content": message.content,
+                    "reasoning_content": message.reasoning_content,
+                    "tool_calls": normalized.get("tool_calls", []),
+                    "finish_reason": getattr(choice, "finish_reason", None),
+                },
+                request_id=self.request_id,
+            )
 
         if hasattr(message, "tool_calls") and message.tool_calls:
             debug_mode = os.environ.get("DEBUG_AGENT", "0") == "1"
@@ -247,9 +268,11 @@ class AgentLoop:
 
     def _handle_llm_diagnostic_event(self, event: dict[str, Any]) -> dict[str, Any] | None:
         event_type = str(event.get("type") or "")
-        payload = {key: value for key, value in event.items() if key != "type"}
+        payload = {"request_id": self.request_id, **{key: value for key, value in event.items() if key != "type"}}
         if self.event_writer is not None and event_type:
             self.event_writer.write_event(event_type, payload)
+        if self.log_writer is not None and event_type:
+            self.log_writer.write_event(event_type, payload, request_id=self.request_id)
 
         if not self._should_inject_slow_connection_recovery(event):
             return None
@@ -396,6 +419,16 @@ class AgentLoop:
 
             result_str = json.dumps(result, ensure_ascii=False) if isinstance(result, dict) else str(result)
             result_str = re.sub(r"\x1b\[[0-9;]*m", "", result_str)
+            if self.log_writer is not None:
+                self.log_writer.write_entry(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result_str,
+                    },
+                    request_id=self.request_id,
+                    raw_tool_result=True,
+                )
             result_str, event_metadata = truncate_tool_result(
                 result_str,
                 max_chars=self.max_tool_result_chars,
@@ -409,6 +442,7 @@ class AgentLoop:
                     "content": result_str,
                 },
                 **event_metadata,
+                write_log=False,
             )
             self._write_event(
                 "tool_execution_completed",
@@ -498,15 +532,21 @@ class AgentLoop:
     def _write_event(self, event_type: str, payload: dict[str, Any]) -> None:
         if self.event_writer is not None:
             self.event_writer.write_event(event_type, {"request_id": self.request_id, **payload})
+        if self.log_writer is not None:
+            self.log_writer.write_event(event_type, payload, request_id=self.request_id)
 
-    def _append_history_entry(self, entry: dict[str, Any], **event_metadata: Any) -> None:
+    def _append_history_entry(self, entry: dict[str, Any], *, write_log: bool = True, **event_metadata: Any) -> None:
         self.history.append(entry)
+        if write_log and self.log_writer is not None:
+            self.log_writer.write_entry(entry, request_id=self.request_id)
         if self.event_writer is not None:
             event_metadata.setdefault("request_id", self.request_id)
             self.event_writer.write(entry, **event_metadata)
 
     def _insert_history_entry(self, index: int, entry: dict[str, Any], **event_metadata: Any) -> None:
         self.history.insert(index, entry)
+        if self.log_writer is not None:
+            self.log_writer.write_entry(entry, request_id=self.request_id)
         if self.event_writer is not None:
             event_metadata.setdefault("request_id", self.request_id)
             self.event_writer.write(entry, **event_metadata)

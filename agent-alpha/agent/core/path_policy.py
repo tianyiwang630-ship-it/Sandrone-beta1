@@ -8,6 +8,7 @@ PROTECTED_PROJECT_PATHS = (
     Path("agent/core"),
     Path("agent/tools"),
 )
+READ_ONLY_PROJECT_PATHS = (Path("session-log"),)
 
 
 def classify_path(path: Path | None, *, workspace_root: Path, project_root: Path) -> SandboxZone:
@@ -45,6 +46,8 @@ def decide_path_access(
         if action == "read":
             return "allow", zone
         if action in {"write", "delete"}:
+            if _matches_project_paths(path, project_root, READ_ONLY_PROJECT_PATHS):
+                return "deny", zone
             return ("ask" if _is_protected_project_path(path, project_root) else "allow"), zone
 
     if zone == "outside" and action == "read":
@@ -62,10 +65,14 @@ def _is_relative_to(path: Path, base: Path) -> bool:
 
 
 def _is_protected_project_path(path: Path | None, project_root: Path) -> bool:
+    return _matches_project_paths(path, project_root, PROTECTED_PROJECT_PATHS)
+
+
+def _matches_project_paths(path: Path | None, project_root: Path, protected_paths: tuple[Path, ...]) -> bool:
     if path is None:
         return False
     try:
         relative = path.resolve().relative_to(Path(project_root).resolve())
     except ValueError:
         return False
-    return any(relative == protected or _is_relative_to(relative, protected) for protected in PROTECTED_PROJECT_PATHS)
+    return any(relative == protected or _is_relative_to(relative, protected) for protected in protected_paths)

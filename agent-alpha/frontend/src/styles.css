@@ -1324,7 +1324,9 @@ pre {
 .markdown-preview p,
 .markdown-preview ul,
 .markdown-preview ol,
-.markdown-preview pre {
+.markdown-preview pre,
+.markdown-preview table,
+.markdown-preview hr {
   margin: 0 0 14px;
 }
 
@@ -1363,6 +1365,32 @@ pre {
 
 .markdown-preview a:hover {
   text-decoration: underline;
+}
+
+.markdown-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border: 1px solid #dce4e8;
+  border-radius: 8px;
+}
+
+.markdown-preview th,
+.markdown-preview td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e6ecef;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-preview th {
+  background: #f5f8fa;
+  color: #44525c;
+  font-weight: 600;
+}
+
+.markdown-preview tr:last-child td {
+  border-bottom: 0;
 }
 
 .file-context-menu {

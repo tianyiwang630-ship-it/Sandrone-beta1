@@ -74,6 +74,43 @@ function renderInlineMarkdown(value: string) {
     })
 }
 
+function splitTableRow(line: string) {
+  return line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim())
+}
+
+function isTableSeparator(line: string) {
+  const cells = splitTableRow(line)
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell))
+}
+
+function renderMarkdownTable(lines: string[], start: number) {
+  const header = splitTableRow(lines[start] || '')
+  const body: string[][] = []
+  let index = start + 2
+
+  while (index < lines.length && (lines[index] || '').includes('|') && (lines[index] || '').trim()) {
+    body.push(splitTableRow(lines[index] || ''))
+    index += 1
+  }
+
+  const thead = `<thead><tr>${header.map((cell) => `<th>${renderInlineMarkdown(cell)}</th>`).join('')}</tr></thead>`
+  const tbody = body.length
+    ? `<tbody>${body
+        .map((row) => `<tr>${row.map((cell) => `<td>${renderInlineMarkdown(cell)}</td>`).join('')}</tr>`)
+        .join('')}</tbody>`
+    : ''
+
+  return {
+    html: `<table>${thead}${tbody}</table>`,
+    nextIndex: index,
+  }
+}
+
 function renderMarkdownPreview(content: string) {
   const lines = content.replace(/\r\n/g, '\n').split('\n')
   const blocks: string[] = []
@@ -97,6 +134,13 @@ function renderMarkdownPreview(content: string) {
       }
       if (index < lines.length) index += 1
       blocks.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`)
+      continue
+    }
+
+    if (/^\|?.+\|.+$/.test(trimmed) && index + 1 < lines.length && isTableSeparator(lines[index + 1] || '')) {
+      const table = renderMarkdownTable(lines, index)
+      blocks.push(table.html)
+      index = table.nextIndex
       continue
     }
 
@@ -133,7 +177,15 @@ function renderMarkdownPreview(content: string) {
       const current = lines[index] || ''
       const currentTrimmed = current.trim()
       if (!currentTrimmed) break
-      if (/^```/.test(currentTrimmed) || /^(#{1,6})\s+/.test(current) || /^\s*[-*+]\s+/.test(current) || /^\s*\d+\.\s+/.test(current)) break
+      if (
+        /^```/.test(currentTrimmed) ||
+        /^(#{1,6})\s+/.test(current) ||
+        /^\s*[-*+]\s+/.test(current) ||
+        /^\s*\d+\.\s+/.test(current) ||
+        (/^\|?.+\|.+$/.test(currentTrimmed) && index + 1 < lines.length && isTableSeparator(lines[index + 1] || ''))
+      ) {
+        break
+      }
       paragraphLines.push(currentTrimmed)
       index += 1
     }

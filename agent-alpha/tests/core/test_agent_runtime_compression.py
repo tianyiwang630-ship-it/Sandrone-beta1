@@ -1,5 +1,5 @@
-from types import SimpleNamespace
 import threading
+from types import SimpleNamespace
 
 from agent.core.agent_runtime import AgentRuntime
 from agent.core.runtime_types import RuntimeRequest
@@ -44,7 +44,7 @@ def test_handle_clears_stale_interrupt_and_auto_compaction_allows_fallback(monke
         return SimpleNamespace(success=False, fallback=False, error="network down")
 
     runtime.compact_history = fake_compact_history
-    runtime._record_compression_event = lambda result, event_writer=None: None
+    runtime._record_compression_event = lambda result, event_writer=None, log_writer=None, request_id=None: None
     runtime._print_compression_result = lambda result: None
 
     response = AgentRuntime.handle(runtime, RuntimeRequest(content="hello", session_id="sess1"))

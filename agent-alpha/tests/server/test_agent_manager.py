@@ -76,6 +76,7 @@ def test_delete_session_removes_snapshot_events_and_logs(tmp_path):
     store.save(record)
     (events_dir / "sess1.jsonl").write_text("{}", encoding="utf-8")
     (logs_dir / "2026_session_sess1.json").write_text("{}", encoding="utf-8")
+    (logs_dir / "sess1.jsonl").write_text("{}", encoding="utf-8")
 
     manager = AgentManager.__new__(AgentManager)
     manager.store = store
@@ -90,6 +91,7 @@ def test_delete_session_removes_snapshot_events_and_logs(tmp_path):
     assert store.load("sess1") is None
     assert not (events_dir / "sess1.jsonl").exists()
     assert not (logs_dir / "2026_session_sess1.json").exists()
+    assert not (logs_dir / "sess1.jsonl").exists()
     assert "sess1" not in manager._agents
 
 
@@ -899,6 +901,70 @@ def test_runtime_history_replays_checkpoint_entries_without_duplicating_pending_
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "recovered"},
     ]
+
+
+def test_migrate_historical_events_skips_recovery_sessions(tmp_path):
+    sessions_dir = tmp_path / "sessions"
+    events_dir = tmp_path / "events"
+    sessions_dir.mkdir()
+    events_dir.mkdir()
+    store = SessionStore(sessions_dir)
+    stable = SessionRecord(session_id="stable", metadata={"project_id": "proj"})
+    recovering = SessionRecord(
+        session_id="recovering",
+        metadata={"project_id": "proj"},
+        runtime_checkpoint={"status": "recoverable"},
+    )
+    store.save(stable)
+    store.save(recovering)
+    for record in (stable, recovering):
+        writer = SessionEventWriter(events_dir, record.session_id)
+        writer.write_event("assistant_delta", {"content": "stream"})
+
+    manager = AgentManager.__new__(AgentManager)
+    manager.store = store
+    manager.events_dir = events_dir
+
+    assert AgentManager.migrate_historical_events(manager) == 1
+    assert read_event_objects(events_dir / "stable.jsonl") == []
+    assert read_event_objects(events_dir / "recovering.jsonl")[0]["type"] == "assistant_delta"
+
+
+def test_run_chat_success_removes_completed_stream_events(tmp_path):
+    sessions_dir = tmp_path / "sessions"
+    events_dir = tmp_path / "events"
+    sessions_dir.mkdir()
+    events_dir.mkdir()
+    store = SessionStore(sessions_dir)
+    record = SessionRecord(
+        session_id="sess_cleanup",
+        workspace=str(tmp_path / "workspace"),
+        metadata={"project_id": "proj", "title": "cleanup"},
+    )
+    store.save(record)
+    writer = SessionEventWriter(events_dir, record.session_id)
+    writer.write_event("assistant_delta", {"request_id": "req_cleanup", "content": "partial"})
+    writer.write_event("llm_request_started", {"request_id": "req_cleanup"})
+    writer.write({"role": "assistant", "content": "done"}, request_id="req_cleanup")
+
+    class FakeAgent:
+        history = [{"role": "user", "content": "work"}, {"role": "assistant", "content": "done"}]
+        runtime_events = []
+
+        def handle(self, request):
+            return RuntimeResponse(content="done", session_id=request.session_id, metadata={})
+
+    manager = AgentManager.__new__(AgentManager)
+    manager.store = store
+    manager.events_dir = events_dir
+    manager._runs = {"req_cleanup": {"request_id": "req_cleanup", "session_id": record.session_id}}
+    manager._lock = __import__("threading").RLock()
+    manager._get_agent = lambda *_args, **_kwargs: FakeAgent()
+
+    AgentManager._run_chat(manager, "req_cleanup", record, "work", "ask", {}, {})
+
+    events = read_event_objects(events_dir / "sess_cleanup.jsonl")
+    assert [event.get("entry", {}).get("content") for event in events] == ["done"]
 
 
 def test_run_chat_recovery_exhaustion_is_saved_as_resumable_checkpoint(tmp_path):

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { ChangeEvent, MouseEvent, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { renderMarkdown as renderMarkdownContent } from '../markdown'
 import type { FileContent, FileInfo, Project, UploadConflictItem } from '../types'
 import {
   buildFolderFiles,
@@ -52,147 +53,6 @@ function escapeHtmlAttribute(value: string) {
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-function renderInlineMarkdown(value: string) {
-  return escapeHtml(value)
-    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_match, label, href) => {
-      const safeHref = /^(https?:|mailto:|#)/i.test(href) ? href : '#'
-      return `<a href="${escapeHtmlAttribute(safeHref)}" target="_blank" rel="noreferrer">${label}</a>`
-    })
-}
-
-function splitTableRow(line: string) {
-  return line
-    .trim()
-    .replace(/^\|/, '')
-    .replace(/\|$/, '')
-    .split('|')
-    .map((cell) => cell.trim())
-}
-
-function isTableSeparator(line: string) {
-  const cells = splitTableRow(line)
-  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell))
-}
-
-function renderMarkdownTable(lines: string[], start: number) {
-  const header = splitTableRow(lines[start] || '')
-  const body: string[][] = []
-  let index = start + 2
-
-  while (index < lines.length && (lines[index] || '').includes('|') && (lines[index] || '').trim()) {
-    body.push(splitTableRow(lines[index] || ''))
-    index += 1
-  }
-
-  const thead = `<thead><tr>${header.map((cell) => `<th>${renderInlineMarkdown(cell)}</th>`).join('')}</tr></thead>`
-  const tbody = body.length
-    ? `<tbody>${body
-        .map((row) => `<tr>${row.map((cell) => `<td>${renderInlineMarkdown(cell)}</td>`).join('')}</tr>`)
-        .join('')}</tbody>`
-    : ''
-
-  return {
-    html: `<table>${thead}${tbody}</table>`,
-    nextIndex: index,
-  }
-}
-
-function renderMarkdownPreview(content: string) {
-  const lines = content.replace(/\r\n/g, '\n').split('\n')
-  const blocks: string[] = []
-  let index = 0
-
-  while (index < lines.length) {
-    const line = lines[index] || ''
-    const trimmed = line.trim()
-    if (!trimmed) {
-      index += 1
-      continue
-    }
-
-    const fence = trimmed.match(/^```([\w-]+)?\s*$/)
-    if (fence) {
-      const codeLines: string[] = []
-      index += 1
-      while (index < lines.length && !(lines[index] || '').trim().startsWith('```')) {
-        codeLines.push(lines[index] || '')
-        index += 1
-      }
-      if (index < lines.length) index += 1
-      blocks.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`)
-      continue
-    }
-
-    if (/^\|?.+\|.+$/.test(trimmed) && index + 1 < lines.length && isTableSeparator(lines[index + 1] || '')) {
-      const table = renderMarkdownTable(lines, index)
-      blocks.push(table.html)
-      index = table.nextIndex
-      continue
-    }
-
-    const heading = line.match(/^(#{1,6})\s+(.+)$/)
-    if (heading) {
-      const level = heading[1].length
-      blocks.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`)
-      index += 1
-      continue
-    }
-
-    if (/^\s*[-*+]\s+/.test(line)) {
-      const items: string[] = []
-      while (index < lines.length && /^\s*[-*+]\s+/.test(lines[index] || '')) {
-        items.push(`<li>${renderInlineMarkdown((lines[index] || '').replace(/^\s*[-*+]\s+/, ''))}</li>`)
-        index += 1
-      }
-      blocks.push(`<ul>${items.join('')}</ul>`)
-      continue
-    }
-
-    if (/^\s*\d+\.\s+/.test(line)) {
-      const items: string[] = []
-      while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index] || '')) {
-        items.push(`<li>${renderInlineMarkdown((lines[index] || '').replace(/^\s*\d+\.\s+/, ''))}</li>`)
-        index += 1
-      }
-      blocks.push(`<ol>${items.join('')}</ol>`)
-      continue
-    }
-
-    const paragraphLines: string[] = []
-    while (index < lines.length) {
-      const current = lines[index] || ''
-      const currentTrimmed = current.trim()
-      if (!currentTrimmed) break
-      if (
-        /^```/.test(currentTrimmed) ||
-        /^(#{1,6})\s+/.test(current) ||
-        /^\s*[-*+]\s+/.test(current) ||
-        /^\s*\d+\.\s+/.test(current) ||
-        (/^\|?.+\|.+$/.test(currentTrimmed) && index + 1 < lines.length && isTableSeparator(lines[index + 1] || ''))
-      ) {
-        break
-      }
-      paragraphLines.push(currentTrimmed)
-      index += 1
-    }
-    blocks.push(`<p>${renderInlineMarkdown(paragraphLines.join(' '))}</p>`)
-  }
-
-  return blocks.join('')
 }
 
 function buildHtmlPreview(content: string, baseHref: string) {
@@ -565,7 +425,7 @@ export default function FileDrawer({ project, open, onClose, width, onResizeStar
                 ) : selected.previewable && canRenderMarkdown && renderMarkdown && selected.content ? (
                   <div
                     className="markdown-preview"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(selected.content) }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdownContent(selected.content) }}
                   />
                 ) : selected.previewable ? (
                   <pre>{selected.content}</pre>

@@ -32,6 +32,7 @@ import { api } from './api/client'
 import sandroneIcon from './assets/sandrone-icon.png'
 import FileDrawer from './components/FileDrawer'
 import { EMPTY_STATE_QUOTES } from './emptyStateQuotes'
+import { renderMarkdown } from './markdown'
 import type {
   CapabilityItem,
   Message,
@@ -81,6 +82,11 @@ const FALLBACK_COMPOSER_SKILLS: CapabilityItem[] = [
   { name: 'pdf', kind: 'skill', path: '', summary: '读取、拆分、合并或生成 PDF' },
 ]
 
+const SHELL_RESIZER_WIDTH = 8
+const MIN_CHAT_WIDTH = 520
+const MIN_CHAT_WIDTH_WITH_DRAWER = 180
+const MIN_DRAWER_WIDTH = 520
+
 function pickEmptyStateQuote(currentQuotes: Record<string, string>) {
   const usedQuotes = new Set(Object.values(currentQuotes))
   const availableQuotes = EMPTY_STATE_QUOTES.filter((quote) => !usedQuotes.has(quote))
@@ -93,193 +99,6 @@ function messageText(message: Message): string {
   if (typeof value === 'string') return value
   if (value == null) return ''
   return JSON.stringify(value, null, 2)
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-function escapeAttribute(value: string) {
-  return escapeHtml(value).replace(/`/g, '&#96;')
-}
-
-function isSafeHref(value: string) {
-  return /^(https?:|mailto:)/i.test(value)
-}
-
-function formatInlineMarkdown(value: string) {
-  const codeTokens: string[] = []
-  let html = escapeHtml(value).replace(/`([^`\n]+)`/g, (_match: string, code: string) => {
-    const token = `@@CODETOKEN${codeTokens.length}@@`
-    codeTokens.push(`<code>${code}</code>`)
-    return token
-  })
-
-  html = html.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_match: string, label: string, href: string) => {
-    if (!isSafeHref(href)) return label
-    return `<a href="${escapeAttribute(href)}" target="_blank" rel="noreferrer">${label}</a>`
-  })
-  html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
-  html = html.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>')
-  html = html.replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>')
-  html = html.replace(/~~([^~\n]+)~~/g, '<del>$1</del>')
-
-  return codeTokens.reduce(
-    (result, tokenHtml, index) => result.replace(`@@CODETOKEN${index}@@`, tokenHtml),
-    html,
-  )
-}
-
-function splitTableRow(line: string) {
-  return line
-    .trim()
-    .replace(/^\|/, '')
-    .replace(/\|$/, '')
-    .split('|')
-    .map((cell) => cell.trim())
-}
-
-function isTableSeparator(line: string) {
-  const cells = splitTableRow(line)
-  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell))
-}
-
-function renderMarkdownTable(lines: string[], start: number) {
-  const header = splitTableRow(lines[start] || '')
-  const body: string[][] = []
-  let index = start + 2
-
-  while (index < lines.length && lines[index].includes('|') && lines[index].trim()) {
-    body.push(splitTableRow(lines[index]))
-    index += 1
-  }
-
-  const thead = `<thead><tr>${header.map((cell) => `<th>${formatInlineMarkdown(cell)}</th>`).join('')}</tr></thead>`
-  const tbody = body.length
-    ? `<tbody>${body
-        .map((row) => `<tr>${row.map((cell) => `<td>${formatInlineMarkdown(cell)}</td>`).join('')}</tr>`)
-        .join('')}</tbody>`
-    : ''
-
-  return {
-    html: `<table>${thead}${tbody}</table>`,
-    nextIndex: index,
-  }
-}
-
-function renderMarkdown(value: string) {
-  const lines = value.replace(/\r\n/g, '\n').split('\n')
-  const blocks: string[] = []
-  let index = 0
-
-  while (index < lines.length) {
-    const line = lines[index] || ''
-    const trimmed = line.trim()
-
-    if (!trimmed) {
-      index += 1
-      continue
-    }
-
-    const codeFence = trimmed.match(/^```([\w-]+)?\s*$/)
-    if (codeFence) {
-      const codeLines: string[] = []
-      index += 1
-      while (index < lines.length && !lines[index].trim().startsWith('```')) {
-        codeLines.push(lines[index])
-        index += 1
-      }
-      if (index < lines.length) index += 1
-      const language = codeFence[1] ? ` class="language-${escapeAttribute(codeFence[1])}"` : ''
-      blocks.push(`<pre><code${language}>${escapeHtml(codeLines.join('\n'))}</code></pre>`)
-      continue
-    }
-
-    if (/^\|?.+\|.+$/.test(trimmed) && index + 1 < lines.length && isTableSeparator(lines[index + 1] || '')) {
-      const table = renderMarkdownTable(lines, index)
-      blocks.push(table.html)
-      index = table.nextIndex
-      continue
-    }
-
-    const heading = line.match(/^(#{1,6})\s+(.+)$/)
-    if (heading) {
-      const level = heading[1].length
-      blocks.push(`<h${level}>${formatInlineMarkdown(heading[2])}</h${level}>`)
-      index += 1
-      continue
-    }
-
-    if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(line)) {
-      blocks.push('<hr />')
-      index += 1
-      continue
-    }
-
-    if (/^\s*>\s?/.test(line)) {
-      const quoteLines: string[] = []
-      while (index < lines.length && /^\s*>\s?/.test(lines[index] || '')) {
-        quoteLines.push((lines[index] || '').replace(/^\s*>\s?/, ''))
-        index += 1
-      }
-      const quote = quoteLines
-        .join('\n')
-        .split(/\n\s*\n/)
-        .map((part) => `<p>${formatInlineMarkdown(part.trim().replace(/\n+/g, '<br />'))}</p>`)
-        .join('')
-      blocks.push(`<blockquote>${quote}</blockquote>`)
-      continue
-    }
-
-    if (/^\s*[-*+]\s+/.test(line)) {
-      const items: string[] = []
-      while (index < lines.length && /^\s*[-*+]\s+/.test(lines[index] || '')) {
-        items.push(`<li>${formatInlineMarkdown((lines[index] || '').replace(/^\s*[-*+]\s+/, ''))}</li>`)
-        index += 1
-      }
-      blocks.push(`<ul>${items.join('')}</ul>`)
-      continue
-    }
-
-    if (/^\s*\d+\.\s+/.test(line)) {
-      const items: string[] = []
-      while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index] || '')) {
-        items.push(`<li>${formatInlineMarkdown((lines[index] || '').replace(/^\s*\d+\.\s+/, ''))}</li>`)
-        index += 1
-      }
-      blocks.push(`<ol>${items.join('')}</ol>`)
-      continue
-    }
-
-    const paragraphLines: string[] = []
-    while (index < lines.length) {
-      const current = lines[index] || ''
-      const currentTrimmed = current.trim()
-      if (!currentTrimmed) break
-      if (
-        /^```/.test(currentTrimmed) ||
-        /^(#{1,6})\s+/.test(current) ||
-        /^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(current) ||
-        /^\s*>\s?/.test(current) ||
-        /^\s*[-*+]\s+/.test(current) ||
-        /^\s*\d+\.\s+/.test(current) ||
-        (/^\|?.+\|.+$/.test(currentTrimmed) && index + 1 < lines.length && isTableSeparator(lines[index + 1] || ''))
-      ) {
-        break
-      }
-      paragraphLines.push(currentTrimmed)
-      index += 1
-    }
-    blocks.push(`<p>${formatInlineMarkdown(paragraphLines.join(' '))}</p>`)
-  }
-
-  return blocks.join('')
 }
 
 function firstLine(value: string, fallback: string) {
@@ -695,8 +514,8 @@ export default function App() {
   const currentEmptyStateQuote = emptyStateQuotesByKey[emptyStateKey]
   const showEmptyState = !displayMessages.length && !selectedRun && !currentFailedRun
   const shellGridColumns = drawerOpen
-    ? `${sidebarWidth}px 8px minmax(360px, 1fr) ${drawerWidth}px`
-    : `${sidebarWidth}px 8px minmax(520px, 1fr)`
+    ? `${sidebarWidth}px ${SHELL_RESIZER_WIDTH}px minmax(${MIN_CHAT_WIDTH_WITH_DRAWER}px, 1fr) ${drawerWidth}px`
+    : `${sidebarWidth}px ${SHELL_RESIZER_WIDTH}px minmax(${MIN_CHAT_WIDTH}px, 1fr)`
 
   const loadProjects = async () => {
     const data = await api.listProjects()
@@ -852,13 +671,14 @@ export default function App() {
     const handleMouseMove = (event: globalThis.MouseEvent) => {
       const deltaX = event.clientX - dragStateRef.current.x
       if (draggingPane === 'sidebar') {
-        const maxWidth = Math.max(320, window.innerWidth - (drawerOpen ? drawerWidth : 0) - 420)
+        const minChatWidth = drawerOpen ? MIN_CHAT_WIDTH_WITH_DRAWER : MIN_CHAT_WIDTH
+        const maxWidth = Math.max(320, window.innerWidth - (drawerOpen ? drawerWidth : 0) - minChatWidth - SHELL_RESIZER_WIDTH)
         setSidebarWidth(clamp(dragStateRef.current.sidebarWidth + deltaX, 240, maxWidth))
         return
       }
 
-      const maxWidth = Math.max(520, window.innerWidth - sidebarWidth - 360)
-      setDrawerWidth(clamp(dragStateRef.current.drawerWidth - deltaX, 520, maxWidth))
+      const maxWidth = Math.max(MIN_DRAWER_WIDTH, window.innerWidth - sidebarWidth - MIN_CHAT_WIDTH_WITH_DRAWER - SHELL_RESIZER_WIDTH)
+      setDrawerWidth(clamp(dragStateRef.current.drawerWidth - deltaX, MIN_DRAWER_WIDTH, maxWidth))
     }
 
     const handleMouseUp = () => setDraggingPane(null)

@@ -853,11 +853,6 @@ pre {
   background: #fff;
 }
 
-.composer-card:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(35, 108, 100, 0.12);
-}
-
 .composer textarea {
   width: 100%;
   min-height: 70px;
@@ -888,6 +883,12 @@ pre {
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.composer-left-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .composer-run-actions {
@@ -941,6 +942,38 @@ pre {
 .composer .composer-plus-button:hover {
   background: #eef3f5;
   color: #1e323d;
+}
+
+.composer .composer-alignment-button {
+  width: auto;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #60717a;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.composer .composer-alignment-button:hover {
+  background: #eef3f5;
+  color: #1e323d;
+}
+
+.composer .composer-alignment-button.is-active {
+  border-color: rgba(83, 116, 118, 0.16);
+  background: rgba(83, 116, 118, 0.045);
+  color: #4f7374;
+}
+
+.composer .composer-alignment-button.is-active:hover {
+  border-color: rgba(83, 116, 118, 0.22);
+  background: rgba(83, 116, 118, 0.07);
+}
+
+.composer .composer-alignment-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .composer .stop-button {

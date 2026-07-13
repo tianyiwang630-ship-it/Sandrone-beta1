@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "tsc && vite build",
+    "test": "node --test tests/alignmentPrompt.test.mjs tests/sessionDeletion.test.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 5173"
   },
   "dependencies": {
@@ -21,4 +22,3 @@
     "typescript": "^5.7.2"
   }
 }
-

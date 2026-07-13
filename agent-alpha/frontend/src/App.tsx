@@ -29,10 +29,16 @@ import {
   useState,
 } from 'react'
 import { api } from './api/client'
+import {
+  draftAfterSend,
+  insertAlignmentPrompt,
+  removeUnchangedAlignmentPrompt,
+} from './alignmentPrompt'
 import sandroneIcon from './assets/sandrone-icon.png'
 import FileDrawer from './components/FileDrawer'
 import { EMPTY_STATE_QUOTES } from './emptyStateQuotes'
 import { renderMarkdown } from './markdown'
+import { excludeDeletedSessions } from './sessionDeletion'
 import type {
   CapabilityItem,
   Message,
@@ -389,6 +395,7 @@ function shortPath(path: string) {
 const SELECTED_PROJECT_STORAGE_KEY = 'sandrone:selectedProjectId'
 const SELECTED_SESSION_STORAGE_KEY = 'sandrone:selectedSessionId'
 const DRAFT_STORAGE_PREFIX = 'sandrone:draft:'
+const ALIGNMENT_STORAGE_PREFIX = 'sandrone:alignment:'
 
 function readLocalValue(key: string) {
   try {
@@ -413,6 +420,12 @@ function draftKeyFor(projectId: string | null, sessionId: string | null) {
   return null
 }
 
+function alignmentKeyFor(projectId: string | null, sessionId: string | null) {
+  if (sessionId) return `${ALIGNMENT_STORAGE_PREFIX}session:${sessionId}`
+  if (projectId) return `${ALIGNMENT_STORAGE_PREFIX}project:${projectId}`
+  return null
+}
+
 function latestUserEventSeq(events: SessionEvent[]) {
   let seq = 0
   for (const event of events) {
@@ -430,6 +443,7 @@ export default function App() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => readLocalValue(SELECTED_SESSION_STORAGE_KEY))
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null)
   const [draft, setDraft] = useState('')
+  const [alignmentEnabled, setAlignmentEnabled] = useState(false)
   const [view, setView] = useState<CenterView>('chat')
   const [settings, setSettings] = useState<SettingsType | null>(null)
   const [users, setUsers] = useState<User[]>([])
@@ -462,6 +476,10 @@ export default function App() {
   const queuedMessagesRef = useRef<Record<string, string[]>>({})
   const runningSessionsRef = useRef<Record<string, RunningSession>>({})
   const draftKeyRef = useRef<string | null>(null)
+  const alignmentKeyRef = useRef<string | null>(null)
+  const alignmentEnabledRef = useRef(false)
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const deletedSessionIdsRef = useRef(new Set<string>())
   const composerFileInputRef = useRef<HTMLInputElement | null>(null)
   const composerFolderInputRef = useRef<HTMLInputElement | null>(null)
   const composerMenuRef = useRef<HTMLDivElement | null>(null)
@@ -535,13 +553,15 @@ export default function App() {
       return
     }
     const data = await api.listProjectSessions(projectId)
-    setSessions(data.sessions)
+    if (selectedProjectIdRef.current !== projectId) return
+    const nextSessions = excludeDeletedSessions(data.sessions, deletedSessionIdsRef.current)
+    setSessions(nextSessions)
     setSelectedSessionId((current) => {
-      if (data.sessions.some((session) => session.id === current)) return current
-      if (data.sessions.some((session) => session.id === preferredSessionId)) return preferredSessionId
+      if (nextSessions.some((session) => session.id === current)) return current
+      if (nextSessions.some((session) => session.id === preferredSessionId)) return preferredSessionId
       const stored = readLocalValue(SELECTED_SESSION_STORAGE_KEY)
-      if (data.sessions.some((session) => session.id === stored)) return stored
-      return data.sessions[0]?.id || null
+      if (nextSessions.some((session) => session.id === stored)) return stored
+      return nextSessions[0]?.id || null
     })
   }
 
@@ -551,7 +571,9 @@ export default function App() {
       return
     }
     const nextDetail = await api.getSession(sessionId)
-    if (options.preserveScroll && selectedSessionIdRef.current === sessionId) {
+    if (selectedSessionIdRef.current !== sessionId) return
+    if (deletedSessionIdsRef.current.has(sessionId)) return
+    if (options.preserveScroll) {
       preserveScrollTopRef.current = messageStreamRef.current?.scrollTop ?? null
     }
     setSessionDetail(nextDetail)
@@ -580,6 +602,8 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    selectedProjectIdRef.current = selectedProjectId
+    writeLocalValue(SELECTED_PROJECT_STORAGE_KEY, selectedProjectId)
     setSessionDetail(null)
     void loadSessions(selectedProjectId)
   }, [selectedProjectId])
@@ -591,18 +615,18 @@ export default function App() {
   }, [selectedSessionId])
 
   useEffect(() => {
-    selectedProjectIdRef.current = selectedProjectId
-    writeLocalValue(SELECTED_PROJECT_STORAGE_KEY, selectedProjectId)
-  }, [selectedProjectId])
-
-  useEffect(() => {
     writeLocalValue(SELECTED_SESSION_STORAGE_KEY, selectedSessionId)
   }, [selectedSessionId])
 
   useEffect(() => {
-    const nextKey = draftKeyFor(selectedProjectId, selectedSessionId)
-    draftKeyRef.current = nextKey
-    setDraft(nextKey ? readLocalValue(nextKey) || '' : '')
+    const nextDraftKey = draftKeyFor(selectedProjectId, selectedSessionId)
+    const nextAlignmentKey = alignmentKeyFor(selectedProjectId, selectedSessionId)
+    draftKeyRef.current = nextDraftKey
+    alignmentKeyRef.current = nextAlignmentKey
+    setDraft(nextDraftKey ? readLocalValue(nextDraftKey) || '' : '')
+    const nextAlignmentEnabled = nextAlignmentKey ? readLocalValue(nextAlignmentKey) === '1' : false
+    alignmentEnabledRef.current = nextAlignmentEnabled
+    setAlignmentEnabled(nextAlignmentEnabled)
   }, [selectedProjectId, selectedSessionId])
 
   useEffect(() => {
@@ -734,10 +758,16 @@ export default function App() {
     const session = await api.createSession(projectId)
     const projectDraftKey = draftKeyFor(projectId, null)
     const sessionDraftKey = draftKeyFor(projectId, session.id)
+    const projectAlignmentKey = alignmentKeyFor(projectId, null)
+    const sessionAlignmentKey = alignmentKeyFor(projectId, session.id)
     const projectDraft = projectDraftKey ? readLocalValue(projectDraftKey) : null
     if (projectDraft && projectDraftKey && sessionDraftKey && !readLocalValue(sessionDraftKey)) {
       writeLocalValue(sessionDraftKey, projectDraft)
       writeLocalValue(projectDraftKey, null)
+    }
+    if (projectAlignmentKey && sessionAlignmentKey && readLocalValue(projectAlignmentKey) === '1') {
+      writeLocalValue(sessionAlignmentKey, '1')
+      writeLocalValue(projectAlignmentKey, null)
     }
     await loadSessions(projectId)
     setSelectedSessionId(session.id)
@@ -769,10 +799,17 @@ export default function App() {
   const deleteSession = async (session: Session) => {
     const ok = window.confirm(`删除会话「${session.title}」？\n\n会删除这场对话的 session 快照、events 和日志，不会删除工作区文件。`)
     if (!ok) return
+    const projectId = session.project_id || selectedProjectId
     await api.deleteSession(session.id)
-    if (selectedSessionId === session.id) {
-      setSelectedSessionId(null)
-      setSessionDetail(null)
+    deletedSessionIdsRef.current.add(session.id)
+    if (projectId && selectedProjectIdRef.current === projectId) {
+      const nextSelectedSessionId = excludeDeletedSessions(sessions, deletedSessionIdsRef.current)[0]?.id || null
+      setSessions((current) => excludeDeletedSessions(current, deletedSessionIdsRef.current))
+      if (selectedSessionIdRef.current === session.id) {
+        selectedSessionIdRef.current = nextSelectedSessionId
+        setSelectedSessionId(nextSelectedSessionId)
+        setSessionDetail(null)
+      }
     }
     setLiveEventsBySession((current) => {
       const next = { ...current }
@@ -794,7 +831,6 @@ export default function App() {
       delete next[session.id]
       return next
     })
-    await loadSessions(selectedProjectId)
     setView('chat')
   }
 
@@ -1022,6 +1058,34 @@ export default function App() {
     if (draftKeyRef.current) {
       writeLocalValue(draftKeyRef.current, value)
     }
+  }
+
+  const focusComposer = (selectionStart: number, selectionEnd = selectionStart) => {
+    window.requestAnimationFrame(() => {
+      const textarea = composerTextareaRef.current
+      if (!textarea) return
+      textarea.focus()
+      textarea.setSelectionRange(selectionStart, selectionEnd)
+    })
+  }
+
+  const toggleAlignment = () => {
+    const textarea = composerTextareaRef.current
+    const currentDraft = textarea?.value ?? draft
+    const selectionStart = textarea?.selectionStart ?? draft.length
+    const selectionEnd = textarea?.selectionEnd ?? selectionStart
+    const nextEnabled = !alignmentEnabledRef.current
+    const change = nextEnabled
+      ? insertAlignmentPrompt(currentDraft)
+      : removeUnchangedAlignmentPrompt(currentDraft, selectionStart, selectionEnd)
+
+    alignmentEnabledRef.current = nextEnabled
+    setAlignmentEnabled(nextEnabled)
+    if (alignmentKeyRef.current) {
+      writeLocalValue(alignmentKeyRef.current, nextEnabled ? '1' : null)
+    }
+    updateDraft(change.value)
+    focusComposer(change.selectionStart, change.selectionEnd)
   }
 
   const runSessionMessage = async (sessionId: string, content: string, projectIdForList: string | null) => {
@@ -1301,11 +1365,14 @@ export default function App() {
       return
     }
 
-    updateDraft('')
+    const nextDraft = draftAfterSend(alignmentEnabledRef.current)
+    setDraft(nextDraft)
     const sessionDraftKey = draftKeyFor(projectIdForList, sessionId)
     if (sessionDraftKey) {
-      writeLocalValue(sessionDraftKey, null)
+      draftKeyRef.current = sessionDraftKey
+      writeLocalValue(sessionDraftKey, nextDraft || null)
     }
+    focusComposer(nextDraft.length)
 
     if (runningSessions[sessionId]) {
       enqueueSessionMessage(sessionId, content)
@@ -1713,6 +1780,7 @@ export default function App() {
               )}
               <div className="composer-card">
                 <textarea
+                  ref={composerTextareaRef}
                   value={draft}
                   onChange={(event) => updateDraft(event.target.value)}
                   onKeyDown={handleComposerKeyDown}
@@ -1720,15 +1788,27 @@ export default function App() {
                   rows={3}
                 />
                 <div className="composer-toolbar">
-                  <button
-                    ref={composerPlusButtonRef}
-                    className="composer-plus-button"
-                    type="button"
-                    title="添加"
-                    onClick={() => setComposerMenuOpen((value) => !value)}
-                  >
-                    <Plus size={18} />
-                  </button>
+                  <div className="composer-left-actions">
+                    <button
+                      ref={composerPlusButtonRef}
+                      className="composer-plus-button"
+                      type="button"
+                      title="添加"
+                      onClick={() => setComposerMenuOpen((value) => !value)}
+                    >
+                      <Plus size={18} />
+                    </button>
+                    <button
+                      className={`composer-alignment-button${alignmentEnabled ? ' is-active' : ''}`}
+                      type="button"
+                      title={alignmentEnabled ? '关闭对齐' : '开启对齐'}
+                      aria-pressed={alignmentEnabled}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={toggleAlignment}
+                    >
+                      对齐
+                    </button>
+                  </div>
                   <span className="composer-status">{composerUploading ? '上传中...' : selectedRun?.operation === 'compact' ? '正在压缩上下文' : ''}</span>
                   <div className="composer-run-actions">
                     <button

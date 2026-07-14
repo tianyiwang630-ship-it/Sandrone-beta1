@@ -61,6 +61,11 @@ import {
   type SessionMessageQueue,
 } from './messageQueue'
 import { excludeDeletedSessions } from './sessionDeletion'
+import {
+  mergeSessionDetail,
+  replaceSessionSummary,
+  validateSessionTitle,
+} from './sessionRename'
 import type {
   CapabilityItem,
   Message,
@@ -499,6 +504,12 @@ export default function App() {
   const [composerConflicts, setComposerConflicts] = useState<UploadConflictItem[]>([])
   const [composerPendingUpload, setComposerPendingUpload] = useState<UploadEntry[] | null>(null)
   const [showComposerConflictDialog, setShowComposerConflictDialog] = useState(false)
+  const [sessionRename, setSessionRename] = useState<{
+    session: Session
+    draft: string
+    saving: boolean
+    error: string | null
+  } | null>(null)
   const [queuedMessageToWithdraw, setQueuedMessageToWithdraw] = useState<{
     sessionId: string
     message: QueuedMessage
@@ -513,6 +524,7 @@ export default function App() {
   const scrollPositionsRef = useRef<Record<string, number>>({})
   const pendingScrollRestoreRef = useRef<{ sessionId: string; scrollTop: number } | null>(null)
   const previousSelectedSessionIdRef = useRef<string | null>(null)
+  const latestSessionsRequestRef = useRef(0)
   const latestDetailRequestBySessionRef = useRef<Record<string, number>>({})
   const scrollPersistTimerRef = useRef<number | null>(null)
   const resumeInFlightRef = useRef(new Set<string>())
@@ -599,13 +611,15 @@ export default function App() {
   }
 
   const loadSessions = async (projectId = selectedProjectId, preferredSessionId = selectedSessionIdRef.current) => {
+    const requestSequence = latestSessionsRequestRef.current + 1
+    latestSessionsRequestRef.current = requestSequence
     if (!projectId) {
       setSessions([])
       setSelectedSessionId(null)
       return
     }
     const data = await api.listProjectSessions(projectId)
-    if (selectedProjectIdRef.current !== projectId) return
+    if (selectedProjectIdRef.current !== projectId || latestSessionsRequestRef.current !== requestSequence) return
     const nextSessions = excludeDeletedSessions(data.sessions, deletedSessionIdsRef.current)
     setSessions(nextSessions)
     setSelectedSessionId((current) => {
@@ -997,17 +1011,46 @@ export default function App() {
     await loadProjects()
   }
 
-  const renameSession = async (session: Session) => {
-    const title = window.prompt('会话新名称', session.title)
-    if (title == null) return
-    const nextTitle = title.trim()
-    if (!nextTitle || nextTitle === session.title) return
-    await api.updateSession(session.id, { title: nextTitle })
-    await loadSessions(selectedProjectId)
-    if (selectedSessionId === session.id) {
-      await loadSessionDetail(session.id, { preserveScroll: true })
+  const openRenameSession = (session: Session) => {
+    setSessionRename({ session, draft: session.title, saving: false, error: null })
+  }
+
+  const submitRenameSession = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!sessionRename || sessionRename.saving) return
+    const trimmed = sessionRename.draft.trim()
+    if (!trimmed) {
+      setSessionRename((current) => current ? { ...current, error: '会话名称不能为空。' } : current)
+      return
     }
-    setNotice(`已重命名会话「${nextTitle}」`)
+    if (trimmed.length > 160) {
+      setSessionRename((current) => current ? { ...current, error: '会话名称不能超过 160 个字符。' } : current)
+      return
+    }
+    const nextTitle = validateSessionTitle(sessionRename.draft, sessionRename.session.title)
+    if (!nextTitle) {
+      setSessionRename(null)
+      return
+    }
+
+    setSessionRename((current) => current ? { ...current, saving: true, error: null } : current)
+    try {
+      const updated = await api.updateSession(sessionRename.session.id, { title: nextTitle })
+      latestSessionsRequestRef.current += 1
+      latestDetailRequestBySessionRef.current[updated.id] =
+        (latestDetailRequestBySessionRef.current[updated.id] || 0) + 1
+      setSessions((current) => replaceSessionSummary(current, updated))
+      setSessionDetail((current) => mergeSessionDetail(current, updated))
+      setSessionRename(null)
+      setNotice(`已重命名会话「${updated.title}」`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setSessionRename((current) => current ? {
+        ...current,
+        saving: false,
+        error: message === 'Not Found' ? '会话不存在，请刷新后重试。' : `重命名失败：${message}`,
+      } : current)
+    }
   }
 
   const toggleSessionPinned = async (session: Session) => {
@@ -1840,7 +1883,7 @@ export default function App() {
                         >
                           <Pin size={14} />
                         </button>
-                        <button className="item-action" title="重命名会话" onClick={() => void renameSession(session)}>
+                        <button className="item-action" title="重命名会话" onClick={() => openRenameSession(session)}>
                           <Pencil size={14} />
                         </button>
                         <button className="item-delete" title="删除会话" onClick={() => void deleteSession(session)}>
@@ -2163,6 +2206,47 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+              </div>
+            )}
+            {sessionRename && (
+              <div className="modal-backdrop">
+                <form
+                  className="modal-panel rename-session-modal"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="rename-session-title"
+                  onSubmit={(event) => void submitRenameSession(event)}
+                >
+                  <h3 id="rename-session-title">重命名会话</h3>
+                  <label>
+                    <span>会话名称</span>
+                    <input
+                      autoFocus
+                      maxLength={160}
+                      value={sessionRename.draft}
+                      disabled={sessionRename.saving}
+                      onChange={(event) => setSessionRename((current) => current ? {
+                        ...current,
+                        draft: event.target.value,
+                        error: null,
+                      } : current)}
+                    />
+                  </label>
+                  {sessionRename.error && <div className="rename-session-error">{sessionRename.error}</div>}
+                  <div className="modal-actions">
+                    <button
+                      className="secondary"
+                      type="button"
+                      disabled={sessionRename.saving}
+                      onClick={() => setSessionRename(null)}
+                    >
+                      取消
+                    </button>
+                    <button type="submit" disabled={sessionRename.saving}>
+                      {sessionRename.saving ? '保存中...' : '保存'}
+                    </button>
+                  </div>
+                </form>
               </div>
             )}
             {showComposerConflictDialog && (

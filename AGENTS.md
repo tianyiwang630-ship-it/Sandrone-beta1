@@ -27,7 +27,7 @@ Tool / Skill / Plugin 能力层
 权限 / 沙箱 / 安全层
 Workspace / Memory / State 持久化层
 这些部分，做设计改造的时候要明确是在哪个层做改变。
-3 关于agent实例化，至少能够满足以下场景：单agent；平等的多agent；领导agent，去给多个下属agent分配任务，下属agent之间可以对话；有专门的整理记忆/替代用户给AI对话的agent实例
+3 关于agent实例化，至少能够满足以下场景：单agent；平等的多agent；领导agent，去给多个下属agent分配任务，下属agent之间可以对话；有专门的整理记忆/替代用户给AI对话的agent实例；
 4 做任何改动前，都必须先摸清楚对应的代码和实现链路。
 # 遵守的规范
 

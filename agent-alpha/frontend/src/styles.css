@@ -544,10 +544,6 @@ button {
   border-color: #cbded5;
 }
 
-.message.queued {
-  opacity: 0.78;
-}
-
 .message.assistant {
   background: #fbfcfd;
 }
@@ -842,6 +838,158 @@ pre {
   background: #fafbfc;
 }
 
+.composer-shell {
+  display: grid;
+  min-width: 0;
+  width: 100%;
+}
+
+.queued-message-panel {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e1e7e9;
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  background: #fafbfb;
+  color: #5e6b72;
+}
+
+.queued-message-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  padding: 4px 10px 3px 14px;
+  border-bottom: 1px solid rgba(216, 224, 227, 0.72);
+  color: #78858b;
+  font-size: 12px;
+}
+
+.composer .queued-message-status button {
+  gap: 4px;
+  min-height: 26px;
+  padding: 0 8px;
+  background: transparent;
+  color: #60767a;
+  font-size: 12px;
+}
+
+.composer .queued-message-status button:hover:not(:disabled) {
+  background: #eef3f2;
+  color: var(--accent-strong);
+}
+
+.queued-message-list {
+  max-height: 114px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-color: #cdd6d9 transparent;
+  scrollbar-width: thin;
+}
+
+.queued-message-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.queued-message-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #cdd6d9;
+}
+
+.queued-message-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px 20px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 4px;
+  min-height: 38px;
+  padding: 0 8px 0 7px;
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+.queued-message-row + .queued-message-row {
+  border-top-color: rgba(224, 230, 232, 0.7);
+}
+
+.queued-message-row:hover {
+  background: #f3f6f6;
+}
+
+.queued-message-row.is-dragging {
+  opacity: 0.38;
+}
+
+.queued-message-row.drop-before::before,
+.queued-message-row.drop-after::after {
+  position: absolute;
+  right: 8px;
+  left: 8px;
+  z-index: 1;
+  height: 2px;
+  border-radius: 999px;
+  background: #7fa5a0;
+  content: "";
+}
+
+.queued-message-row.drop-before::before {
+  top: -1px;
+}
+
+.queued-message-row.drop-after::after {
+  bottom: -1px;
+}
+
+.composer .queued-message-drag,
+.composer .queued-message-withdraw {
+  width: 24px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  color: #9aa5aa;
+}
+
+.composer .queued-message-drag {
+  cursor: grab;
+}
+
+.composer .queued-message-drag:active {
+  cursor: grabbing;
+}
+
+.composer .queued-message-withdraw {
+  width: 30px;
+  opacity: 0.48;
+}
+
+.composer .queued-message-drag:hover,
+.composer .queued-message-withdraw:hover {
+  background: #e9eeee;
+  color: #66777e;
+}
+
+.composer .queued-message-withdraw:hover {
+  color: #a7656a;
+  opacity: 1;
+}
+
+.queued-message-order {
+  color: #a0aaae;
+  font-size: 12px;
+  text-align: right;
+}
+
+.queued-message-content {
+  min-width: 0;
+  overflow: hidden;
+  color: #536168;
+  font-size: 13px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composer-card {
   display: grid;
   grid-template-rows: minmax(70px, auto) 48px;
@@ -851,6 +999,10 @@ pre {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
+}
+
+.composer-shell.has-queue .composer-card {
+  border-radius: 0 0 8px 8px;
 }
 
 .composer textarea {
@@ -983,6 +1135,11 @@ pre {
 .composer button:disabled {
   background: #b6c0c5;
   cursor: default;
+}
+
+.composer .queued-message-status button:disabled {
+  background: transparent;
+  color: #a7b0b4;
 }
 
 .composer-plus-menu {
@@ -1550,6 +1707,15 @@ pre {
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--text);
+}
+
+.modal-actions .danger {
+  background: #a7656a;
+  color: #fff;
+}
+
+.modal-actions .danger:hover {
+  background: #94585e;
 }
 
 .empty {

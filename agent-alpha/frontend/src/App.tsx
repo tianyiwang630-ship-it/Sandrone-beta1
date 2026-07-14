@@ -3,6 +3,7 @@
   Copy,
   Eye,
   EyeOff,
+  GripVertical,
   KeyRound,
   MessageSquarePlus,
   PanelRightOpen,
@@ -18,6 +19,7 @@
   Wrench,
 } from 'lucide-react'
 import {
+  DragEvent as ReactDragEvent,
   FormEvent,
   ChangeEvent,
   KeyboardEvent,
@@ -38,6 +40,18 @@ import sandroneIcon from './assets/sandrone-icon.png'
 import FileDrawer from './components/FileDrawer'
 import { EMPTY_STATE_QUOTES } from './emptyStateQuotes'
 import { renderMarkdown } from './markdown'
+import {
+  emptySessionMessageQueue,
+  enqueuePriorityMessage,
+  enqueueQueuedMessage,
+  moveQueuedMessage,
+  pauseMessageQueue,
+  resumeMessageQueue,
+  takeNextQueuedMessage,
+  withdrawQueuedMessage,
+  type QueuedMessage,
+  type SessionMessageQueue,
+} from './messageQueue'
 import { excludeDeletedSessions } from './sessionDeletion'
 import type {
   CapabilityItem,
@@ -80,6 +94,11 @@ interface FailedRunSnapshot {
   error: string
   operation?: 'chat' | 'compact'
   recoverable?: boolean
+}
+
+interface QueueDropTarget {
+  id: string
+  placement: 'before' | 'after'
 }
 
 const FALLBACK_COMPOSER_SKILLS: CapabilityItem[] = [
@@ -452,7 +471,7 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [projectMenuOpen, setProjectMenuOpen] = useState(false)
   const [pendingMessagesBySession, setPendingMessagesBySession] = useState<Record<string, Message[]>>({})
-  const [queuedMessagesBySession, setQueuedMessagesBySession] = useState<Record<string, string[]>>({})
+  const [messageQueuesBySession, setMessageQueuesBySession] = useState<Record<string, SessionMessageQueue>>({})
   const [liveEventsBySession, setLiveEventsBySession] = useState<Record<string, SessionEvent[]>>({})
   const [runningSessions, setRunningSessions] = useState<Record<string, RunningSession>>({})
   const [failedRunsBySession, setFailedRunsBySession] = useState<Record<string, FailedRunSnapshot>>({})
@@ -464,6 +483,12 @@ export default function App() {
   const [composerConflicts, setComposerConflicts] = useState<UploadConflictItem[]>([])
   const [composerPendingUpload, setComposerPendingUpload] = useState<UploadEntry[] | null>(null)
   const [showComposerConflictDialog, setShowComposerConflictDialog] = useState(false)
+  const [queuedMessageToWithdraw, setQueuedMessageToWithdraw] = useState<{
+    sessionId: string
+    message: QueuedMessage
+  } | null>(null)
+  const [draggedQueuedMessageId, setDraggedQueuedMessageId] = useState<string | null>(null)
+  const [queueDropTarget, setQueueDropTarget] = useState<QueueDropTarget | null>(null)
   const [fileDrawerRefreshKey, setFileDrawerRefreshKey] = useState(0)
   const [sidebarWidth, setSidebarWidth] = useState(306)
   const [drawerWidth, setDrawerWidth] = useState(760)
@@ -473,7 +498,7 @@ export default function App() {
   const dragStateRef = useRef({ x: 0, sidebarWidth: 306, drawerWidth: 760 })
   const selectedProjectIdRef = useRef<string | null>(null)
   const selectedSessionIdRef = useRef<string | null>(null)
-  const queuedMessagesRef = useRef<Record<string, string[]>>({})
+  const messageQueuesRef = useRef<Record<string, SessionMessageQueue>>({})
   const runningSessionsRef = useRef<Record<string, RunningSession>>({})
   const draftKeyRef = useRef<string | null>(null)
   const alignmentKeyRef = useRef<string | null>(null)
@@ -503,7 +528,10 @@ export default function App() {
   }, [capabilities])
 
   const currentPendingMessages = selectedSessionId ? pendingMessagesBySession[selectedSessionId] || [] : []
-  const currentQueuedMessages = selectedSessionId ? queuedMessagesBySession[selectedSessionId] || [] : []
+  const currentMessageQueue = selectedSessionId
+    ? messageQueuesBySession[selectedSessionId] || emptySessionMessageQueue()
+    : emptySessionMessageQueue()
+  const currentQueuedMessages = currentMessageQueue.items
   const currentLiveEvents = selectedSessionId ? liveEventsBySession[selectedSessionId] || [] : []
   const selectedRun = selectedSessionId ? runningSessions[selectedSessionId] || null : null
   const persistedFailedRun = useMemo(() => failedRunFromEvents(currentLiveEvents), [currentLiveEvents])
@@ -630,8 +658,8 @@ export default function App() {
   }, [selectedProjectId, selectedSessionId])
 
   useEffect(() => {
-    queuedMessagesRef.current = queuedMessagesBySession
-  }, [queuedMessagesBySession])
+    messageQueuesRef.current = messageQueuesBySession
+  }, [messageQueuesBySession])
 
   useEffect(() => {
     runningSessionsRef.current = runningSessions
@@ -821,6 +849,10 @@ export default function App() {
       delete next[session.id]
       return next
     })
+    const nextQueues = { ...messageQueuesRef.current }
+    delete nextQueues[session.id]
+    messageQueuesRef.current = nextQueues
+    setMessageQueuesBySession(nextQueues)
     setEmptyStateQuotesByKey((current) => {
       const next = { ...current }
       delete next[session.id]
@@ -1031,26 +1063,37 @@ export default function App() {
     })
   }
 
-  const enqueueSessionMessage = (sessionId: string, content: string) => {
-    const next = {
-      ...queuedMessagesRef.current,
-      [sessionId]: [...(queuedMessagesRef.current[sessionId] || []), content],
-    }
-    queuedMessagesRef.current = next
-    setQueuedMessagesBySession(next)
+  const updateSessionMessageQueue = (
+    sessionId: string,
+    updater: (queue: SessionMessageQueue) => SessionMessageQueue,
+  ) => {
+    const currentQueue = messageQueuesRef.current[sessionId] || emptySessionMessageQueue()
+    const updatedQueue = updater(currentQueue)
+    const next = { ...messageQueuesRef.current }
+    if (updatedQueue.items.length) next[sessionId] = updatedQueue
+    else delete next[sessionId]
+    messageQueuesRef.current = next
+    setMessageQueuesBySession(next)
+    return updatedQueue
+  }
+
+  const enqueueSessionMessage = (sessionId: string, content: string, priority = false) => {
+    const message = { id: window.crypto.randomUUID(), content }
+    updateSessionMessageQueue(
+      sessionId,
+      (queue) => priority ? enqueuePriorityMessage(queue, message) : enqueueQueuedMessage(queue, message),
+    )
   }
 
   const popQueuedSessionMessage = (sessionId: string) => {
-    const queue = queuedMessagesRef.current[sessionId] || []
-    const [nextMessage, ...rest] = queue
-    if (!nextMessage) return null
-
-    const next = { ...queuedMessagesRef.current }
-    if (rest.length) next[sessionId] = rest
+    const currentQueue = messageQueuesRef.current[sessionId] || emptySessionMessageQueue()
+    const result = takeNextQueuedMessage(currentQueue)
+    const next = { ...messageQueuesRef.current }
+    if (result.queue.items.length) next[sessionId] = result.queue
     else delete next[sessionId]
-    queuedMessagesRef.current = next
-    setQueuedMessagesBySession(next)
-    return nextMessage
+    messageQueuesRef.current = next
+    setMessageQueuesBySession(next)
+    return result.message
   }
 
   const updateDraft = (value: string) => {
@@ -1101,10 +1144,12 @@ export default function App() {
       // Events are an optional live enhancement; chat should still start if this snapshot is unavailable.
     }
     setLiveEventsBySession((current) => ({ ...current, [sessionId]: [] }))
-    setRunningSessions((current) => ({
-      ...current,
-      [sessionId]: { requestId: '', status: 'starting', startedAfterSeq, operation: 'chat' },
-    }))
+    const startingRuns = {
+      ...runningSessionsRef.current,
+      [sessionId]: { requestId: '', status: 'starting', startedAfterSeq, operation: 'chat' } as RunningSession,
+    }
+    runningSessionsRef.current = startingRuns
+    setRunningSessions(startingRuns)
     setNotice(null)
     try {
       const run = await api.sendMessage(sessionId, content)
@@ -1113,10 +1158,13 @@ export default function App() {
         await loadSessionDetail(sessionId, { preserveScroll: true })
       }
       removePendingUserMessage(sessionId, content)
-      setRunningSessions((current) => ({
-        ...current,
-        [sessionId]: { requestId: run.request_id, status: 'running', startedAfterSeq, operation: 'chat' },
-      }))
+      const runStatus = runningSessionsRef.current[sessionId]?.status === 'stopping' ? 'stopping' : 'running'
+      const activeRuns = {
+        ...runningSessionsRef.current,
+        [sessionId]: { requestId: run.request_id, status: runStatus, startedAfterSeq, operation: 'chat' } as RunningSession,
+      }
+      runningSessionsRef.current = activeRuns
+      setRunningSessions(activeRuns)
       while (true) {
         const status = await api.getChatStatus(run.request_id)
         await refreshLiveEvents(sessionId)
@@ -1164,14 +1212,13 @@ export default function App() {
       }
       setNotice(message === 'Not Found' ? '会话或接口不存在，请刷新后重新选择会话。' : message)
     } finally {
-      setRunningSessions((current) => {
-        const next = { ...current }
-        delete next[sessionId]
-        return next
-      })
+      const remainingRuns = { ...runningSessionsRef.current }
+      delete remainingRuns[sessionId]
+      runningSessionsRef.current = remainingRuns
+      setRunningSessions(remainingRuns)
       const queuedMessage = popQueuedSessionMessage(sessionId)
       if (queuedMessage) {
-        window.setTimeout(() => void runSessionMessage(sessionId, queuedMessage, projectIdForList), 0)
+        window.setTimeout(() => void runSessionMessage(sessionId, queuedMessage.content, projectIdForList), 0)
       }
     }
   }
@@ -1360,7 +1407,8 @@ export default function App() {
     }
     if (!sessionId) return
 
-    if (runningSessions[sessionId]?.operation === 'compact') {
+    const activeRun = runningSessionsRef.current[sessionId]
+    if (activeRun?.operation === 'compact') {
       setNotice('正在压缩上下文，请结束后再发送消息。')
       return
     }
@@ -1374,10 +1422,15 @@ export default function App() {
     }
     focusComposer(nextDraft.length)
 
-    if (runningSessions[sessionId]) {
-      enqueueSessionMessage(sessionId, content)
+    if (activeRun) {
+      enqueueSessionMessage(sessionId, content, activeRun.status === 'stopping')
       setNotice(null)
       return
+    }
+
+    const pausedQueue = messageQueuesRef.current[sessionId]
+    if (pausedQueue?.paused) {
+      updateSessionMessageQueue(sessionId, resumeMessageQueue)
     }
 
     if (selectedSessionIdRef.current === sessionId) {
@@ -1398,12 +1451,72 @@ export default function App() {
     void sendMessage()
   }
 
+  const continueQueuedMessages = () => {
+    if (!selectedSessionId || runningSessionsRef.current[selectedSessionId]) return
+    updateSessionMessageQueue(selectedSessionId, resumeMessageQueue)
+    const queuedMessage = popQueuedSessionMessage(selectedSessionId)
+    if (queuedMessage) {
+      void runSessionMessage(selectedSessionId, queuedMessage.content, selectedProjectId)
+    }
+  }
+
+  const confirmWithdrawQueuedMessage = () => {
+    if (!queuedMessageToWithdraw) return
+    const queue = messageQueuesRef.current[queuedMessageToWithdraw.sessionId]
+    if (!queue?.items.some((message) => message.id === queuedMessageToWithdraw.message.id)) {
+      setQueuedMessageToWithdraw(null)
+      setNotice('该消息已经开始处理，无法撤回。')
+      return
+    }
+    updateSessionMessageQueue(
+      queuedMessageToWithdraw.sessionId,
+      (queue) => withdrawQueuedMessage(queue, queuedMessageToWithdraw.message.id),
+    )
+    setQueuedMessageToWithdraw(null)
+  }
+
+  const handleQueuedMessageDragStart = (event: ReactDragEvent<HTMLElement>, messageId: string) => {
+    setDraggedQueuedMessageId(messageId)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', messageId)
+  }
+
+  const handleQueuedMessageDragOver = (event: ReactDragEvent<HTMLDivElement>, targetId: string) => {
+    if (!draggedQueuedMessageId || draggedQueuedMessageId === targetId) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const placement = event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after'
+    setQueueDropTarget({ id: targetId, placement })
+  }
+
+  const handleQueuedMessageDrop = (event: ReactDragEvent<HTMLDivElement>, targetId: string) => {
+    event.preventDefault()
+    if (selectedSessionId && draggedQueuedMessageId) {
+      const placement = queueDropTarget?.id === targetId ? queueDropTarget.placement : 'before'
+      updateSessionMessageQueue(
+        selectedSessionId,
+        (queue) => moveQueuedMessage(queue, draggedQueuedMessageId, targetId, placement),
+      )
+    }
+    setDraggedQueuedMessageId(null)
+    setQueueDropTarget(null)
+  }
+
+  const handleQueuedMessageDragEnd = () => {
+    setDraggedQueuedMessageId(null)
+    setQueueDropTarget(null)
+  }
+
   const stopRun = async () => {
     if (!selectedSessionId || !selectedRun) return
-    setRunningSessions((current) => ({
-      ...current,
-      [selectedSessionId]: { ...selectedRun, status: 'stopping' },
-    }))
+    updateSessionMessageQueue(selectedSessionId, pauseMessageQueue)
+    const stoppingRuns = {
+      ...runningSessionsRef.current,
+      [selectedSessionId]: { ...selectedRun, status: 'stopping' } as RunningSession,
+    }
+    runningSessionsRef.current = stoppingRuns
+    setRunningSessions(stoppingRuns)
     await api.interrupt(selectedSessionId)
   }
 
@@ -1701,13 +1814,6 @@ export default function App() {
                   )}
                 </div>
               )}
-              {selectedRun &&
-                currentQueuedMessages.map((content, index) => (
-                  <div key={`queued-${index}`} className="message user queued">
-                    <div className="message-role">USER · 已排队</div>
-                    <pre>{content}</pre>
-                  </div>
-                ))}
               {showEmptyState && (
                 <div className="empty large">{currentEmptyStateQuote || EMPTY_STATE_QUOTES[0]}</div>
               )}
@@ -1778,7 +1884,63 @@ export default function App() {
                   ))}
                 </div>
               )}
-              <div className="composer-card">
+              <div className={`composer-shell${currentQueuedMessages.length ? ' has-queue' : ''}`}>
+                {currentQueuedMessages.length > 0 && (
+                  <section className="queued-message-panel" aria-label="排队消息">
+                    {currentMessageQueue.paused && (
+                      <div className="queued-message-status">
+                        <span>队列已暂停</span>
+                        <button
+                          type="button"
+                          disabled={Boolean(selectedRun)}
+                          onClick={continueQueuedMessages}
+                        >
+                          <Play size={13} />
+                          继续执行
+                        </button>
+                      </div>
+                    )}
+                    <div className="queued-message-list">
+                      {currentQueuedMessages.map((message, index) => {
+                        const dropClass = queueDropTarget?.id === message.id
+                          ? ` drop-${queueDropTarget.placement}`
+                          : ''
+                        return (
+                          <div
+                            key={message.id}
+                            className={`queued-message-row${draggedQueuedMessageId === message.id ? ' is-dragging' : ''}${dropClass}`}
+                            onDragOver={(event) => handleQueuedMessageDragOver(event, message.id)}
+                            onDrop={(event) => handleQueuedMessageDrop(event, message.id)}
+                          >
+                            <button
+                              type="button"
+                              className="queued-message-drag"
+                              title="拖动调整顺序"
+                              aria-label={`拖动第 ${index + 1} 条排队消息`}
+                              draggable
+                              onDragStart={(event) => handleQueuedMessageDragStart(event, message.id)}
+                              onDragEnd={handleQueuedMessageDragEnd}
+                            >
+                              <GripVertical size={15} />
+                            </button>
+                            <span className="queued-message-order">{index + 1}</span>
+                            <span className="queued-message-content" title={message.content}>{message.content}</span>
+                            <button
+                              type="button"
+                              className="queued-message-withdraw"
+                              title="撤回排队消息"
+                              aria-label={`撤回第 ${index + 1} 条排队消息`}
+                              onClick={() => setQueuedMessageToWithdraw({ sessionId: selectedSessionId!, message })}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </section>
+                )}
+                <div className="composer-card">
                 <textarea
                   ref={composerTextareaRef}
                   value={draft}
@@ -1829,8 +1991,25 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+                </div>
               </div>
             </form>
+            {queuedMessageToWithdraw && (
+              <div className="modal-backdrop">
+                <div className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="withdraw-queued-title">
+                  <h3 id="withdraw-queued-title">撤回这条排队消息？</h3>
+                  <p>撤回后不会发送给 AI。</p>
+                  <div className="modal-actions">
+                    <button className="secondary" type="button" onClick={() => setQueuedMessageToWithdraw(null)}>
+                      取消
+                    </button>
+                    <button className="danger" type="button" onClick={confirmWithdrawQueuedMessage}>
+                      确认撤回
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {showComposerConflictDialog && (
               <div className="modal-backdrop">
                 <div className="modal-panel">

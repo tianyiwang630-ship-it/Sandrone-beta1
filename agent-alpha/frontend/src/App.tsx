@@ -37,6 +37,14 @@ import {
   removeUnchangedAlignmentPrompt,
 } from './alignmentPrompt'
 import sandroneIcon from './assets/sandrone-icon.png'
+import {
+  clampScrollTop,
+  isCurrentSessionRequest,
+  readSessionScrollTop,
+  removeSessionScrollTop,
+  withoutSession,
+  writeSessionScrollTop,
+} from './chatScroll'
 import FileDrawer from './components/FileDrawer'
 import { EMPTY_STATE_QUOTES } from './emptyStateQuotes'
 import { renderMarkdown } from './markdown'
@@ -445,6 +453,14 @@ function alignmentKeyFor(projectId: string | null, sessionId: string | null) {
   return null
 }
 
+function localStorageOrNull(): Storage | null {
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
 function latestUserEventSeq(events: SessionEvent[]) {
   let seq = 0
   for (const event of events) {
@@ -494,7 +510,15 @@ export default function App() {
   const [drawerWidth, setDrawerWidth] = useState(760)
   const [draggingPane, setDraggingPane] = useState<'sidebar' | 'drawer' | null>(null)
   const messageStreamRef = useRef<HTMLDivElement | null>(null)
-  const preserveScrollTopRef = useRef<number | null>(null)
+  const scrollPositionsRef = useRef<Record<string, number>>({})
+  const pendingScrollRestoreRef = useRef<{ sessionId: string; scrollTop: number } | null>(null)
+  const previousSelectedSessionIdRef = useRef<string | null>(null)
+  const latestDetailRequestBySessionRef = useRef<Record<string, number>>({})
+  const scrollPersistTimerRef = useRef<number | null>(null)
+  const resumeInFlightRef = useRef(new Set<string>())
+  const finalizingRunsRef = useRef(new Set<string>())
+  const visibleRefreshFrameRef = useRef<number | null>(null)
+  const visibleRefreshInFlightRef = useRef(false)
   const dragStateRef = useRef({ x: 0, sidebarWidth: 306, drawerWidth: 760 })
   const selectedProjectIdRef = useRef<string | null>(null)
   const selectedSessionIdRef = useRef<string | null>(null)
@@ -593,18 +617,97 @@ export default function App() {
     })
   }
 
-  const loadSessionDetail = async (sessionId = selectedSessionId, options: { preserveScroll?: boolean } = {}) => {
+  const captureSessionScroll = (sessionId: string | null, persist = false) => {
+    const stream = messageStreamRef.current
+    if (!sessionId || !stream) return null
+    const scrollTop = Math.max(0, stream.scrollTop)
+    scrollPositionsRef.current[sessionId] = scrollTop
+    if (persist) writeSessionScrollTop(localStorageOrNull(), sessionId, scrollTop)
+    return scrollTop
+  }
+
+  const persistVisibleSessionScroll = () => {
+    captureSessionScroll(selectedSessionIdRef.current, true)
+  }
+
+  const handleMessageStreamScroll = () => {
+    const sessionId = selectedSessionIdRef.current
+    if (!sessionId) return
+    captureSessionScroll(sessionId)
+    if (scrollPersistTimerRef.current != null) window.clearTimeout(scrollPersistTimerRef.current)
+    scrollPersistTimerRef.current = window.setTimeout(() => {
+      scrollPersistTimerRef.current = null
+      const scrollTop = scrollPositionsRef.current[sessionId]
+      if (scrollTop != null) writeSessionScrollTop(localStorageOrNull(), sessionId, scrollTop)
+    }, 150)
+  }
+
+  const loadSessionDetail = async (
+    sessionId = selectedSessionId,
+    options: {
+      preserveScroll?: boolean
+      restoreStoredScroll?: boolean
+      removePendingContent?: string
+      finishLiveRun?: boolean
+    } = {},
+  ) => {
     if (!sessionId) {
       setSessionDetail(null)
-      return
+      return null
     }
-    const nextDetail = await api.getSession(sessionId)
-    if (selectedSessionIdRef.current !== sessionId) return
-    if (deletedSessionIdsRef.current.has(sessionId)) return
-    if (options.preserveScroll) {
-      preserveScrollTopRef.current = messageStreamRef.current?.scrollTop ?? null
+    const requestSequence = (latestDetailRequestBySessionRef.current[sessionId] || 0) + 1
+    latestDetailRequestBySessionRef.current[sessionId] = requestSequence
+    let scrollTop: number | null = null
+    if (options.restoreStoredScroll) {
+      scrollTop = sessionId in scrollPositionsRef.current
+        ? scrollPositionsRef.current[sessionId]
+        : readSessionScrollTop(localStorageOrNull(), sessionId)
+      scrollPositionsRef.current[sessionId] = scrollTop
+    } else if (options.preserveScroll) {
+      scrollTop = captureSessionScroll(sessionId)
     }
+    if (options.finishLiveRun) finalizingRunsRef.current.add(sessionId)
+    let nextDetail: SessionDetail
+    try {
+      nextDetail = await api.getSession(sessionId)
+    } finally {
+      if (options.finishLiveRun) finalizingRunsRef.current.delete(sessionId)
+    }
+    if (deletedSessionIdsRef.current.has(sessionId)) return null
+    if (!isCurrentSessionRequest(
+      selectedSessionIdRef.current,
+      sessionId,
+      latestDetailRequestBySessionRef.current[sessionId],
+      requestSequence,
+    )) {
+      return null
+    }
+    if (scrollTop != null) pendingScrollRestoreRef.current = { sessionId, scrollTop }
     setSessionDetail(nextDetail)
+    if (options.removePendingContent !== undefined) {
+      setPendingMessagesBySession((current) => {
+        const messages = current[sessionId] || []
+        let removed = false
+        const nextMessages = messages.filter((message) => {
+          if (!removed && message.role === 'user' && messageText(message) === options.removePendingContent) {
+            removed = true
+            return false
+          }
+          return true
+        })
+        if (nextMessages.length === messages.length) return current
+        const next = { ...current }
+        if (nextMessages.length) next[sessionId] = nextMessages
+        else delete next[sessionId]
+        return next
+      })
+    }
+    if (options.finishLiveRun) {
+      const remainingRuns = withoutSession(runningSessionsRef.current, sessionId)
+      runningSessionsRef.current = remainingRuns
+      setRunningSessions(remainingRuns)
+    }
+    return nextDetail
   }
 
   const refreshSupportData = async () => {
@@ -637,9 +740,14 @@ export default function App() {
   }, [selectedProjectId])
 
   useEffect(() => {
+    const previousSessionId = previousSelectedSessionIdRef.current
+    if (previousSessionId && previousSessionId !== selectedSessionId) {
+      captureSessionScroll(previousSessionId, true)
+    }
+    previousSelectedSessionIdRef.current = selectedSessionId
     selectedSessionIdRef.current = selectedSessionId
     setFailedRunsBySession({})
-    void loadSessionDetail(selectedSessionId)
+    void loadSessionDetail(selectedSessionId, { restoreStoredScroll: true })
   }, [selectedSessionId])
 
   useEffect(() => {
@@ -707,13 +815,14 @@ export default function App() {
   }, [currentEmptyStateQuote, currentFailedRun, displayMessages.length, emptyStateKey, selectedRun])
 
   useLayoutEffect(() => {
-    const top = preserveScrollTopRef.current
+    const pending = pendingScrollRestoreRef.current
     const stream = messageStreamRef.current
-    if (top == null || !stream) return
-    const maxTop = Math.max(0, stream.scrollHeight - stream.clientHeight)
-    stream.scrollTop = Math.min(top, maxTop)
-    preserveScrollTopRef.current = null
-  }, [sessionDetail?.id, sessionDetail?.updated_at, sessionDetail?.message_count])
+    if (!pending || !stream || sessionDetail?.id !== pending.sessionId || selectedSessionId !== pending.sessionId) return
+    const scrollTop = clampScrollTop(pending.scrollTop, stream.scrollHeight, stream.clientHeight)
+    stream.scrollTop = scrollTop
+    scrollPositionsRef.current[pending.sessionId] = scrollTop
+    pendingScrollRestoreRef.current = null
+  }, [selectedSessionId, sessionDetail])
 
   useEffect(() => {
     if (!draggingPane) return
@@ -830,6 +939,13 @@ export default function App() {
     const projectId = session.project_id || selectedProjectId
     await api.deleteSession(session.id)
     deletedSessionIdsRef.current.add(session.id)
+    if (scrollPersistTimerRef.current != null) {
+      window.clearTimeout(scrollPersistTimerRef.current)
+      scrollPersistTimerRef.current = null
+    }
+    scrollPositionsRef.current = withoutSession(scrollPositionsRef.current, session.id)
+    latestDetailRequestBySessionRef.current = withoutSession(latestDetailRequestBySessionRef.current, session.id)
+    removeSessionScrollTop(localStorageOrNull(), session.id)
     if (projectId && selectedProjectIdRef.current === projectId) {
       const nextSelectedSessionId = excludeDeletedSessions(sessions, deletedSessionIdsRef.current)[0]?.id || null
       setSessions((current) => excludeDeletedSessions(current, deletedSessionIdsRef.current))
@@ -928,14 +1044,20 @@ export default function App() {
   }, [selectedSessionId])
 
   const resumeActiveRun = async (sessionId: string, projectIdForList = selectedProjectIdRef.current) => {
+    if (resumeInFlightRef.current.has(sessionId)) return
+    resumeInFlightRef.current.add(sessionId)
     let activeRun
     try {
       activeRun = await api.getSessionActiveRun(sessionId)
     } catch {
+      resumeInFlightRef.current.delete(sessionId)
       return
     }
     const existingRun = runningSessionsRef.current[sessionId]
-    if (existingRun?.requestId === activeRun.request_id) return
+    if (existingRun?.requestId === activeRun.request_id) {
+      resumeInFlightRef.current.delete(sessionId)
+      return
+    }
 
     clearFailedRun(sessionId)
     const events = await refreshLiveEvents(sessionId)
@@ -976,7 +1098,7 @@ export default function App() {
         break
       }
       if (selectedSessionIdRef.current === sessionId) {
-        await loadSessionDetail(sessionId, { preserveScroll: true })
+        await loadSessionDetail(sessionId, { preserveScroll: true, finishLiveRun: true })
       }
       await loadSessions(projectIdForList)
       await refreshLiveEvents(sessionId)
@@ -996,6 +1118,7 @@ export default function App() {
       }
       setNotice(message === 'Not Found' ? '会话或接口不存在，请刷新后重新选择会话。' : message)
     } finally {
+      resumeInFlightRef.current.delete(sessionId)
       setRunningSessions((current) => {
         const next = { ...current }
         delete next[sessionId]
@@ -1010,18 +1133,42 @@ export default function App() {
   }, [selectedSessionId])
 
   useEffect(() => {
-    const refreshVisibleSession = () => {
-      if (document.visibilityState === 'hidden' || !selectedSessionIdRef.current) return
+    const refreshVisibleSession = async () => {
+      if (visibleRefreshInFlightRef.current || !selectedSessionIdRef.current) return
+      visibleRefreshInFlightRef.current = true
       const sessionId = selectedSessionIdRef.current
-      void loadSessionDetail(sessionId, { preserveScroll: true })
-      void refreshLiveEvents(sessionId)
       void resumeActiveRun(sessionId)
+      try {
+        const refreshes: Promise<unknown>[] = [refreshLiveEvents(sessionId)]
+        if (!finalizingRunsRef.current.has(sessionId)) {
+          refreshes.push(loadSessionDetail(sessionId, { preserveScroll: true }))
+        }
+        await Promise.allSettled(refreshes)
+      } finally {
+        visibleRefreshInFlightRef.current = false
+      }
     }
-    window.addEventListener('focus', refreshVisibleSession)
-    document.addEventListener('visibilitychange', refreshVisibleSession)
+    const scheduleVisibleRefresh = () => {
+      if (document.visibilityState === 'hidden') {
+        persistVisibleSessionScroll()
+        return
+      }
+      if (!selectedSessionIdRef.current || visibleRefreshFrameRef.current != null) return
+      visibleRefreshFrameRef.current = window.requestAnimationFrame(() => {
+        visibleRefreshFrameRef.current = null
+        void refreshVisibleSession()
+      })
+    }
+    window.addEventListener('focus', scheduleVisibleRefresh)
+    window.addEventListener('beforeunload', persistVisibleSessionScroll)
+    document.addEventListener('visibilitychange', scheduleVisibleRefresh)
     return () => {
-      window.removeEventListener('focus', refreshVisibleSession)
-      document.removeEventListener('visibilitychange', refreshVisibleSession)
+      window.removeEventListener('focus', scheduleVisibleRefresh)
+      window.removeEventListener('beforeunload', persistVisibleSessionScroll)
+      document.removeEventListener('visibilitychange', scheduleVisibleRefresh)
+      if (visibleRefreshFrameRef.current != null) window.cancelAnimationFrame(visibleRefreshFrameRef.current)
+      if (scrollPersistTimerRef.current != null) window.clearTimeout(scrollPersistTimerRef.current)
+      persistVisibleSessionScroll()
     }
   }, [])
 
@@ -1155,7 +1302,7 @@ export default function App() {
       const run = await api.sendMessage(sessionId, content)
       requestId = run.request_id
       if (selectedSessionIdRef.current === sessionId) {
-        await loadSessionDetail(sessionId, { preserveScroll: true })
+        await loadSessionDetail(sessionId, { preserveScroll: true, removePendingContent: content })
       }
       removePendingUserMessage(sessionId, content)
       const runStatus = runningSessionsRef.current[sessionId]?.status === 'stopping' ? 'stopping' : 'running'
@@ -1190,7 +1337,11 @@ export default function App() {
         break
       }
       if (selectedSessionIdRef.current === sessionId) {
-        await loadSessionDetail(sessionId, { preserveScroll: true })
+        await loadSessionDetail(sessionId, {
+          preserveScroll: true,
+          removePendingContent: content,
+          finishLiveRun: true,
+        })
       }
       await loadSessions(projectIdForList)
       await refreshLiveEvents(sessionId)
@@ -1321,7 +1472,7 @@ export default function App() {
         break
       }
       if (selectedSessionIdRef.current === sessionId) {
-        await loadSessionDetail(sessionId, { preserveScroll: true })
+        await loadSessionDetail(sessionId, { preserveScroll: true, finishLiveRun: true })
       }
       await loadSessions(projectIdForList)
       await refreshLiveEvents(sessionId)
@@ -1737,7 +1888,11 @@ export default function App() {
 
         {view === 'chat' && (
           <section className={`chat-view ${drawerOpen ? 'chat-view--compressed' : ''}`}>
-            <div className={`message-stream ${showEmptyState ? 'empty-state-active' : ''}`} ref={messageStreamRef}>
+            <div
+              className={`message-stream ${showEmptyState ? 'empty-state-active' : ''}`}
+              ref={messageStreamRef}
+              onScroll={handleMessageStreamScroll}
+            >
               {chatTurns.map((turn) => (
                 <article key={turn.key} className="chat-turn">
                   {turn.user && (

@@ -501,7 +501,7 @@ button {
   width: 100%;
   overflow: auto;
   padding: 22px 22px 28px;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
 }
 
 .message-stream.empty-state-active {

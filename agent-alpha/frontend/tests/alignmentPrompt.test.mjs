@@ -9,6 +9,13 @@ import {
   removeUnchangedAlignmentPrompt,
 } from '../src/alignmentPrompt.ts'
 
+test('对齐提示词要求完整复述合并后的整体理解', () => {
+  assert.equal(
+    ALIGNMENT_PROMPT,
+    '请结合全部对话，完整复述你对需求的最新整体理解，并合并我本轮的补充或修改，不要只回应变化的部分。在我明确说“开始实施”之前，不要执行或修改任何内容。',
+  )
+})
+
 test('开启对齐会把提示词插到空草稿开头，并把光标放到新行', () => {
   const change = insertAlignmentPrompt('')
   assert.equal(change.value, ALIGNMENT_PROMPT_PREFIX)
@@ -69,7 +76,7 @@ test('提示词后有多个换行时只删除自动生成的第一个换行', ()
 })
 
 test('提示词任何字符被修改时关闭只切换状态，不改草稿和选区', () => {
-  const draft = `请${ALIGNMENT_PROMPT.slice(1)}\n正文`
+  const draft = `先${ALIGNMENT_PROMPT.slice(1)}\n正文`
   const change = removeUnchangedAlignmentPrompt(draft, 4, 7)
   assert.equal(change.value, draft)
   assert.equal(change.selectionStart, 4)

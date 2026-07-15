@@ -45,6 +45,12 @@ import {
   withoutSession,
   writeSessionScrollTop,
 } from './chatScroll'
+import {
+  attachesLiveRunToTurn,
+  displayedAssistantText,
+  mergeActiveRunEvents,
+  mergeProcessPresentation,
+} from './chatPresentation'
 import FileDrawer from './components/FileDrawer'
 import { EMPTY_STATE_QUOTES } from './emptyStateQuotes'
 import { renderMarkdown } from './markdown'
@@ -592,6 +598,9 @@ export default function App() {
     () => currentRunEvents.filter(isVisibleLiveEvent),
     [currentRunEvents],
   )
+  const liveRunAttachedToChat = Boolean(
+    currentLiveWindow && currentLiveWindow.operation !== 'compact' && chatTurns.length > 0,
+  )
   const emptyStateKey = selectedSessionId || (selectedProjectId ? `project:${selectedProjectId}` : 'global')
   const currentEmptyStateQuote = emptyStateQuotesByKey[emptyStateKey]
   const showEmptyState = !displayMessages.length && !selectedRun && !currentFailedRun
@@ -1070,13 +1079,25 @@ export default function App() {
     })
   }
 
-  const refreshLiveEvents = async (sessionId: string) => {
+  const refreshLiveEvents = async (
+    sessionId: string,
+    options: { preserveActiveRunEvents?: boolean } = {},
+  ) => {
+    const preserveActiveRunEvents = options.preserveActiveRunEvents
+      ?? Boolean(runningSessionsRef.current[sessionId])
     try {
       const data = await api.getSessionEvents(sessionId)
-      setLiveEventsBySession((current) => ({ ...current, [sessionId]: data.events }))
+      setLiveEventsBySession((current) => ({
+        ...current,
+        [sessionId]: preserveActiveRunEvents
+          ? mergeActiveRunEvents(current[sessionId] || [], data.events)
+          : data.events,
+      }))
       return data.events
     } catch {
-      setLiveEventsBySession((current) => ({ ...current, [sessionId]: [] }))
+      if (!preserveActiveRunEvents) {
+        setLiveEventsBySession((current) => ({ ...current, [sessionId]: [] }))
+      }
       return []
     }
   }
@@ -1105,28 +1126,32 @@ export default function App() {
     clearFailedRun(sessionId)
     const events = await refreshLiveEvents(sessionId)
     const startedAfterSeq = activeRun.started_after_seq ?? latestUserEventSeq(events)
-    setRunningSessions((current) => ({
-      ...current,
+    const resumedRuns = {
+      ...runningSessionsRef.current,
       [sessionId]: {
         requestId: activeRun.request_id,
         status: 'running',
         startedAfterSeq,
         operation: activeRun.operation || 'chat',
       },
-    }))
+    } as Record<string, RunningSession>
+    runningSessionsRef.current = resumedRuns
+    setRunningSessions(resumedRuns)
 
     try {
       while (true) {
         const status = await api.getChatStatus(activeRun.request_id)
-        await refreshLiveEvents(sessionId)
         if (status.status === 'running') {
+          await refreshLiveEvents(sessionId, { preserveActiveRunEvents: true })
           await new Promise((resolve) => window.setTimeout(resolve, 1000))
           continue
         }
         if (status.status === 'failed') {
+          await refreshLiveEvents(sessionId, { preserveActiveRunEvents: true })
           throw new Error(status.error || '运行失败')
         }
         if (status.status === 'recoverable') {
+          await refreshLiveEvents(sessionId, { preserveActiveRunEvents: true })
           setFailedRunsBySession((current) => ({
             ...current,
             [sessionId]: {
@@ -1162,11 +1187,9 @@ export default function App() {
       setNotice(message === 'Not Found' ? '会话或接口不存在，请刷新后重新选择会话。' : message)
     } finally {
       resumeInFlightRef.current.delete(sessionId)
-      setRunningSessions((current) => {
-        const next = { ...current }
-        delete next[sessionId]
-        return next
-      })
+      const remainingRuns = withoutSession(runningSessionsRef.current, sessionId)
+      runningSessionsRef.current = remainingRuns
+      setRunningSessions(remainingRuns)
     }
   }
 
@@ -1357,15 +1380,17 @@ export default function App() {
       setRunningSessions(activeRuns)
       while (true) {
         const status = await api.getChatStatus(run.request_id)
-        await refreshLiveEvents(sessionId)
         if (status.status === 'running') {
+          await refreshLiveEvents(sessionId, { preserveActiveRunEvents: true })
           await new Promise((resolve) => window.setTimeout(resolve, 1000))
           continue
         }
         if (status.status === 'failed') {
+          await refreshLiveEvents(sessionId, { preserveActiveRunEvents: true })
           throw new Error(status.error || '运行失败')
         }
         if (status.status === 'recoverable') {
+          await refreshLiveEvents(sessionId, { preserveActiveRunEvents: true })
           setFailedRunsBySession((current) => ({
             ...current,
             [sessionId]: {
@@ -1936,41 +1961,85 @@ export default function App() {
               ref={messageStreamRef}
               onScroll={handleMessageStreamScroll}
             >
-              {chatTurns.map((turn) => (
-                <article key={turn.key} className="chat-turn">
-                  {turn.user && (
-                    <div className="message user">
-                      <div className="message-role">USER</div>
-                      <pre>{messageText(turn.user)}</pre>
-                    </div>
-                  )}
-                  <div className="assistant-stack">
-                    {turn.steps.length > 0 && (
-                      <details className="process-group">
-                        <summary>{summarizeStepList(turn.steps)}</summary>
-                        <div className="process-list">
-                          {turn.steps.map((step, index) => (
-                            <div key={`${turn.key}-step-${index}`} className="process-item">
-                              <div className="process-item-title">{processSummary(step)}</div>
-                              <pre>{renderProcessContent(step)}</pre>
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    )}
-                    {turn.assistant && (
-                      <div className="message assistant">
-                        <div className="message-role">ASSISTANT</div>
-                        <div
-                          className="message-body"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown(messageText(turn.assistant)) }}
-                        />
+              {chatTurns.map((turn, turnIndex) => {
+                const hasAttachedLiveRun = Boolean(
+                  currentLiveWindow
+                  && liveRunAttachedToChat
+                  && attachesLiveRunToTurn(currentLiveWindow.operation, turnIndex, chatTurns.length),
+                )
+                const processItems = mergeProcessPresentation(
+                  turn.steps,
+                  hasAttachedLiveRun ? visibleLiveEvents : [],
+                )
+                const visibleProcessItems = hasAttachedLiveRun ? processItems.slice(-8) : processItems
+                const assistantText = hasAttachedLiveRun
+                  ? displayedAssistantText(currentStreamText, turn.assistant ? messageText(turn.assistant) : '')
+                  : turn.assistant ? messageText(turn.assistant) : ''
+
+                return (
+                  <article key={turn.key} className="chat-turn">
+                    {turn.user && (
+                      <div className="message user">
+                        <div className="message-role">USER</div>
+                        <pre>{messageText(turn.user)}</pre>
                       </div>
                     )}
-                  </div>
-                </article>
-              ))}
-              {currentLiveWindow && (
+                    <div className="assistant-stack">
+                      {processItems.length > 0 && (
+                        <details className={`process-group ${hasAttachedLiveRun ? 'live' : ''} ${hasAttachedLiveRun && isShowingFailedRun ? 'failed' : ''}`}>
+                          <summary>
+                            {hasAttachedLiveRun ? (
+                              <span className="live-summary-content">
+                                {!isShowingFailedRun && <span className="spinner" />}
+                                <span>{summarizeLiveStatus(currentRunEvents)}</span>
+                              </span>
+                            ) : summarizeStepList(turn.steps)}
+                          </summary>
+                          <div className="process-list">
+                            {visibleProcessItems.map((item) => (
+                              <div key={item.key} className="process-item">
+                                {item.kind === 'message' ? (
+                                  <>
+                                    <div className="process-item-title">{processSummary(item.message)}</div>
+                                    <pre>{renderProcessContent(item.message)}</pre>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="process-item-title">{eventSummary(item.event)}</div>
+                                    <pre>{eventDetails(item.event)}</pre>
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                      {hasAttachedLiveRun && processItems.length === 0 && (
+                        <div className={`thinking-line ${isShowingFailedRun && !isShowingRecoverableRun ? 'failed' : ''}`}>
+                          {!isShowingFailedRun && <span className="spinner" />}
+                          <span>{summarizeLiveStatus(currentRunEvents)}</span>
+                        </div>
+                      )}
+                      {assistantText && (
+                        <div className={`message assistant ${hasAttachedLiveRun && currentStreamText ? 'streaming' : ''}`}>
+                          <div className="message-role">ASSISTANT</div>
+                          <div
+                            className="message-body"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(assistantText) }}
+                          />
+                        </div>
+                      )}
+                      {hasAttachedLiveRun && isShowingFailedRun && currentFailedRun && (
+                        <div className={`message assistant ${isShowingRecoverableRun ? 'run-recoverable' : 'run-error'}`}>
+                          <div className="message-role">SYSTEM</div>
+                          <div className="message-body">{formatRunFailureMessage(currentFailedRun)}</div>
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+              {currentLiveWindow && !liveRunAttachedToChat && (
                 <div className="assistant-stack live-stack">
                   {currentStreamText && (
                     <div className="message assistant streaming">

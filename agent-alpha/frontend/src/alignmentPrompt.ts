@@ -1,4 +1,4 @@
-export const ALIGNMENT_PROMPT = '先把你的理解说给我听。在我明确说“开始实施”之前，不要执行或修改任何内容。'
+export const ALIGNMENT_PROMPT = '请结合全部对话，完整复述你对需求的最新整体理解，并合并我本轮的补充或修改，不要只回应变化的部分。在我明确说“开始实施”之前，不要执行或修改任何内容。'
 export const ALIGNMENT_PROMPT_PREFIX = `${ALIGNMENT_PROMPT}\n`
 
 export interface AlignmentDraftChange {

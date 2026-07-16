@@ -15,6 +15,7 @@ import { ChangeEvent, MouseEvent, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import { renderMarkdown as renderMarkdownContent } from '../markdown'
 import type { FileContent, FileInfo, Project, UploadConflictItem } from '../types'
+import PptxPreview from './PptxPreview'
 import {
   buildFolderFiles,
   checkProjectUploadConflicts,
@@ -414,6 +415,12 @@ export default function FileDrawer({ project, open, onClose, width, onResizeStar
                     className="file-preview-frame"
                     title={selected.name}
                     src={api.rawFileUrl(project.id, selected.path)}
+                  />
+                ) : selected.previewable && selected.language === 'pptx' && project ? (
+                  <PptxPreview
+                    key={selected.path}
+                    name={selected.name}
+                    url={api.rawFileUrl(project.id, selected.path)}
                   />
                 ) : selected.previewable && selected.language === 'html' && project && selected.content ? (
                   <iframe

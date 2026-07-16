@@ -1509,6 +1509,38 @@ pre {
   background: #fff;
 }
 
+.pptx-preview {
+  position: relative;
+  height: calc(100% - 45px);
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+  background: #eef1f4;
+}
+
+.pptx-preview-slides {
+  width: 100%;
+  min-width: 0;
+}
+
+.pptx-preview-status {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  text-align: center;
+}
+
+.pptx-preview-status.danger {
+  border-color: #e4b9b9;
+  color: #9b3030;
+}
+
 .markdown-preview {
   padding: 18px 20px 32px;
   color: var(--text);

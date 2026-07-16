@@ -102,6 +102,46 @@ def test_pdf_preview_uses_inline_file_even_when_large(monkeypatch, tmp_path):
     assert response.media_type == "application/pdf"
 
 
+def test_pptx_preview_uses_raw_file_with_unicode_name_and_uppercase_suffix(monkeypatch, tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    target = root / "汇报 文稿.PPTX"
+    target.write_bytes(b"PK\x03\x04fake-pptx")
+
+    monkeypatch.setattr(
+        files.state_store,
+        "get_project",
+        lambda project_id: {"workspace_path": str(root)} if project_id == "proj" else None,
+    )
+
+    result = files.read_file(project_id="proj", path=target.name)
+    response = files.raw_file(project_id="proj", path=target.name)
+
+    assert result.previewable is True
+    assert result.language == "pptx"
+    assert result.content is None
+    assert response.media_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+
+def test_raw_preview_rejects_non_pdf_or_pptx_file(monkeypatch, tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    target = root / "notes.txt"
+    target.write_text("hello", encoding="utf-8")
+
+    monkeypatch.setattr(
+        files.state_store,
+        "get_project",
+        lambda project_id: {"workspace_path": str(root)} if project_id == "proj" else None,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        files.raw_file(project_id="proj", path=target.name)
+
+    assert exc.value.status_code == 400
+    assert "PDF and PPTX" in str(exc.value.detail)
+
+
 def test_html_preview_returns_source_text_for_iframe_render(monkeypatch, tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()

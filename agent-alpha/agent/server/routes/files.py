@@ -257,6 +257,10 @@ def _preview_pdf(root: Path, target: Path, size: int) -> FileContentResponse:
     return _file_response(root, target, size, "pdf", None, True, "PDF 将使用浏览器内置查看器预览。")
 
 
+def _preview_pptx(root: Path, target: Path, size: int) -> FileContentResponse:
+    return _file_response(root, target, size, "pptx", None, True, "PPTX 将在文件预览区显示幻灯片。")
+
+
 def _asset_media_type(target: Path) -> str | None:
     media_type, _ = mimetypes.guess_type(target.name)
     return media_type
@@ -281,6 +285,8 @@ def read_file(project_id: str, path: str):
         return _preview_docx(root, target, size)
     if suffix == ".pdf":
         return _preview_pdf(root, target, size)
+    if suffix == ".pptx":
+        return _preview_pptx(root, target, size)
     if size > PREVIEW_LIMIT_BYTES:
         return _file_response(root, target, size, target.suffix.lstrip(".") or "text", None, False, "文件太大，第一版只预览 256KB 以内的文本文件。")
     if suffix not in TEXT_EXTENSIONS:
@@ -298,9 +304,14 @@ def raw_file(project_id: str, path: str):
     target = _resolve_child(root, path)
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="File not found")
-    if target.suffix.lower() != ".pdf":
-        raise HTTPException(status_code=400, detail="Only PDF inline preview is supported")
-    return FileResponse(str(target), media_type="application/pdf")
+    suffix = target.suffix.lower()
+    media_types = {
+        ".pdf": "application/pdf",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    }
+    if suffix not in media_types:
+        raise HTTPException(status_code=400, detail="Only PDF and PPTX inline preview are supported")
+    return FileResponse(str(target), media_type=media_types[suffix])
 
 
 @router.get("/assets/{project_id}/{asset_path:path}")

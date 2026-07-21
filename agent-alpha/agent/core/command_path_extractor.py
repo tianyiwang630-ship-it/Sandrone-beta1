@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import shlex
 from pathlib import Path
@@ -91,7 +92,7 @@ def classify_bash_command(command: str) -> BashCategory:
     return "unknown"
 
 
-def extract_script_path(command: str) -> Path | None:
+def extract_script_path(command: str, *, base_dir: Path | None = None) -> Path | None:
     tokens = _split_command(command)
     if not _is_script_run(tokens):
         return None
@@ -99,27 +100,32 @@ def extract_script_path(command: str) -> Path | None:
     raw_path = _strip_quotes(tokens[1])
     if not raw_path:
         return None
-    return _resolve_path(raw_path)
+    return _resolve_path(raw_path, base_dir=base_dir)
 
 
-def extract_bash_paths(command: str, category: BashCategory) -> tuple[AccessAction, list[Path]] | None:
+def extract_bash_paths(
+    command: str,
+    category: BashCategory,
+    *,
+    base_dir: Path | None = None,
+) -> tuple[AccessAction, list[Path]] | None:
     if category == "read_only":
-        return _extract_read_only_paths(command)
+        return _extract_read_only_paths(command, base_dir=base_dir)
 
     if category == "path_mutation":
-        return _extract_mutation_paths(command)
+        return _extract_mutation_paths(command, base_dir=base_dir)
 
     return None
 
 
-def extract_general_write_paths(command: str) -> list[Path]:
+def extract_general_write_paths(command: str, *, base_dir: Path | None = None) -> list[Path]:
     """Best-effort path extraction for shell commands that clearly write files."""
     return _dedupe_paths(
         [
-            *_extract_redirect_write_paths(command),
-            *_extract_output_flag_paths(command),
-            *_extract_powershell_write_paths(command),
-            *_extract_cmd_write_paths(command),
+            *_extract_redirect_write_paths(command, base_dir=base_dir),
+            *_extract_output_flag_paths(command, base_dir=base_dir),
+            *_extract_powershell_write_paths(command, base_dir=base_dir),
+            *_extract_cmd_write_paths(command, base_dir=base_dir),
         ]
     )
 
@@ -171,7 +177,13 @@ def command_uses_python_launcher(command: str) -> bool:
     return _is_python_launcher_name(tokens[0])
 
 
-def is_external_executable_invocation(command: str, *, project_root: Path, workspace_root: Path) -> bool:
+def is_external_executable_invocation(
+    command: str,
+    *,
+    project_root: Path,
+    workspace_root: Path,
+    base_dir: Path | None = None,
+) -> bool:
     """Return True when the command directly invokes an executable outside alpha/workspace."""
     tokens = _split_command(command)
     if not tokens:
@@ -181,7 +193,7 @@ def is_external_executable_invocation(command: str, *, project_root: Path, works
     if not _is_path_like_executable(executable):
         return False
 
-    executable_path = _resolve_path(executable)
+    executable_path = _resolve_path(executable, base_dir=base_dir)
     if executable_path is None:
         return False
 
@@ -256,15 +268,67 @@ def classify_alpha_venv_command_scope(command: str, *, project_root: Path) -> st
 
 
 def explain_alpha_venv_command_guidance(project_root: Path) -> str:
-    venv = Path(project_root) / ".venv"
+    venv = Path(project_root).resolve() / ".venv"
     windows_python = venv / "Scripts" / "python.exe"
     posix_python = venv / "bin" / "python"
     return (
         "Run Python tools through agent-alpha's virtual environment. "
         f"Use {windows_python} -m <module> ... on Windows or {posix_python} -m <module> ... on Linux/macOS. "
-        "For package installs, use agent-alpha/.venv's python -m pip install ... or uv pip install --python "
-        "agent-alpha/.venv's python ... . Do not use bare pip or pip3 because they can resolve to a host Python."
+        f"For package installs, use {windows_python} -m pip install ... on Windows, "
+        f"{posix_python} -m pip install ... on Linux/macOS, or uv pip install --python <that interpreter> ... . "
+        "Do not use bare pip or pip3 because they can resolve to a host Python."
     )
+
+
+def extract_git_command_context(
+    command: str, *, base_dir: Path
+) -> tuple[str, Path, bool] | None:
+    """Return normalized git subcommand, effective work tree, and unsafe override flag."""
+    initial_cwd = Path(base_dir).resolve()
+    process_cwd = initial_cwd
+    work_tree: Path | None = None
+    relative_work_tree = False
+    unsafe_override = False
+    long_override_pattern = re.compile(
+        r"--(?P<kind>work-tree|git-dir)(?:=|\s+)(?P<path>\"[^\"]+\"|'[^']+'|\S+)",
+        flags=re.IGNORECASE,
+    )
+    for match in long_override_pattern.finditer(command):
+        if match.group("kind").lower() == "git-dir":
+            unsafe_override = True
+            continue
+        raw_work_tree = _strip_quotes(match.group("path"))
+        relative_work_tree = not _path_from_shell_input(raw_work_tree).is_absolute()
+        resolved = _resolve_path(raw_work_tree, base_dir=initial_cwd)
+        if resolved is None:
+            unsafe_override = True
+        else:
+            work_tree = resolved
+
+    command_without_long_overrides = long_override_pattern.sub("", command)
+    tokens = _split_command(command_without_long_overrides)
+    if not tokens or tokens[0].lower() != "git":
+        return None
+
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        lowered = token.lower()
+        if token == "-C":
+            if index + 1 >= len(tokens):
+                return "git", work_tree or process_cwd, True
+            resolved = _resolve_path(_strip_quotes(tokens[index + 1]), base_dir=process_cwd)
+            if resolved is None:
+                return "git", work_tree or process_cwd, True
+            process_cwd = resolved
+            index += 2
+            continue
+        break
+
+    normalized = "git" if index >= len(tokens) else f"git {' '.join(tokens[index:])}"
+    if relative_work_tree and process_cwd != initial_cwd:
+        unsafe_override = True
+    return normalized, work_tree or process_cwd, unsafe_override
 
 
 def explain_parseable_mutation_forms() -> str:
@@ -276,7 +340,7 @@ def explain_parseable_mutation_forms() -> str:
     )
 
 
-def _extract_read_only_paths(command: str) -> tuple[AccessAction, list[Path]] | None:
+def _extract_read_only_paths(command: str, *, base_dir: Path | None = None) -> tuple[AccessAction, list[Path]] | None:
     tokens = _split_command(command)
     if not tokens:
         return None
@@ -290,28 +354,36 @@ def _extract_read_only_paths(command: str) -> tuple[AccessAction, list[Path]] | 
         return "read", []
 
     if first in {"ls", "dir"}:
-        paths = [_resolve_path(_strip_quotes(token)) for token in tokens[1:] if not token.startswith("-")]
+        paths = [
+            _resolve_path(_strip_quotes(token), base_dir=base_dir)
+            for token in tokens[1:]
+            if not token.startswith("-")
+        ]
         paths = [path for path in paths if path is not None]
         return "read", paths
 
     if first in {"cat", "type"}:
-        paths = [_resolve_path(_strip_quotes(token)) for token in tokens[1:] if not token.startswith("-")]
+        paths = [
+            _resolve_path(_strip_quotes(token), base_dir=base_dir)
+            for token in tokens[1:]
+            if not token.startswith("-")
+        ]
         if not paths:
             return None
         return "read", paths
 
     if first in {"rg", "grep"}:
-        path = _extract_last_non_flag_path(tokens[1:])
+        path = _extract_last_non_flag_path(tokens[1:], base_dir=base_dir)
         return ("read", [path]) if path else ("read", [])
 
     if first == "find":
-        path = _extract_first_non_flag_path(tokens[1:])
+        path = _extract_first_non_flag_path(tokens[1:], base_dir=base_dir)
         return ("read", [path]) if path else ("read", [])
 
     return None
 
 
-def _extract_mutation_paths(command: str) -> tuple[AccessAction, list[Path]] | None:
+def _extract_mutation_paths(command: str, *, base_dir: Path | None = None) -> tuple[AccessAction, list[Path]] | None:
     stripped = command.strip()
 
     tee_match = re.match(
@@ -320,7 +392,7 @@ def _extract_mutation_paths(command: str) -> tuple[AccessAction, list[Path]] | N
         flags=re.IGNORECASE,
     )
     if tee_match:
-        path = _resolve_path(_strip_quotes(tee_match.group("path")))
+        path = _resolve_path(_strip_quotes(tee_match.group("path")), base_dir=base_dir)
         return ("write", [path]) if path else None
 
     redirect_match = re.match(
@@ -329,7 +401,7 @@ def _extract_mutation_paths(command: str) -> tuple[AccessAction, list[Path]] | N
         flags=re.IGNORECASE,
     )
     if redirect_match:
-        path = _resolve_path(_strip_quotes(redirect_match.group("path")))
+        path = _resolve_path(_strip_quotes(redirect_match.group("path")), base_dir=base_dir)
         return ("write", [path]) if path else None
 
     tokens = _split_command(stripped)
@@ -340,31 +412,31 @@ def _extract_mutation_paths(command: str) -> tuple[AccessAction, list[Path]] | N
     args = [token for token in tokens[1:] if token]
 
     if command_name == "mkdir":
-        paths = _non_flag_paths(args)
+        paths = _non_flag_paths(args, base_dir=base_dir)
         return ("write", paths) if len(paths) == 1 else None
 
     if command_name in {"cp", "mv"}:
-        paths = _non_flag_paths(args)
+        paths = _non_flag_paths(args, base_dir=base_dir)
         if len(paths) != 2:
             return None
         return ("write", [paths[1]]) if command_name == "cp" else ("write", paths)
 
     if command_name in {"rm", "del", "rmdir"}:
-        paths = _non_flag_paths(args)
+        paths = _non_flag_paths(args, base_dir=base_dir)
         return ("delete", paths) if len(paths) == 1 else None
 
     if command_name == "touch":
-        paths = _non_flag_paths(args)
+        paths = _non_flag_paths(args, base_dir=base_dir)
         return ("write", paths) if len(paths) == 1 else None
 
     if command_name == "sed":
         if "-i" not in [arg.lower() for arg in args]:
             return None
-        paths = _non_flag_paths(args)
+        paths = _non_flag_paths(args, base_dir=base_dir)
         return ("write", [paths[-1]]) if paths else None
 
     if command_name == "git":
-        return _extract_git_mutation(args)
+        return _extract_git_mutation(args, base_dir=base_dir)
 
     return None
 
@@ -553,7 +625,7 @@ def _strip_quotes(value: str) -> str:
     return value
 
 
-def _resolve_path(raw_path: str) -> Path | None:
+def _resolve_path(raw_path: str, *, base_dir: Path | None = None) -> Path | None:
     if not raw_path:
         return None
     if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", raw_path):
@@ -561,12 +633,21 @@ def _resolve_path(raw_path: str) -> Path | None:
     if "$" in raw_path or "%" in raw_path or "*" in raw_path or "?" in raw_path:
         return None
     try:
-        return Path(raw_path).resolve()
+        path = _path_from_shell_input(raw_path)
+        if not path.is_absolute() and base_dir is not None:
+            path = Path(base_dir) / path
+        return path.resolve()
     except Exception:
         return None
 
 
-def _extract_redirect_write_paths(command: str) -> list[Path]:
+def _path_from_shell_input(raw_path: str) -> Path:
+    if os.name == "nt" and re.match(r"^/[A-Za-z]/", raw_path):
+        return Path(f"{raw_path[1].upper()}:{raw_path[2:]}")
+    return Path(raw_path)
+
+
+def _extract_redirect_write_paths(command: str, *, base_dir: Path | None = None) -> list[Path]:
     paths: list[Path] = []
     for match in re.finditer(r"(?<!\d)>>(?!&)|(?<!\d)>(?!&)", command):
         remainder = command[match.end() :].lstrip()
@@ -578,28 +659,28 @@ def _extract_redirect_write_paths(command: str) -> list[Path]:
         raw_path = _strip_quotes(token_match.group("path"))
         if raw_path.startswith("&"):
             continue
-        path = _resolve_path(raw_path)
+        path = _resolve_path(raw_path, base_dir=base_dir)
         if path is not None:
             paths.append(path)
     tee_pattern = r"\|\s*tee(?:\s+-a)?\s+(?P<path>\"[^\"]+\"|'[^']+'|\S+)"
     for match in re.finditer(tee_pattern, command, flags=re.IGNORECASE):
-        path = _resolve_path(_strip_quotes(match.group("path")))
+        path = _resolve_path(_strip_quotes(match.group("path")), base_dir=base_dir)
         if path is not None:
             paths.append(path)
     return paths
 
 
-def _extract_output_flag_paths(command: str) -> list[Path]:
+def _extract_output_flag_paths(command: str, *, base_dir: Path | None = None) -> list[Path]:
     paths: list[Path] = []
     pattern = r"(?:^|\s)(?:-o|--output)\s+(?P<path>\"[^\"]+\"|'[^']+'|\S+)"
     for match in re.finditer(pattern, command, flags=re.IGNORECASE):
-        path = _resolve_path(_strip_quotes(match.group("path")))
+        path = _resolve_path(_strip_quotes(match.group("path")), base_dir=base_dir)
         if path is not None:
             paths.append(path)
     return paths
 
 
-def _extract_powershell_write_paths(command: str) -> list[Path]:
+def _extract_powershell_write_paths(command: str, *, base_dir: Path | None = None) -> list[Path]:
     paths: list[Path] = []
     single_path_commands = {
         "set-content",
@@ -609,9 +690,21 @@ def _extract_powershell_write_paths(command: str) -> list[Path]:
         "remove-item",
     }
     for name in single_path_commands:
-        paths.extend(_extract_powershell_named_or_positional_paths(command, name, allow_destination=False))
-    paths.extend(_extract_powershell_named_or_positional_paths(command, "copy-item", allow_destination=True))
-    paths.extend(_extract_powershell_named_or_positional_paths(command, "move-item", allow_destination=True, include_source=True))
+        paths.extend(
+            _extract_powershell_named_or_positional_paths(
+                command, name, allow_destination=False, base_dir=base_dir
+            )
+        )
+    paths.extend(
+        _extract_powershell_named_or_positional_paths(
+            command, "copy-item", allow_destination=True, base_dir=base_dir
+        )
+    )
+    paths.extend(
+        _extract_powershell_named_or_positional_paths(
+            command, "move-item", allow_destination=True, include_source=True, base_dir=base_dir
+        )
+    )
     return paths
 
 
@@ -621,21 +714,22 @@ def _extract_powershell_named_or_positional_paths(
     *,
     allow_destination: bool,
     include_source: bool = False,
+    base_dir: Path | None = None,
 ) -> list[Path]:
     paths: list[Path] = []
-    named_pattern = rf"\b{re.escape(command_name)}\b.*?(?:-(?:path|literalpath)\s+(?P<source>\"[^\"]+\"|'[^']+'|\S+))"
+    named_pattern = rf"\b{re.escape(command_name)}\b.*?(?:-(?:path|literalpath|filepath)\s+(?P<source>\"[^\"]+\"|'[^']+'|\S+))"
     destination_pattern = rf"\b{re.escape(command_name)}\b.*?(?:-destination\s+(?P<dest>\"[^\"]+\"|'[^']+'|\S+))"
 
     named_match = re.search(named_pattern, command, flags=re.IGNORECASE)
     if named_match and include_source:
-        source_path = _resolve_path(_strip_quotes(named_match.group("source")))
+        source_path = _resolve_path(_strip_quotes(named_match.group("source")), base_dir=base_dir)
         if source_path is not None:
             paths.append(source_path)
 
     if allow_destination:
         destination_match = re.search(destination_pattern, command, flags=re.IGNORECASE)
         if destination_match:
-            destination_path = _resolve_path(_strip_quotes(destination_match.group("dest")))
+            destination_path = _resolve_path(_strip_quotes(destination_match.group("dest")), base_dir=base_dir)
             if destination_path is not None:
                 paths.append(destination_path)
         else:
@@ -646,16 +740,16 @@ def _extract_powershell_named_or_positional_paths(
             )
             if positional_match:
                 if include_source:
-                    source_path = _resolve_path(_strip_quotes(positional_match.group("source")))
+                    source_path = _resolve_path(_strip_quotes(positional_match.group("source")), base_dir=base_dir)
                     if source_path is not None:
                         paths.append(source_path)
-                destination_path = _resolve_path(_strip_quotes(positional_match.group("dest")))
+                destination_path = _resolve_path(_strip_quotes(positional_match.group("dest")), base_dir=base_dir)
                 if destination_path is not None:
                     paths.append(destination_path)
         return paths
 
     if named_match:
-        path = _resolve_path(_strip_quotes(named_match.group("source")))
+        path = _resolve_path(_strip_quotes(named_match.group("source")), base_dir=base_dir)
         if path is not None:
             paths.append(path)
         return paths
@@ -666,13 +760,13 @@ def _extract_powershell_named_or_positional_paths(
         flags=re.IGNORECASE,
     )
     if positional_match:
-        path = _resolve_path(_strip_quotes(positional_match.group("path")))
+        path = _resolve_path(_strip_quotes(positional_match.group("path")), base_dir=base_dir)
         if path is not None:
             paths.append(path)
     return paths
 
 
-def _extract_cmd_write_paths(command: str) -> list[Path]:
+def _extract_cmd_write_paths(command: str, *, base_dir: Path | None = None) -> list[Path]:
     paths: list[Path] = []
     copy_match = re.search(
         r"(?:^|\s)copy\s+(?P<src>\"[^\"]+\"|'[^']+'|\S+)\s+(?P<dest>\"[^\"]+\"|'[^']+'|\S+)",
@@ -680,7 +774,7 @@ def _extract_cmd_write_paths(command: str) -> list[Path]:
         flags=re.IGNORECASE,
     )
     if copy_match:
-        destination_path = _resolve_path(_strip_quotes(copy_match.group("dest")))
+        destination_path = _resolve_path(_strip_quotes(copy_match.group("dest")), base_dir=base_dir)
         if destination_path is not None:
             paths.append(destination_path)
 
@@ -690,8 +784,8 @@ def _extract_cmd_write_paths(command: str) -> list[Path]:
         flags=re.IGNORECASE,
     )
     if move_match:
-        source_path = _resolve_path(_strip_quotes(move_match.group("src")))
-        destination_path = _resolve_path(_strip_quotes(move_match.group("dest")))
+        source_path = _resolve_path(_strip_quotes(move_match.group("src")), base_dir=base_dir)
+        destination_path = _resolve_path(_strip_quotes(move_match.group("dest")), base_dir=base_dir)
         if source_path is not None:
             paths.append(source_path)
         if destination_path is not None:
@@ -719,26 +813,26 @@ def _is_relative_to(path: Path, base: Path) -> bool:
         return False
 
 
-def _non_flag_paths(args: Iterable[str]) -> list[Path]:
+def _non_flag_paths(args: Iterable[str], *, base_dir: Path | None = None) -> list[Path]:
     paths = []
     for arg in args:
         if arg.startswith("-"):
             continue
-        path = _resolve_path(_strip_quotes(arg))
+        path = _resolve_path(_strip_quotes(arg), base_dir=base_dir)
         if path is not None:
             paths.append(path)
     return paths
 
 
-def _extract_last_non_flag_path(args: Iterable[str]) -> Path | None:
-    paths = _non_flag_paths(args)
+def _extract_last_non_flag_path(args: Iterable[str], *, base_dir: Path | None = None) -> Path | None:
+    paths = _non_flag_paths(args, base_dir=base_dir)
     if not paths:
         return None
     return paths[-1]
 
 
-def _extract_first_non_flag_path(args: Iterable[str]) -> Path | None:
-    paths = _non_flag_paths(args)
+def _extract_first_non_flag_path(args: Iterable[str], *, base_dir: Path | None = None) -> Path | None:
+    paths = _non_flag_paths(args, base_dir=base_dir)
     if not paths:
         return None
     return paths[0]
@@ -757,21 +851,23 @@ def _is_git_mutation(args: list[str]) -> bool:
     return False
 
 
-def _extract_git_mutation(args: list[str]) -> tuple[AccessAction, list[Path]] | None:
+def _extract_git_mutation(
+    args: list[str], *, base_dir: Path | None = None
+) -> tuple[AccessAction, list[Path]] | None:
     if not args:
         return None
 
     subcommand = args[0].lower()
     if subcommand == "checkout":
         if len(args) == 3 and args[1] == "--" and args[2] != ".":
-            path = _resolve_path(args[2])
+            path = _resolve_path(args[2], base_dir=base_dir)
             return ("write", [path]) if path else None
         return None
 
     if subcommand == "restore":
         non_flag_args = [arg for arg in args[1:] if not arg.startswith("-")]
         if len(non_flag_args) == 1 and non_flag_args[0] != ".":
-            path = _resolve_path(non_flag_args[0])
+            path = _resolve_path(non_flag_args[0], base_dir=base_dir)
             return ("write", [path]) if path else None
         return None
 

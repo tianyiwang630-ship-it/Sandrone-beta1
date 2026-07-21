@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from agent.core.system_prompt_builder import build_system_prompt
@@ -66,11 +67,31 @@ def test_system_prompt_describes_bash_workspace_rules():
         mcp_registry_path=Path("mcp-servers/registry.json"),
     )
 
-    assert "Bash commands default to cwd=" in prompt
-    assert "`working_dir` may point to either AGENT_ALPHA_ROOT or the current workspace" in prompt
-    assert "resolve it by checking AGENT_ALPHA_ROOT first" in prompt
-    assert "Do not assume `workspace/...` means the current session workspace." in prompt
+    assert "WORKSPACE_ROOT:" in prompt
+    assert "AGENT_ALPHA_ROOT:" in prompt
+    assert "Bash working_dir rules are defined by the bash tool schema" in prompt
     assert "current workspace may be either a project-local managed folder or an external user-selected folder" in prompt
+
+
+def test_system_prompt_lists_absolute_runtime_resource_paths(tmp_path: Path):
+    workspace_root = (tmp_path / "relocated-workspace").resolve()
+    alpha_root = (tmp_path / "relocated-alpha").resolve()
+    prompt = build_system_prompt(
+        workspace_root=workspace_root,
+        logs_dir=alpha_root / "session-log/logs",
+        events_dir=alpha_root / "session-log/events",
+        skills_dir=alpha_root / "skills",
+        agent_home_skills_dir=alpha_root / "home/.agents/skills",
+        mcp_servers_dir=alpha_root / "mcp-servers",
+        mcp_registry_path=alpha_root / "mcp-servers/registry.json",
+    )
+
+    assert f"WORKSPACE_ROOT: {workspace_root}" in prompt
+    assert f"AGENT_ALPHA_ROOT: {alpha_root}" in prompt
+    assert f"Temporary directory: {alpha_root / 'temp'}" in prompt
+    assert f"Cache directory: {alpha_root / 'cache'}" in prompt
+    python = alpha_root / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    assert f"Python interpreter: {python}" in prompt
 
 
 def test_system_prompt_describes_bash_timeout_and_pipeline_guidance():
@@ -87,7 +108,9 @@ def test_system_prompt_describes_bash_timeout_and_pipeline_guidance():
     assert "Bash tool calls default to a 30 second timeout" in prompt
     assert "set `timeout_seconds` up to 300 seconds" in prompt
     assert "do not rely on them for critical environment or dependency checks" in prompt
-    assert "`uv pip list --python <agent-alpha .venv python>`" in prompt
+    alpha_root = Path("skills").resolve().parent
+    python = alpha_root / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    assert f"`uv pip list --python {python}`" in prompt
     assert "instead of shell pipelines such as `uv pip list | grep ...`" in prompt
 
 
@@ -103,8 +126,10 @@ def test_system_prompt_rejects_bare_pip_for_python_installs():
     )
 
     assert "Do not use bare `pip`, `pip3`, or versioned `pip` commands" in prompt
-    assert "`python -m pip install ...`" in prompt
-    assert "`uv pip install --python <agent-alpha .venv python> ...`" in prompt
+    alpha_root = Path("skills").resolve().parent
+    python = alpha_root / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    assert f"`{python} -m pip install ...`" in prompt
+    assert f"`uv pip install --python {python} ...`" in prompt
 
 
 def test_system_prompt_includes_runtime_records_for_logs_and_events():
@@ -119,8 +144,8 @@ def test_system_prompt_includes_runtime_records_for_logs_and_events():
     )
 
     assert "## Runtime Records" in prompt
-    assert "Logs directory: session-log\\logs" in prompt or "Logs directory: session-log/logs" in prompt
-    assert "Events directory: session-log\\events" in prompt or "Events directory: session-log/events" in prompt
+    assert f"Logs directory: {Path('session-log/logs').resolve()}" in prompt
+    assert f"Events directory: {Path('session-log/events').resolve()}" in prompt
     assert "Logs are archived logs. Events are real-time runtime records." in prompt
 
 

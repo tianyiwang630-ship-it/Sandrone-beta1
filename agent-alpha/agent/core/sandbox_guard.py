@@ -12,10 +12,11 @@ from agent.core.command_path_extractor import (
     explain_parseable_mutation_forms,
     extract_bash_paths,
     extract_general_write_paths,
+    extract_git_command_context,
     extract_script_path,
     is_external_executable_invocation,
 )
-from agent.core.path_policy import decide_path_access
+from agent.core.path_policy import decide_path_access, resolve_bash_command_context
 from agent.core.sandbox_types import AccessAction, SandboxCheckResult
 
 
@@ -71,9 +72,10 @@ class SandboxGuard:
         guidance = None
         if decision == "deny" and action in {"write", "delete"}:
             guidance = (
-                "Use a path inside the current workspace or inside agent-alpha. "
-                "For skills, write under agent-alpha/skills/<skill-name>. "
-                "For temporary files, use agent-alpha/temp."
+                f"Write project files under {self.workspace_root}. "
+                f"Write third-party skills under {self.project_root / 'home' / '.agents' / 'skills'}. "
+                f"Write temporary files under {self.project_root / 'temp'}. "
+                f"{self.project_root / 'agent'} is read-only."
             )
 
         return SandboxCheckResult(
@@ -85,6 +87,22 @@ class SandboxGuard:
         )
 
     def _check_bash_command(self, command: str, working_dir: str | None = None) -> SandboxCheckResult:
+        try:
+            command, cwd = resolve_bash_command_context(
+                project_root=self.project_root,
+                workspace_root=self.workspace_root,
+                command=command,
+                working_dir=working_dir,
+            )
+        except ValueError as exc:
+            return SandboxCheckResult(
+                decision="deny",
+                action="unknown",
+                zone="unknown",
+                reason=str(exc),
+                guidance="Use an existing directory inside the current workspace, or an absolute directory inside AGENT_ALPHA_ROOT.",
+            )
+
         category = classify_bash_command(command)
 
         if category == "dangerous":
@@ -95,6 +113,95 @@ class SandboxGuard:
                 reason="Dangerous system-level bash commands are not allowed",
                 guidance="Disallowed examples include sudo, format, mkfs, diskpart, shutdown, reboot, and destructive permission changes.",
             )
+
+        general_write_paths = extract_general_write_paths(command, base_dir=cwd)
+        if general_write_paths:
+            decisions = [
+                self._decide_path_access(
+                    path,
+                    action="write",
+                    workspace_root=self.workspace_root,
+                    project_root=self.project_root,
+                )
+                for path in general_write_paths
+            ]
+            if any(decision == "deny" for decision, _zone in decisions):
+                return SandboxCheckResult(
+                    decision="deny",
+                    action="write",
+                    zone=next(zone for decision, zone in decisions if decision == "deny"),
+                    reason="The bash command appears to write to a path outside the allowed workspace or into read-only agent source",
+                    guidance=self._write_path_guidance(general_write_paths, cwd=cwd),
+                )
+            if any(decision == "ask" for decision, _zone in decisions):
+                return SandboxCheckResult(
+                    decision="ask",
+                    action="write",
+                    zone=next(zone for decision, zone in decisions if decision == "ask"),
+                    reason="The bash command appears to modify protected agent-alpha runtime files",
+                    guidance="Use workspace files or writable agent-alpha runtime directories.",
+                )
+
+        git_context = extract_git_command_context(command, base_dir=cwd)
+        if git_context is not None:
+            git_command, git_cwd, unsafe_override = git_context
+            git_category = classify_bash_command(git_command)
+            if git_category == "dangerous":
+                return SandboxCheckResult(
+                    decision="deny",
+                    action="write",
+                    zone="project" if self._paths_overlap(git_cwd, self.project_root) else "workspace",
+                    reason="Dangerous git cleanup or hard reset commands are not allowed",
+                    guidance="Use explicit, non-destructive Git operations on individual workspace files.",
+                )
+            lowered_git_command = git_command.strip().lower()
+            is_bulk_restore = lowered_git_command in {"git checkout -- .", "git restore ."}
+            is_patch_apply = lowered_git_command.startswith("git apply ")
+            if is_bulk_restore or is_patch_apply:
+                cwd_decision, cwd_zone = self._decide_path_access(
+                    git_cwd,
+                    action="write",
+                    workspace_root=self.workspace_root,
+                    project_root=self.project_root,
+                )
+                could_touch_agent = (
+                    self._paths_overlap(git_cwd, self.project_root / "agent")
+                    if is_bulk_restore
+                    else self._paths_overlap(git_cwd, self.project_root)
+                )
+                if unsafe_override or cwd_decision == "deny" or could_touch_agent:
+                    return SandboxCheckResult(
+                        decision="deny",
+                        action="write",
+                        zone="project" if could_touch_agent else cwd_zone,
+                        reason="Git directory overrides or bulk changes could modify read-only agent source",
+                        guidance=f"Apply project changes inside {self.workspace_root}; {self.project_root / 'agent'} is read-only.",
+                    )
+                if is_bulk_restore:
+                    return SandboxCheckResult(
+                        decision="ask",
+                        action="write",
+                        zone=cwd_zone,
+                        reason="Bulk git restore commands require user approval",
+                        guidance="Restore explicit files when possible so paths can be sandboxed precisely.",
+                    )
+                return SandboxCheckResult(
+                    decision="allow",
+                    action="write",
+                    zone=cwd_zone,
+                    reason="git apply is allowed for workspace patch workflows",
+                )
+            if unsafe_override and git_category == "path_mutation":
+                return SandboxCheckResult(
+                    decision="deny",
+                    action="write",
+                    zone="unknown",
+                    reason="Git directory overrides could not be mapped safely for this write command",
+                    guidance=f"Use explicit workspace paths; {self.project_root / 'agent'} is read-only.",
+                )
+            command = git_command
+            cwd = git_cwd
+            category = git_category
 
         python_scope = classify_python_launcher_scope(command, project_root=self.project_root)
         if python_scope == "deny":
@@ -162,26 +269,8 @@ class SandboxGuard:
                 guidance=explain_alpha_venv_command_guidance(self.project_root),
             )
 
-        lowered_command = command.strip().lower()
-        if lowered_command in {"git checkout -- .", "git restore ."}:
-            return SandboxCheckResult(
-                decision="ask",
-                action="write",
-                zone="project",
-                reason="Bulk git restore commands require user approval",
-                guidance="Single-file restore commands like git checkout -- file or git restore file can be parsed and sandboxed more precisely.",
-            )
-
-        if lowered_command.startswith("git apply "):
-            return SandboxCheckResult(
-                decision="allow",
-                action="write",
-                zone="project",
-                reason="git apply is allowed for project patch workflows",
-            )
-
         if category == "script_run":
-            script_path = extract_script_path(command)
+            script_path = extract_script_path(command, base_dir=cwd)
             decision, zone = decide_path_access(
                 script_path,
                 action="read",
@@ -203,7 +292,7 @@ class SandboxGuard:
             )
 
         if category in {"read_only", "path_mutation"}:
-            extracted = extract_bash_paths(command, category)
+            extracted = extract_bash_paths(command, category, base_dir=cwd)
             if extracted is None:
                 action: AccessAction = "write" if category == "path_mutation" else "read"
                 return SandboxCheckResult(
@@ -212,7 +301,7 @@ class SandboxGuard:
                     zone="unknown",
                     reason="This bash command could not be parsed safely",
                     guidance=(
-                        f"{explain_parseable_mutation_forms()} {self._write_path_guidance([], working_dir=working_dir)}"
+                        f"{explain_parseable_mutation_forms()} {self._write_path_guidance([], cwd=cwd)}"
                         if category == "path_mutation"
                         else "Use simple read-only commands with explicit paths when accessing files."
                     ),
@@ -244,7 +333,7 @@ class SandboxGuard:
                     zone=next(zone for decision, zone in decisions if decision == "deny"),
                     reason="The bash command targets a path outside the allowed workspace or project boundaries",
                     guidance=(
-                        f"{explain_parseable_mutation_forms()} {self._write_path_guidance(paths, working_dir=working_dir)}"
+                        f"{explain_parseable_mutation_forms()} {self._write_path_guidance(paths, cwd=cwd)}"
                         if category == "path_mutation"
                         else None
                     ),
@@ -266,44 +355,11 @@ class SandboxGuard:
                 reason="The bash command targets only allowed paths",
             )
 
-        general_write_paths = extract_general_write_paths(command)
-        if general_write_paths:
-            decisions = [
-                self._decide_path_access(
-                    path,
-                    action="write",
-                    workspace_root=self.workspace_root,
-                    project_root=self.project_root,
-                )
-                for path in general_write_paths
-            ]
-            if any(decision == "deny" for decision, _zone in decisions):
-                return SandboxCheckResult(
-                    decision="deny",
-                    action="write",
-                    zone=next(zone for decision, zone in decisions if decision == "deny"),
-                    reason="The bash command appears to write to a path outside the allowed workspace or project boundaries",
-                    guidance=self._write_path_guidance(general_write_paths, working_dir=working_dir),
-                )
-            if any(decision == "ask" for decision, _zone in decisions):
-                return SandboxCheckResult(
-                    decision="ask",
-                    action="write",
-                    zone=next(zone for decision, zone in decisions if decision == "ask"),
-                    reason="The bash command appears to modify protected agent-alpha runtime files",
-                    guidance="Use workspace files or agent-alpha runtime directories unless the user explicitly asks to modify core runtime code.",
-                )
-            return SandboxCheckResult(
-                decision="allow",
-                action="write",
-                zone=decisions[0][1],
-                reason="The bash command writes only to allowed workspace or agent-alpha paths",
-            )
-
         if is_external_executable_invocation(
             command,
             project_root=self.project_root,
             workspace_root=self.workspace_root,
+            base_dir=cwd,
         ):
             return SandboxCheckResult(
                 decision="allow",
@@ -345,17 +401,27 @@ class SandboxGuard:
             project_root=project_root,
         )
 
-    def _write_path_guidance(self, paths: list[Path], *, working_dir: str | None = None) -> str:
-        cwd = self._resolve_working_dir_for_guidance(working_dir)
+    @staticmethod
+    def _paths_overlap(first: Path, second: Path) -> bool:
+        first = first.resolve()
+        second = second.resolve()
+        try:
+            first.relative_to(second)
+            return True
+        except ValueError:
+            pass
+        try:
+            second.relative_to(first)
+            return True
+        except ValueError:
+            return False
+
+    def _write_path_guidance(self, paths: list[Path], *, cwd: Path) -> str:
         allowed_roots = [self.workspace_root, self.project_root / "temp"]
-        if cwd == self.project_root:
-            recommended = "temp/..."
-        else:
-            try:
-                cwd.relative_to(self.workspace_root)
-                recommended = "a path relative to the current workspace, or an explicit path under agent-alpha/temp"
-            except ValueError:
-                recommended = "temp/... or workspace/..."
+        recommended = (
+            f"a path relative to {self.workspace_root}, or an absolute path under "
+            f"{self.project_root / 'temp'}"
+        )
 
         path_bits = []
         for path in paths:
@@ -369,21 +435,8 @@ class SandboxGuard:
         return (
             f"Detected write paths: {detected}. Current cwd: {cwd}. "
             f"allowed write roots: {roots}. Recommended target: {recommended}. "
-            "Because bash starts inside agent-alpha, use temp/... instead of agent-alpha/temp/... for temporary files."
+            f"{self.project_root / 'agent'} is read-only."
         )
-
-    def _resolve_working_dir_for_guidance(self, working_dir: str | None) -> Path:
-        if not working_dir:
-            return self.project_root
-        try:
-            path = Path(working_dir)
-            if not path.is_absolute():
-                path = self.project_root / path
-            resolved = path.resolve()
-            resolved.relative_to(self.project_root)
-            return resolved
-        except Exception:
-            return self.project_root
 
     def _extract_path(self, arguments: Dict[str, Any], tool_name: str = "") -> Path | None:
         raw_path = arguments.get("path") if tool_name in {"glob", "grep"} else arguments.get("file_path")

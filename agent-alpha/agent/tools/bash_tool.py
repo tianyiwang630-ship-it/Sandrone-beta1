@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 
 from agent.core.command_path_extractor import classify_python_launcher_scope, command_uses_python_launcher
+from agent.core.path_policy import resolve_bash_command_context, resolve_working_directory
 from agent.core.runtime_paths import build_runtime_env, ensure_runtime_directories
 from agent.tools.base_tool import BaseTool
 from agent.tools.process_utils import subprocess_group_kwargs, terminate_process_tree
@@ -119,7 +120,7 @@ class BashTool(BaseTool):
             "function": {
                 "name": "bash",
                 "description": (
-                    "执行 bash/shell 命令并返回结果。命令默认在当前 project_root 执行；"
+                    "执行 bash/shell 命令并返回结果。working_dir 不传则使用当前 workspace；"
                     "通常不要在 command 里写 cd ... && ...，需要切换目录时请使用 working_dir。"
                 ),
                 "parameters": {
@@ -132,9 +133,9 @@ class BashTool(BaseTool):
                         "working_dir": {
                             "type": "string",
                             "description": (
-                                "可选。本次命令的执行目录；相对路径按 project_root 解析，"
-                                "找不到时按当前 workspace 解析；绝对路径必须位于 project_root 或当前 workspace 内。"
-                                "不传则默认使用 project_root。"
+                                "可选。本次命令的执行目录；相对路径仅按当前 workspace 解析。"
+                                "访问 AGENT_ALPHA_ROOT 必须传绝对路径。绝对路径必须位于 "
+                                "AGENT_ALPHA_ROOT 或当前 workspace 内；目录必须已存在。"
                             )
                         },
                         "timeout_seconds": {
@@ -301,20 +302,12 @@ class BashTool(BaseTool):
 
     def _prepare_command(self, command: str, working_dir: str | Path | None) -> Dict[str, Any]:
         try:
-            command, cd_working_dir = self._split_simple_cd_prefix(command)
-        except ValueError as exc:
-            return self._working_dir_error(str(exc), command)
-
-        if cd_working_dir is not None:
-            if working_dir:
-                return self._working_dir_error(
-                    "command 中已包含 cd 前缀，请不要同时传 working_dir；请只使用 working_dir 指定目录。",
-                    command,
-                )
-            working_dir = cd_working_dir
-
-        try:
-            cwd = self._resolve_working_dir(working_dir)
+            command, cwd = resolve_bash_command_context(
+                project_root=self.project_root,
+                workspace_root=self.workspace_root,
+                command=command,
+                working_dir=working_dir,
+            )
         except ValueError as exc:
             return self._working_dir_error(str(exc), command)
 
@@ -366,33 +359,11 @@ class BashTool(BaseTool):
         )
 
     def _resolve_working_dir(self, working_dir: str | Path | None) -> Path:
-        if working_dir in (None, ""):
-            return self.project_root
-
-        path = self._path_from_user_input(working_dir).expanduser()
-        if not path.is_absolute():
-            project_candidate = (self.project_root / path).resolve()
-            workspace_candidate = (self.workspace_root / path).resolve()
-            if project_candidate.is_dir():
-                path = project_candidate
-            elif workspace_candidate.is_dir():
-                path = workspace_candidate
-            elif project_candidate.exists():
-                path = project_candidate
-            else:
-                path = project_candidate
-
-        resolved = path.resolve()
-        if not self._is_inside_allowed_root(resolved):
-            raise ValueError("working_dir 必须位于 project_root 或当前 workspace 内部。")
-
-        if not resolved.is_dir():
-            raise ValueError("working_dir 必须是已存在的目录。")
-
-        return resolved
-
-    def _is_inside_allowed_root(self, path: Path) -> bool:
-        return self._is_relative_to(path, self.project_root) or self._is_relative_to(path, self.workspace_root)
+        return resolve_working_directory(
+            project_root=self.project_root,
+            workspace_root=self.workspace_root,
+            working_dir=working_dir,
+        )
 
     @staticmethod
     def _is_relative_to(path: Path, root: Path) -> bool:
@@ -401,41 +372,6 @@ class BashTool(BaseTool):
             return True
         except ValueError:
             return False
-
-    def _path_from_user_input(self, path: str | Path) -> Path:
-        text = str(path)
-        if os.name == "nt" and len(text) > 3 and text[0] == "/" and text[2] == "/" and text[1].isalpha():
-            return Path(f"{text[1].upper()}:{text[2:]}")
-        return Path(text)
-
-    def _split_simple_cd_prefix(self, command: str) -> tuple[str, str | None]:
-        stripped = command.strip()
-        if not stripped.startswith("cd "):
-            return command, None
-
-        parts = stripped.split("&&")
-        if len(parts) != 2:
-            raise ValueError("检测到复杂 cd 用法，请把目录放到 working_dir 参数里。")
-
-        cd_part, rest = parts[0].strip(), parts[1].strip()
-        if not rest:
-            raise ValueError("cd 后缺少要执行的命令，请把目录放到 working_dir 参数里。")
-
-        cd_tokens = cd_part.split(maxsplit=1)
-        if len(cd_tokens) != 2:
-            raise ValueError("cd 后缺少目录，请把目录放到 working_dir 参数里。")
-
-        target = cd_tokens[1].strip()
-        if any(token in target for token in ("$", "`", "|", ";", "&")):
-            raise ValueError("检测到复杂 cd 目录表达式，请把目录放到 working_dir 参数里。")
-
-        if (target.startswith('"') and target.endswith('"')) or (target.startswith("'") and target.endswith("'")):
-            target = target[1:-1]
-
-        if not target:
-            raise ValueError("cd 后缺少目录，请把目录放到 working_dir 参数里。")
-
-        return rest, target
 
     def _working_dir_error(self, message: str, command: str) -> Dict[str, Any]:
         result = {

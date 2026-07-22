@@ -458,6 +458,15 @@ class ToolLoader:
                             "tool": tool_name,
                             "args": arguments,
                         }
+                    if isinstance(result, dict) and "permission_denied_reason" in result:
+                        error = {
+                            "error": result["permission_denied_reason"],
+                            "tool": tool_name,
+                            "reason": sandbox_result.reason,
+                        }
+                        if sandbox_result.guidance:
+                            error["guidance"] = sandbox_result.guidance
+                        return error
                     if not result:
                         error = {"error": "Permission denied by user", "tool": tool_name, "reason": sandbox_result.reason}
                         if sandbox_result.guidance:

@@ -55,6 +55,11 @@ import FileDrawer from './components/FileDrawer'
 import { EMPTY_STATE_QUOTES } from './emptyStateQuotes'
 import { renderMarkdown } from './markdown'
 import {
+  hasPendingPermission,
+  isRetryInstructionValid,
+  remainingPermissionSeconds,
+} from './permissionPrompt'
+import {
   emptySessionMessageQueue,
   enqueuePriorityMessage,
   enqueueQueuedMessage,
@@ -75,6 +80,8 @@ import {
 import type {
   CapabilityItem,
   Message,
+  PendingPermission,
+  PermissionDecision,
   Project,
   Session,
   SessionDetail,
@@ -105,6 +112,7 @@ interface RunningSession {
   status: 'starting' | 'running' | 'stopping'
   startedAfterSeq: number
   operation?: 'chat' | 'compact'
+  pendingPermission?: PendingPermission | null
 }
 
 interface FailedRunSnapshot {
@@ -424,6 +432,19 @@ function formatTime(value: string) {
   return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+function formatPermissionCountdown(seconds: number) {
+  if (seconds <= 0) return '即将超时'
+  const minutes = Math.floor(seconds / 60)
+  const remainder = seconds % 60
+  return minutes ? `${minutes} 分 ${remainder} 秒` : `${remainder} 秒`
+}
+
+function permissionRiskLabel(level: string) {
+  if (level === 'high') return '高风险'
+  if (level === 'low') return '低风险'
+  return '中等风险'
+}
+
 function shortPath(path: string) {
   const parts = path.replace(/\\/g, '/').split('/').filter(Boolean)
   if (parts.length <= 4) return path
@@ -510,6 +531,10 @@ export default function App() {
   const [composerConflicts, setComposerConflicts] = useState<UploadConflictItem[]>([])
   const [composerPendingUpload, setComposerPendingUpload] = useState<UploadEntry[] | null>(null)
   const [showComposerConflictDialog, setShowComposerConflictDialog] = useState(false)
+  const [permissionInstruction, setPermissionInstruction] = useState('')
+  const [permissionSubmittingId, setPermissionSubmittingId] = useState<string | null>(null)
+  const [permissionError, setPermissionError] = useState<string | null>(null)
+  const [permissionNow, setPermissionNow] = useState(() => Date.now())
   const [sessionRename, setSessionRename] = useState<{
     session: Session
     draft: string
@@ -576,6 +601,11 @@ export default function App() {
   const currentQueuedMessages = currentMessageQueue.items
   const currentLiveEvents = selectedSessionId ? liveEventsBySession[selectedSessionId] || [] : []
   const selectedRun = selectedSessionId ? runningSessions[selectedSessionId] || null : null
+  const currentPendingPermission = selectedRun?.pendingPermission || null
+  const pendingPermissionCount = Object.values(runningSessions).filter(hasPendingPermission).length
+  const currentPermissionSeconds = currentPendingPermission
+    ? remainingPermissionSeconds(currentPendingPermission.expires_at, permissionNow)
+    : 0
   const persistedFailedRun = useMemo(() => failedRunFromEvents(currentLiveEvents), [currentLiveEvents])
   const currentFailedRun = selectedSessionId ? failedRunsBySession[selectedSessionId] || persistedFailedRun : null
   const currentLiveWindow = selectedRun || currentFailedRun
@@ -607,6 +637,18 @@ export default function App() {
   const shellGridColumns = drawerOpen
     ? `${sidebarWidth}px ${SHELL_RESIZER_WIDTH}px minmax(${MIN_CHAT_WIDTH_WITH_DRAWER}px, 1fr) ${drawerWidth}px`
     : `${sidebarWidth}px ${SHELL_RESIZER_WIDTH}px minmax(${MIN_CHAT_WIDTH}px, 1fr)`
+
+  useEffect(() => {
+    if (!pendingPermissionCount) return
+    setPermissionNow(Date.now())
+    const timer = window.setInterval(() => setPermissionNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [pendingPermissionCount])
+
+  useEffect(() => {
+    setPermissionInstruction('')
+    setPermissionError(null)
+  }, [currentPendingPermission?.permission_id])
 
   const loadProjects = async () => {
     const data = await api.listProjects()
@@ -1079,6 +1121,39 @@ export default function App() {
     })
   }
 
+  const updatePendingPermission = (sessionId: string, pendingPermission: PendingPermission | null) => {
+    const currentRun = runningSessionsRef.current[sessionId]
+    if (!currentRun) return
+    const nextRuns = {
+      ...runningSessionsRef.current,
+      [sessionId]: { ...currentRun, pendingPermission },
+    }
+    runningSessionsRef.current = nextRuns
+    setRunningSessions(nextRuns)
+  }
+
+  const submitPermissionDecision = async (decision: PermissionDecision) => {
+    if (!selectedSessionId || !currentPendingPermission || permissionSubmittingId) return
+    const instruction = permissionInstruction.trim()
+    if (decision === 'retry_with_context' && !isRetryInstructionValid(instruction)) {
+      setPermissionError('请输入追加说明。')
+      return
+    }
+    const permissionId = currentPendingPermission.permission_id
+    const sessionId = selectedSessionId
+    setPermissionSubmittingId(permissionId)
+    setPermissionError(null)
+    try {
+      await api.resolvePermission(permissionId, decision, decision === 'retry_with_context' ? instruction : undefined)
+      updatePendingPermission(sessionId, null)
+      setPermissionInstruction('')
+    } catch (err) {
+      setPermissionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPermissionSubmittingId(null)
+    }
+  }
+
   const refreshLiveEvents = async (
     sessionId: string,
     options: { preserveActiveRunEvents?: boolean } = {},
@@ -1133,6 +1208,7 @@ export default function App() {
         status: 'running',
         startedAfterSeq,
         operation: activeRun.operation || 'chat',
+        pendingPermission: activeRun.pending_permission || null,
       },
     } as Record<string, RunningSession>
     runningSessionsRef.current = resumedRuns
@@ -1141,6 +1217,7 @@ export default function App() {
     try {
       while (true) {
         const status = await api.getChatStatus(activeRun.request_id)
+        updatePendingPermission(sessionId, status.pending_permission || null)
         if (status.status === 'running') {
           await refreshLiveEvents(sessionId, { preserveActiveRunEvents: true })
           await new Promise((resolve) => window.setTimeout(resolve, 1000))
@@ -1380,6 +1457,7 @@ export default function App() {
       setRunningSessions(activeRuns)
       while (true) {
         const status = await api.getChatStatus(run.request_id)
+        updatePendingPermission(sessionId, status.pending_permission || null)
         if (status.status === 'running') {
           await refreshLiveEvents(sessionId, { preserveActiveRunEvents: true })
           await new Promise((resolve) => window.setTimeout(resolve, 1000))
@@ -1897,6 +1975,12 @@ export default function App() {
                         <span className="item-title">
                           {session.is_pinned && <Pin size={12} className="item-pin-mark" />}
                           <span>{session.title}</span>
+                          {hasPendingPermission(runningSessions[session.id]) && (
+                            <span className="permission-badge" title="此会话正在等待权限确认">
+                              <ShieldCheck size={12} />
+                              待确认
+                            </span>
+                          )}
                         </span>
                         <small>{formatTime(session.updated_at)}</small>
                       </button>
@@ -2086,6 +2170,60 @@ export default function App() {
               )}
             </div>
             <form className="composer composer-command" onSubmit={send}>
+              {currentPendingPermission && (
+                <section className="permission-card" aria-live="polite">
+                  <div className="permission-card-heading">
+                    <span className="permission-card-icon"><ShieldCheck size={18} /></span>
+                    <div>
+                      <strong>需要你的权限确认</strong>
+                      <span>{currentPendingPermission.tool} · {permissionRiskLabel(currentPendingPermission.risk_level)}</span>
+                    </div>
+                    <time>剩余 {formatPermissionCountdown(currentPermissionSeconds)}</time>
+                  </div>
+                  <div className="permission-card-detail">
+                    <span>{currentPendingPermission.summary_label}</span>
+                    <pre>{currentPendingPermission.summary}</pre>
+                  </div>
+                  {currentPendingPermission.reason && (
+                    <p className="permission-card-reason">原因：{currentPendingPermission.reason}</p>
+                  )}
+                  <textarea
+                    className="permission-instruction"
+                    value={permissionInstruction}
+                    maxLength={4000}
+                    placeholder="可选：告诉 AI 改用什么方式，然后点击“追加说明后重试”"
+                    onChange={(event) => setPermissionInstruction(event.target.value)}
+                    disabled={permissionSubmittingId === currentPendingPermission.permission_id}
+                    rows={2}
+                  />
+                  {permissionError && <div className="permission-error">{permissionError}</div>}
+                  <div className="permission-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={Boolean(permissionSubmittingId)}
+                      onClick={() => void submitPermissionDecision('retry_with_context')}
+                    >
+                      追加说明后重试
+                    </button>
+                    <button
+                      type="button"
+                      className="danger"
+                      disabled={Boolean(permissionSubmittingId)}
+                      onClick={() => void submitPermissionDecision('deny')}
+                    >
+                      拒绝
+                    </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(permissionSubmittingId)}
+                      onClick={() => void submitPermissionDecision('allow_once')}
+                    >
+                      {permissionSubmittingId ? '处理中...' : '允许一次'}
+                    </button>
+                  </div>
+                </section>
+              )}
               <input ref={composerFileInputRef} type="file" multiple hidden onChange={(event) => void handleComposerFileSelect(event)} />
               <input
                 ref={composerFolderInputRef}

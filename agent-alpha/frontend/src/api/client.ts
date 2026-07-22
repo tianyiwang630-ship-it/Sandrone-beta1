@@ -4,6 +4,7 @@ import type {
   ChatStatus,
   FileContent,
   FileInfo,
+  PermissionDecision,
   Project,
   RetrospectiveStart,
   Session,
@@ -66,6 +67,11 @@ export const api = {
   getChatStatus: (requestId: string) => request<ChatStatus>(`/chat/status/${requestId}`),
   getSessionActiveRun: (sessionId: string) => request<ChatStatus>(`/chat/session-status/${sessionId}`),
   interrupt: (sessionId: string) => request<{ ok: boolean }>(`/chat/interrupt/${sessionId}`, { method: 'POST' }),
+  resolvePermission: (permissionId: string, decision: PermissionDecision, instruction?: string) =>
+    request<{ ok: boolean }>(`/chat/permissions/${permissionId}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ decision, ...(instruction ? { instruction } : {}) }),
+    }),
   getSettings: () => request<Settings>('/settings'),
   updateSettings: (body: SettingsUpdate) =>
     request<Settings>('/settings', { method: 'PATCH', body: JSON.stringify(body) }),

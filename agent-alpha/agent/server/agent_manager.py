@@ -15,6 +15,7 @@ from agent.core.session_events import SessionEventWriter, migrate_event_file, re
 from agent.core.session_paths import create_cli_session_paths
 from agent.core.session_store import SessionKind, SessionRecord, SessionStore
 from agent.server.stores.app_state import now_iso, new_id
+from agent.server.web_permissions import WebPermissionBroker
 
 
 class AgentManager:
@@ -27,6 +28,7 @@ class AgentManager:
         self._runs: dict[str, dict[str, Any]] = {}
         self._lock = threading.RLock()
         self._executor = ThreadPoolExecutor(max_workers=4)
+        self._web_permission_broker = WebPermissionBroker(timeout_seconds=600)
         self.cleanup_legacy_sessions()
         self.migrate_historical_events()
 
@@ -185,7 +187,10 @@ class AgentManager:
     def get_run(self, request_id: str) -> dict[str, Any] | None:
         with self._lock:
             run = self._runs.get(request_id)
-            return dict(run) if run else None
+            result = dict(run) if run else None
+        if result is not None:
+            result["pending_permission"] = self._permission_broker().pending_for_request(request_id)
+        return result
 
     def get_active_run_for_session(self, session_id: str) -> dict[str, Any] | None:
         with self._lock:
@@ -197,7 +202,12 @@ class AgentManager:
         if not runs:
             return None
         runs.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
-        return runs[0]
+        result = runs[0]
+        result["pending_permission"] = self._permission_broker().pending_for_request(str(result["request_id"]))
+        return result
+
+    def resolve_permission(self, permission_id: str, decision: str, instruction: str | None = None) -> None:
+        self._permission_broker().resolve(permission_id, decision, instruction)
 
     def _has_active_run(self, session_id: str) -> bool:
         with self._lock:
@@ -207,6 +217,7 @@ class AgentManager:
             )
 
     def interrupt(self, session_id: str) -> bool:
+        self._permission_broker().cancel_session(session_id)
         with self._lock:
             agent = self._agents.get(session_id)
         if agent is None:
@@ -215,10 +226,12 @@ class AgentManager:
         return True
 
     def release(self, session_id: str) -> None:
+        self._permission_broker().cancel_session(session_id)
         with self._lock:
             self._agents.pop(session_id, None)
 
     def release_all(self) -> None:
+        self._permission_broker().cancel_all()
         with self._lock:
             self._agents.clear()
 
@@ -286,9 +299,15 @@ class AgentManager:
         runtime_metadata: dict[str, Any] | None = None,
     ) -> None:
         agent: AgentRuntime | None = None
+        permission_manager: Any | None = None
         runtime_event_start = 0
         try:
             agent = self._get_agent(record, permission_mode, llm_settings)
+            permission_manager = getattr(getattr(agent, "tool_loader", None), "permission_manager", None)
+            if permission_manager is not None and hasattr(permission_manager, "set_approval_handler"):
+                permission_manager.set_approval_handler(
+                    lambda prompt: self._permission_broker().request(request_id, record.session_id, prompt)
+                )
             runtime_event_start = len(getattr(agent, "runtime_events", []))
             response = agent.handle(
                 RuntimeRequest(
@@ -365,6 +384,10 @@ class AgentManager:
                 runtime_event_start=runtime_event_start,
             )
             self._set_run(request_id, status="failed", error=str(exc), tool_calls_count=tool_calls_count)
+        finally:
+            if permission_manager is not None and hasattr(permission_manager, "set_approval_handler"):
+                permission_manager.set_approval_handler(None)
+            self._permission_broker().cancel_request(request_id)
 
     def _run_compact(
         self,
@@ -723,6 +746,13 @@ class AgentManager:
                 return
             run.update(updates)
             run["updated_at"] = now_iso()
+
+    def _permission_broker(self) -> WebPermissionBroker:
+        broker = getattr(self, "_web_permission_broker", None)
+        if broker is None:
+            broker = WebPermissionBroker(timeout_seconds=600)
+            self._web_permission_broker = broker
+        return broker
 
     @staticmethod
     def _count_tool_calls(history: list[dict[str, Any]]) -> int:

@@ -3,8 +3,16 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from agent.server.deps import agent_manager, state_store
-from agent.server.models import ChatRequest, ChatStartResponse, ChatStatusResponse, CompactRequest
+from agent.server.models import (
+    ChatRequest,
+    ChatStartResponse,
+    ChatStatusResponse,
+    CompactRequest,
+    PermissionDecisionRequest,
+    PermissionDecisionResponse,
+)
 from agent.server.routes.settings import normalize_settings
+from agent.server.web_permissions import PermissionConflictError, PermissionNotFoundError
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -62,3 +70,20 @@ def get_session_chat_status(session_id: str):
 def interrupt_chat(session_id: str):
     interrupted = agent_manager.interrupt(session_id)
     return {"ok": interrupted}
+
+
+@router.post(
+    "/permissions/{permission_id}/decision",
+    response_model=PermissionDecisionResponse,
+)
+def resolve_permission(permission_id: str, body: PermissionDecisionRequest):
+    instruction = body.instruction.strip() if body.instruction else None
+    if body.decision == "retry_with_context" and not instruction:
+        raise HTTPException(status_code=422, detail="instruction is required for retry_with_context")
+    try:
+        agent_manager.resolve_permission(permission_id, body.decision, instruction)
+    except PermissionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return PermissionDecisionResponse()

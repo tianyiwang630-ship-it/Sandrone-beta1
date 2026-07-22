@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Dict, Any, Union
+from typing import Any, Callable, Dict, Union
 
 
 class PermissionManager:
@@ -21,6 +21,14 @@ class PermissionManager:
         self.config_path = config_path
         self.config = self._load_config()
         self.mode = self.config.get("mode", "default")
+        self.approval_handler: Callable[[Dict[str, Any]], Union[bool, Dict[str, str]]] | None = None
+
+    def set_approval_handler(
+        self,
+        handler: Callable[[Dict[str, Any]], Union[bool, Dict[str, str]]] | None,
+    ) -> None:
+        """Route approval prompts to a channel-specific handler when provided."""
+        self.approval_handler = handler
 
     def _load_config(self) -> Dict[str, Any]:
         """加载配置文件"""
@@ -52,8 +60,12 @@ class PermissionManager:
             False - 拒绝
             Dict - 重试请求，包含额外指令
         """
+        prompt = self.describe_request(tool, args, reason)
+        if self.approval_handler is not None:
+            return self.approval_handler(prompt)
+
         # 获取风险等级
-        risk_level = self._get_risk_level(tool, args)
+        risk_level = str(prompt["risk_level"])
         risk_emoji = self._get_risk_emoji(risk_level)
 
         # 格式化显示
@@ -111,6 +123,30 @@ class PermissionManager:
 
             else:
                 print("⚠️  无效选择，请重新输入")
+
+    def describe_request(self, tool: str, args: Dict[str, Any], reason: str = "") -> Dict[str, Any]:
+        """Build the small, display-safe permission payload shared by CLI and Web."""
+        if tool == "bash":
+            label, summary = "命令", str(args.get("command", ""))
+        elif tool in {"read", "write", "edit", "append"}:
+            label, summary = "文件", str(args.get("file_path") or args.get("path") or "")
+        elif tool in {"glob", "grep"}:
+            label, summary = "模式", str(args.get("pattern", ""))
+        elif tool == "fetch":
+            label, summary = "URL", str(args.get("url", ""))
+        else:
+            visible_args = {key: value for key, value in args.items() if key not in {"content", "new_content"}}
+            label = "参数"
+            summary = json.dumps(visible_args, ensure_ascii=False, default=str)
+            if len(summary) > 2000:
+                summary = f"{summary[:2000]}..."
+        return {
+            "tool": tool,
+            "risk_level": self._get_risk_level(tool, args),
+            "reason": reason,
+            "summary_label": label,
+            "summary": summary,
+        }
 
     def _get_risk_level(self, tool: str, args: Dict[str, Any]) -> str:
         """

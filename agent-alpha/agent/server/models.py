@@ -97,6 +97,17 @@ ChatRunStatus = Literal["running", "success", "failed", "interrupted", "recovera
 ChatRunOperation = Literal["chat", "compact"]
 
 
+class PendingPermissionInfo(BaseModel):
+    permission_id: str
+    tool: str
+    risk_level: str
+    reason: str = ""
+    summary_label: str
+    summary: str
+    requested_at: str
+    expires_at: str
+
+
 class ChatStatusResponse(BaseModel):
     request_id: str
     session_id: str
@@ -108,8 +119,18 @@ class ChatStatusResponse(BaseModel):
     tool_calls_count: int = 0
     recovery_stage: str | None = None
     can_resume: bool = False
+    pending_permission: PendingPermissionInfo | None = None
     created_at: str
     updated_at: str
+
+
+class PermissionDecisionRequest(BaseModel):
+    decision: Literal["allow_once", "deny", "retry_with_context"]
+    instruction: str | None = Field(default=None, max_length=4000)
+
+
+class PermissionDecisionResponse(BaseModel):
+    ok: bool = True
 
 
 class SettingsPatch(BaseModel):

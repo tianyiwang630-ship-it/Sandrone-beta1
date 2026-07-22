@@ -53,6 +53,19 @@ export interface RetrospectiveStart {
   run: ChatStart
 }
 
+export interface PendingPermission {
+  permission_id: string
+  tool: string
+  risk_level: string
+  reason: string
+  summary_label: string
+  summary: string
+  requested_at: string
+  expires_at: string
+}
+
+export type PermissionDecision = 'allow_once' | 'deny' | 'retry_with_context'
+
 export interface ChatStatus {
   request_id: string
   session_id: string
@@ -64,6 +77,7 @@ export interface ChatStatus {
   tool_calls_count: number
   recovery_stage?: string | null
   can_resume?: boolean
+  pending_permission?: PendingPermission | null
   created_at: string
   updated_at: string
 }

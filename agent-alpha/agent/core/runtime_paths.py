@@ -24,6 +24,10 @@ RESERVED_RUNTIME_ENV_KEYS = {
     "PIP_CACHE_DIR",
     "UV_CACHE_DIR",
     "UV_TOOL_DIR",
+    "UV_TOOL_BIN_DIR",
+    "NODE_PATH",
+    "NPM_CONFIG_PREFIX",
+    "NPM_CONFIG_CACHE",
     "PYTHONUSERBASE",
     "PYTHONPYCACHEPREFIX",
     "HF_HOME",
@@ -60,6 +64,8 @@ def ensure_runtime_directories(project_root: Path) -> None:
         "home",
         "home/.agents/skills",
         "home/.local",
+        "home/.local/bin",
+        "home/.dotnet/tools",
         "bin",
         "userfile",
         "skills",
@@ -67,13 +73,16 @@ def ensure_runtime_directories(project_root: Path) -> None:
         "cache",
         "cache/pip",
         "cache/uv",
+        "cache/npm",
         "cache/python",
         "cache/huggingface/transformers",
         "cache/playwright",
         "cache/cargo",
+        "cache/cargo/bin",
         "cache/rustup",
         "tools/uv",
         "config/appdata",
+        "config/appdata/npm/node_modules",
         "data/localappdata",
         "state",
         "state/browser",
@@ -110,6 +119,8 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
     os_name = _runtime_os_name()
     scripts_dir = venv / ("Scripts" if os_name == "nt" else "bin")
     agent_bin_dir = root / "bin"
+    npm_prefix = root / "config" / "appdata" / "npm"
+    npm_bin_dir = npm_prefix if os_name == "nt" else npm_prefix / "bin"
     env = _normalize_runtime_env(base_env or os.environ, os_name=os_name)
     _remove_previous_profile_keys(env, os_name=os_name)
     for key in HOST_PYTHON_ENV_KEYS | PYTHON_ENCODING_ENV_KEYS:
@@ -134,6 +145,10 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
         "PIP_CACHE_DIR": root / "cache" / "pip",
         "UV_CACHE_DIR": root / "cache" / "uv",
         "UV_TOOL_DIR": root / "tools" / "uv",
+        "UV_TOOL_BIN_DIR": agent_bin_dir,
+        "NODE_PATH": npm_prefix / "node_modules",
+        "NPM_CONFIG_PREFIX": npm_prefix,
+        "NPM_CONFIG_CACHE": root / "cache" / "npm",
         "PYTHONUSERBASE": home / ".local",
         "PYTHONPYCACHEPREFIX": root / "cache" / "python",
         "HF_HOME": root / "cache" / "huggingface",
@@ -156,12 +171,32 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
         if "PYTHONIOENCODING" not in profile_keys:
             env["PYTHONIOENCODING"] = "utf-8"
 
-    old_path = env.get("PATH", "")
-    separator = os.pathsep
-    path_prefix_entries = [scripts_dir, agent_bin_dir, *_local_python_scripts_dirs(root)]
-    path_prefix = separator.join(str(path) for path in path_prefix_entries)
-    env["PATH"] = path_prefix if not old_path else f"{path_prefix}{separator}{old_path}"
+    path_prefix_entries = [
+        scripts_dir,
+        agent_bin_dir,
+        npm_bin_dir,
+        home / ".local" / "bin",
+        *_local_python_scripts_dirs(root),
+        root / "cache" / "cargo" / "bin",
+        home / ".dotnet" / "tools",
+    ]
+    env["PATH"] = _merge_path_entries(path_prefix_entries, env.get("PATH", ""), os_name=os_name)
     return env
+
+
+def _merge_path_entries(prefix_entries: list[Path], old_path: str, *, os_name: str) -> str:
+    entries = [str(path) for path in prefix_entries]
+    entries.extend(value for value in old_path.split(os.pathsep) if value)
+    result: list[str] = []
+    seen: set[str] = set()
+    for entry in entries:
+        normalized = os.path.normpath(entry)
+        key = normalized.casefold() if os_name == "nt" else normalized
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(entry)
+    return os.pathsep.join(result)
 
 
 def _runtime_os_name() -> str:

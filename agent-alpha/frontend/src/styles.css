@@ -388,6 +388,64 @@ button {
   color: var(--accent-strong);
 }
 
+.item-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.knowledge-base-project-action {
+  display: inline-flex;
+}
+
+.knowledge-base-project-popover {
+  position: fixed;
+  z-index: 60;
+  width: min(260px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+
+.knowledge-base-project-popover p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.knowledge-base-project-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.knowledge-base-project-popover-actions button {
+  min-width: 54px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.knowledge-base-project-popover-actions button:hover {
+  background: #eef3f5;
+}
+
+.knowledge-base-project-popover-actions button.primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+}
+
+.knowledge-base-project-popover-actions button.primary:hover {
+  background: var(--accent-strong);
+}
+
 .item-delete:hover {
   color: var(--danger);
 }
@@ -1267,6 +1325,50 @@ pre {
 .composer .composer-alignment-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.composer .composer-knowledge-base-button {
+  width: 34px;
+  height: 34px;
+  background: transparent;
+  color: #60717a;
+}
+
+.composer .composer-knowledge-base-button:hover {
+  background: #eef3f5;
+  color: #1e323d;
+}
+
+.knowledge-base-maintenance {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid rgba(83, 116, 118, 0.16);
+  border-radius: 8px;
+  background: rgba(83, 116, 118, 0.045);
+}
+
+.composer .knowledge-base-maintenance > button {
+  width: auto;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: transparent;
+  color: #526a73;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.composer .knowledge-base-maintenance > button:hover {
+  background: rgba(83, 116, 118, 0.09);
+  color: #1e323d;
+}
+
+.composer .knowledge-base-maintenance > .knowledge-base-maintenance-collapse {
+  width: 28px;
+  padding: 0;
 }
 
 .composer .stop-button {

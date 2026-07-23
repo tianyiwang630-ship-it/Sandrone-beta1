@@ -27,6 +27,7 @@ class ProjectInfo(BaseModel):
     updated_at: str
     is_pinned: bool = False
     is_archived: bool = False
+    is_knowledge_base: bool = False
 
 
 class SessionCreate(BaseModel):

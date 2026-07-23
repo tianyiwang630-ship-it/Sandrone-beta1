@@ -8,6 +8,7 @@ export interface Project {
   updated_at: string
   is_pinned: boolean
   is_archived: boolean
+  readonly is_knowledge_base: boolean
 }
 
 export interface Session {

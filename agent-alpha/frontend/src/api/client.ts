@@ -43,16 +43,23 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   listProjects: () => request<Project[]>('/projects'),
+  getProject: (projectId: string) => request<Project>(`/projects/${projectId}`),
   createProject: (body: { name?: string; workspace_path?: string }) =>
     request<Project>('/projects', { method: 'POST', body: JSON.stringify(body) }),
-  updateProject: (projectId: string, body: Partial<Project>) =>
+  updateProject: (
+    projectId: string,
+    body: Partial<Pick<Project, 'name' | 'description' | 'is_pinned'>>,
+  ) =>
     request<Project>(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteProject: (projectId: string) => request<{ ok: boolean }>(`/projects/${projectId}`, { method: 'DELETE' }),
   pickProjectFolder: () => request<{ path: string | null }>('/projects/pick-folder'),
   listProjectSessions: (projectId: string) =>
     request<{ sessions: Session[]; total: number }>(`/projects/${projectId}/sessions`),
-  createSession: (projectId: string) =>
-    request<Session>('/sessions', { method: 'POST', body: JSON.stringify({ project_id: projectId }) }),
+  createSession: (projectId: string, title?: string) =>
+    request<Session>('/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId, ...(title ? { title } : {}) }),
+    }),
   getSession: (sessionId: string) => request<SessionDetail>(`/sessions/${sessionId}`),
   updateSession: (sessionId: string, body: Partial<Session>) =>
     request<Session>(`/sessions/${sessionId}`, { method: 'PATCH', body: JSON.stringify(body) }),

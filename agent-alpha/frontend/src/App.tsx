@@ -52,7 +52,16 @@ import {
   mergeProcessPresentation,
 } from './chatPresentation'
 import FileDrawer from './components/FileDrawer'
+import KnowledgeBaseComposerActions from './components/KnowledgeBaseComposerActions'
+import KnowledgeBaseProjectAction from './components/KnowledgeBaseProjectAction'
 import { EMPTY_STATE_QUOTES } from './emptyStateQuotes'
+import {
+  ADD_KNOWLEDGE_BASE_PROMPT,
+  INITIALIZE_KNOWLEDGE_BASE_PROMPT,
+  MAINTAIN_KNOWLEDGE_BASE_PROMPT,
+  insertKnowledgeBaseRemovalDraft,
+  replaceProjectById,
+} from './knowledgeBase'
 import { renderMarkdown } from './markdown'
 import {
   hasPendingPermission,
@@ -518,6 +527,7 @@ export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [projectMenuOpen, setProjectMenuOpen] = useState(false)
+  const [initializingKnowledgeBaseProjectId, setInitializingKnowledgeBaseProjectId] = useState<string | null>(null)
   const [pendingMessagesBySession, setPendingMessagesBySession] = useState<Record<string, Message[]>>({})
   const [messageQueuesBySession, setMessageQueuesBySession] = useState<Record<string, SessionMessageQueue>>({})
   const [liveEventsBySession, setLiveEventsBySession] = useState<Record<string, SessionEvent[]>>({})
@@ -570,6 +580,7 @@ export default function App() {
   const draftKeyRef = useRef<string | null>(null)
   const alignmentKeyRef = useRef<string | null>(null)
   const alignmentEnabledRef = useRef(false)
+  const initializingKnowledgeBaseProjectIdRef = useRef<string | null>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const deletedSessionIdsRef = useRef(new Set<string>())
   const composerFileInputRef = useRef<HTMLInputElement | null>(null)
@@ -659,6 +670,16 @@ export default function App() {
       if (data.some((project) => project.id === stored)) return stored
       return data[0]?.id || null
     })
+  }
+
+  const refreshProjectKnowledgeBaseStatus = async (projectId: string | null) => {
+    if (!projectId) return
+    try {
+      const project = await api.getProject(projectId)
+      setProjects((current) => replaceProjectById(current, project))
+    } catch {
+      // Knowledge-base identity refresh is intentionally silent and keeps the last known state.
+    }
   }
 
   const loadSessions = async (projectId = selectedProjectId, preferredSessionId = selectedSessionIdRef.current) => {
@@ -956,8 +977,8 @@ export default function App() {
     }
   }
 
-  const createSessionForProject = async (projectId: string) => {
-    const session = await api.createSession(projectId)
+  const createSessionForProject = async (projectId: string, title?: string) => {
+    const session = await api.createSession(projectId, title)
     const projectDraftKey = draftKeyFor(projectId, null)
     const sessionDraftKey = draftKeyFor(projectId, session.id)
     const projectAlignmentKey = alignmentKeyFor(projectId, null)
@@ -972,6 +993,7 @@ export default function App() {
       writeLocalValue(projectAlignmentKey, null)
     }
     await loadSessions(projectId)
+    selectedSessionIdRef.current = session.id
     setSelectedSessionId(session.id)
     setView('chat')
     return session
@@ -1264,9 +1286,14 @@ export default function App() {
       setNotice(message === 'Not Found' ? '会话或接口不存在，请刷新后重新选择会话。' : message)
     } finally {
       resumeInFlightRef.current.delete(sessionId)
+      await refreshProjectKnowledgeBaseStatus(projectIdForList)
       const remainingRuns = withoutSession(runningSessionsRef.current, sessionId)
       runningSessionsRef.current = remainingRuns
       setRunningSessions(remainingRuns)
+      const queuedMessage = popQueuedSessionMessage(sessionId)
+      if (queuedMessage) {
+        window.setTimeout(() => void runSessionMessage(sessionId, queuedMessage.content, projectIdForList), 0)
+      }
     }
   }
 
@@ -1421,11 +1448,22 @@ export default function App() {
     focusComposer(change.selectionStart, change.selectionEnd)
   }
 
-  const runSessionMessage = async (sessionId: string, content: string, projectIdForList: string | null) => {
+  const runSessionMessage = async (
+    sessionId: string,
+    content: string,
+    projectIdForList: string | null,
+    onSubmitted?: () => void,
+  ) => {
     clearFailedRun(sessionId)
     ensurePendingUserMessage(sessionId, content)
     let startedAfterSeq = latestEventSeq(liveEventsBySession[sessionId] || [])
     let requestId = ''
+    let submissionNotified = false
+    const notifySubmitted = () => {
+      if (submissionNotified) return
+      submissionNotified = true
+      onSubmitted?.()
+    }
     try {
       const data = await api.getSessionEvents(sessionId)
       startedAfterSeq = latestEventSeq(data.events)
@@ -1444,6 +1482,7 @@ export default function App() {
     try {
       const run = await api.sendMessage(sessionId, content)
       requestId = run.request_id
+      notifySubmitted()
       if (selectedSessionIdRef.current === sessionId) {
         await loadSessionDetail(sessionId, { preserveScroll: true, removePendingContent: content })
       }
@@ -1509,6 +1548,8 @@ export default function App() {
       }
       setNotice(message === 'Not Found' ? '会话或接口不存在，请刷新后重新选择会话。' : message)
     } finally {
+      notifySubmitted()
+      await refreshProjectKnowledgeBaseStatus(projectIdForList)
       const remainingRuns = { ...runningSessionsRef.current }
       delete remainingRuns[sessionId]
       runningSessionsRef.current = remainingRuns
@@ -1518,6 +1559,67 @@ export default function App() {
         window.setTimeout(() => void runSessionMessage(sessionId, queuedMessage.content, projectIdForList), 0)
       }
     }
+  }
+
+  const initializeKnowledgeBase = async (project: Project) => {
+    if (initializingKnowledgeBaseProjectIdRef.current) return
+    initializingKnowledgeBaseProjectIdRef.current = project.id
+    setInitializingKnowledgeBaseProjectId(project.id)
+    setNotice(null)
+    try {
+      selectedProjectIdRef.current = project.id
+      setSelectedProjectId(project.id)
+      const session = await createSessionForProject(project.id, '初始化知识库')
+      void runSessionMessage(session.id, INITIALIZE_KNOWLEDGE_BASE_PROMPT, project.id, () => {
+        if (initializingKnowledgeBaseProjectIdRef.current === project.id) {
+          initializingKnowledgeBaseProjectIdRef.current = null
+        }
+        setInitializingKnowledgeBaseProjectId((current) => current === project.id ? null : current)
+      })
+    } catch (err) {
+      initializingKnowledgeBaseProjectIdRef.current = null
+      setInitializingKnowledgeBaseProjectId(null)
+      setNotice(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const sendKnowledgeBasePrompt = async (content: string) => {
+    if (!selectedProjectId) return
+    let sessionId = selectedSessionId
+    if (!sessionId) {
+      try {
+        const session = await createSessionForProject(selectedProjectId)
+        sessionId = session.id
+      } catch (err) {
+        setNotice(err instanceof Error ? err.message : String(err))
+        return
+      }
+    }
+
+    const activeRun = runningSessionsRef.current[sessionId]
+    if (activeRun) {
+      enqueueSessionMessage(sessionId, content, activeRun.status === 'stopping')
+      setNotice(null)
+      return
+    }
+
+    const pausedQueue = messageQueuesRef.current[sessionId]
+    if (pausedQueue?.paused) {
+      updateSessionMessageQueue(sessionId, resumeMessageQueue)
+    }
+    await runSessionMessage(sessionId, content, selectedProjectId)
+  }
+
+  const insertKnowledgeBaseRemoval = () => {
+    const textarea = composerTextareaRef.current
+    const currentDraft = textarea?.value ?? draft
+    const change = insertKnowledgeBaseRemovalDraft(
+      currentDraft,
+      textarea?.selectionStart,
+      textarea?.selectionEnd,
+    )
+    updateDraft(change.value)
+    focusComposer(change.selectionStart, change.selectionEnd)
   }
 
   const uploadComposerBatch = async (entries: UploadEntry[], strategy?: ConflictStrategy) => {
@@ -1588,18 +1690,22 @@ export default function App() {
     } catch {
       // Events are optional; compact status polling still works without the initial snapshot.
     }
-    setRunningSessions((current) => ({
-      ...current,
+    const startingRuns = {
+      ...runningSessionsRef.current,
       [sessionId]: { requestId: '', status: 'starting', startedAfterSeq, operation: 'compact' },
-    }))
+    } as Record<string, RunningSession>
+    runningSessionsRef.current = startingRuns
+    setRunningSessions(startingRuns)
     setNotice(null)
     try {
       const run = await api.compactSession(sessionId)
       requestId = run.request_id
-      setRunningSessions((current) => ({
-        ...current,
+      const activeRuns = {
+        ...runningSessionsRef.current,
         [sessionId]: { requestId: run.request_id, status: 'running', startedAfterSeq, operation: 'compact' },
-      }))
+      } as Record<string, RunningSession>
+      runningSessionsRef.current = activeRuns
+      setRunningSessions(activeRuns)
       while (true) {
         const status = await api.getChatStatus(run.request_id)
         await refreshLiveEvents(sessionId)
@@ -1637,11 +1743,14 @@ export default function App() {
       }
       setNotice(message === 'Not Found' ? '会话或接口不存在，请刷新后重新选择会话。' : message)
     } finally {
-      setRunningSessions((current) => {
-        const next = { ...current }
-        delete next[sessionId]
-        return next
-      })
+      await refreshProjectKnowledgeBaseStatus(projectIdForList)
+      const remainingRuns = withoutSession(runningSessionsRef.current, sessionId)
+      runningSessionsRef.current = remainingRuns
+      setRunningSessions(remainingRuns)
+      const queuedMessage = popQueuedSessionMessage(sessionId)
+      if (queuedMessage) {
+        window.setTimeout(() => void runSessionMessage(sessionId, queuedMessage.content, projectIdForList), 0)
+      }
     }
   }
 
@@ -1940,6 +2049,13 @@ export default function App() {
                         >
                           <Pin size={14} />
                         </button>
+                        {!project.is_knowledge_base && (
+                          <KnowledgeBaseProjectAction
+                            project={project}
+                            busy={initializingKnowledgeBaseProjectId !== null}
+                            onInitialize={(target) => void initializeKnowledgeBase(target)}
+                          />
+                        )}
                         <button className="item-action" title="重命名项目" onClick={() => void renameProject(project)}>
                           <Pencil size={14} />
                         </button>
@@ -2375,6 +2491,14 @@ export default function App() {
                     >
                       对齐
                     </button>
+                    {selectedProject?.is_knowledge_base && (
+                      <KnowledgeBaseComposerActions
+                        key={selectedProject.id}
+                        onAdd={() => void sendKnowledgeBasePrompt(ADD_KNOWLEDGE_BASE_PROMPT)}
+                        onRemove={insertKnowledgeBaseRemoval}
+                        onMaintain={() => void sendKnowledgeBasePrompt(MAINTAIN_KNOWLEDGE_BASE_PROMPT)}
+                      />
+                    )}
                   </div>
                   <span className="composer-status">{composerUploading ? '上传中...' : selectedRun?.operation === 'compact' ? '正在压缩上下文' : ''}</span>
                   <div className="composer-run-actions">

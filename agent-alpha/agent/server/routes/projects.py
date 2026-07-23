@@ -14,6 +14,26 @@ from agent.server.routes.sessions import to_session_info
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
+KNOWLEDGE_BASE_MARKER = Path(".alpha") / "knowledge-base.json"
+
+
+def _is_knowledge_base(workspace_path: str | Path) -> bool:
+    try:
+        workspace = Path(workspace_path).resolve(strict=True)
+        if not workspace.is_dir():
+            return False
+        marker = (workspace / KNOWLEDGE_BASE_MARKER).resolve(strict=False)
+        marker.relative_to(workspace)
+        return marker.is_file()
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+def _to_project_info(project: dict[str, object]) -> ProjectInfo:
+    payload = dict(project)
+    payload["is_knowledge_base"] = _is_knowledge_base(str(project.get("workspace_path", "")))
+    return ProjectInfo(**payload)
+
 
 def _default_picker_dir() -> Path:
     default_dir = PROJECT_ROOT.parent
@@ -79,7 +99,7 @@ def _pick_folder() -> str | None:
 
 @router.get("", response_model=list[ProjectInfo])
 def list_projects():
-    return [ProjectInfo(**project) for project in state_store.list_projects()]
+    return [_to_project_info(project) for project in state_store.list_projects()]
 
 
 @router.post("", response_model=ProjectInfo)
@@ -89,7 +109,7 @@ def create_project(body: ProjectCreate):
         workspace_path=body.workspace_path,
         description=body.description,
     )
-    return ProjectInfo(**project)
+    return _to_project_info(project)
 
 
 @router.get("/pick-folder", response_model=FolderPickResponse)
@@ -102,7 +122,7 @@ def get_project(project_id: str):
     project = state_store.get_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    return ProjectInfo(**project)
+    return _to_project_info(project)
 
 
 @router.patch("/{project_id}", response_model=ProjectInfo)
@@ -110,7 +130,7 @@ def update_project(project_id: str, body: ProjectPatch):
     project = state_store.update_project(project_id, body.model_dump(exclude_none=True))
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    return ProjectInfo(**project)
+    return _to_project_info(project)
 
 
 @router.delete("/{project_id}")

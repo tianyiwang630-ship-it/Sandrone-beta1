@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "tsc && vite build",
-    "test": "node --test tests/alignmentPrompt.test.mjs tests/sessionDeletion.test.mjs tests/messageQueue.test.mjs tests/chatScroll.test.mjs tests/sessionRename.test.mjs tests/chatPresentation.test.mjs tests/permissionPrompt.test.mjs",
+    "test": "node --test tests/alignmentPrompt.test.mjs tests/sessionDeletion.test.mjs tests/messageQueue.test.mjs tests/chatScroll.test.mjs tests/sessionRename.test.mjs tests/chatPresentation.test.mjs tests/permissionPrompt.test.mjs tests/knowledgeBase.test.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 5173"
   },
   "dependencies": {

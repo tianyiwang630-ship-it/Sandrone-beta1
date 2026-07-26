@@ -1,0 +1,184 @@
+{"kind":"deck","id":"pr/y110qp","name":"Deck"}
+{"kind":"layout","layoutId":"68b17669-07eb-4149-bf66-14c5c20d94c5","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"fab821ec-d084-4500-b8e3-6375d4bfff2e","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/el1nx2","slide":1,"title":"ALPHA","textShapes":9}
+{"kind":"shape","id":"sh/ytgfql8v","slide":1,"name":"cover-dark","bbox":[0,0,520,720]}
+{"kind":"textbox","id":"sh/lgryl07m","slide":1,"text":"ALPHA","textPreview":"ALPHA","textChars":5,"textLines":1,"bbox":[62,66,170,34]}
+{"kind":"textbox","id":"sh/kfyxsvq1","slide":1,"name":"cover-title","text":"聚焦知识工作的\n办公 Agent","textPreview":"聚焦知识工作的 | 办公 Agent","textChars":16,"textLines":2,"bbox":[62,152,400,160]}
+{"kind":"shape","id":"sh/bqpgf6pk","slide":1,"bbox":[62,340,110,5]}
+{"kind":"textbox","id":"sh/apgfml8z","slide":1,"text":"让 AI 不只回答问题，\n而是真正进入工作。","textPreview":"让 AI 不只回答问题， | 而是真正进入工作。","textChars":22,"textLines":2,"bbox":[62,376,380,90]}
+{"kind":"textbox","id":"sh/xs7yhg7a","slide":1,"text":"PRODUCT OVERVIEW  ·  2026","textPreview":"PRODUCT OVERVIEW  ·  2026","textChars":25,"textLines":1,"bbox":[62,640,350,30]}
+{"kind":"textbox","id":"sh/cryxobq5","slide":1,"text":"AI 应用的价值，\n发生在“最后一公里”","textPreview":"AI 应用的价值， | 发生在“最后一公里”","textChars":20,"textLines":2,"bbox":[612,110,560,118]}
+{"kind":"textbox","id":"sh/nm5gb6p8","slide":1,"text":"已有数据积累","textPreview":"已有数据积累","textChars":6,"textLines":1,"bbox":[612,314,220,34]}
+{"kind":"textbox","id":"sh/2lwfi18n","slide":1,"text":"经验持续沉淀","textPreview":"经验持续沉淀","textChars":6,"textLines":1,"bbox":[612,382,220,34]}
+{"kind":"textbox","id":"sh/gzilwve5","slide":1,"text":"交互自然便利","textPreview":"交互自然便利","textChars":6,"textLines":1,"bbox":[612,450,220,34]}
+{"kind":"textbox","id":"sh/10r250fq","slide":1,"text":"Alpha 把通用 Agent 能力收束到具体办公场景。","textPreview":"Alpha 把通用 Agent 能力收束到具体办公场景。","textChars":28,"textLines":1,"bbox":[612,550,540,62]}
+{"kind":"shape","id":"sh/ex03u5wz","slide":1,"bbox":[1106,306,26,26]}
+{"kind":"shape","id":"sh/fy9k3qxk","slide":1,"bbox":[1145,375,38,38]}
+{"kind":"shape","id":"sh/sbylsve9","slide":1,"bbox":[1075,463,54,54]}
+{"kind":"notes","id":"nt/el1nx2","slide":1,"text":""}
+{"kind":"slide","id":"sl/wcur47","slide":2,"title":"01","textShapes":20}
+{"kind":"textbox","id":"sh/ap87adgr","slide":2,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[62,34,48,28]}
+{"kind":"textbox","id":"sh/xcj65sfi","slide":2,"text":"为什么是现在","textPreview":"为什么是现在","textChars":6,"textLines":1,"bbox":[112,34,230,28]}
+{"kind":"textbox","id":"sh/wbapcnyx","slide":2,"text":"ALPHA","textPreview":"ALPHA","textChars":5,"textLines":1,"bbox":[1120,34,98,28]}
+{"kind":"textbox","id":"sh/nmhozyxg","slide":2,"text":"Agent 的基础能力正在标准化","textPreview":"Agent 的基础能力正在标准化","textChars":16,"textLines":1,"bbox":[62,100,820,64]}
+{"kind":"textbox","id":"sh/ml8n6tgv","slide":2,"text":"ReAct、工具调用、运行时与沙箱逐渐成为共同底座。","textPreview":"ReAct、工具调用、运行时与沙箱逐渐成为共同底座。","textChars":26,"textLines":1,"bbox":[62,166,780,42]}
+{"kind":"textbox","id":"sh/9oz618f6","slide":2,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[62,276,50,28]}
+{"kind":"shape","id":"sh/8nqp83yl","slide":2,"bbox":[62,314,205,3]}
+{"kind":"textbox","id":"sh/zihovyx4","slide":2,"text":"ReAct","textPreview":"ReAct","textChars":5,"textLines":1,"bbox":[62,336,205,38]}
+{"kind":"textbox","id":"sh/yhon2tgj","slide":2,"text":"思考与行动循环","textPreview":"思考与行动循环","textChars":7,"textLines":1,"bbox":[62,380,205,54]}
+{"kind":"textbox","id":"sh/0rq5kjud","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[308,276,50,28]}
+{"kind":"shape","id":"sh/1szmdovy","slide":2,"bbox":[308,314,205,3]}
+{"kind":"textbox","id":"sh/ep8nitcn","slide":2,"text":"工具调用","textPreview":"工具调用","textChars":4,"textLines":1,"bbox":[308,336,205,38]}
+{"kind":"textbox","id":"sh/zqh4byd8","slide":2,"text":"连接真实工作对象","textPreview":"连接真实工作对象","textChars":8,"textLines":1,"bbox":[308,380,205,54]}
+{"kind":"textbox","id":"sh/c36lgjuh","slide":2,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[554,276,50,28]}
+{"kind":"shape","id":"sh/d4zm9ov2","slide":2,"bbox":[554,314,205,3]}
+{"kind":"textbox","id":"sh/q1o3e9cb","slide":2,"text":"运行时","textPreview":"运行时","textChars":3,"textLines":1,"bbox":[554,336,205,38]}
+{"kind":"textbox","id":"sh/r2x47edw","slide":2,"text":"持续推进复杂任务","textPreview":"持续推进复杂任务","textChars":8,"textLines":1,"bbox":[554,380,205,54]}
+{"kind":"textbox","id":"sh/wza5s3ul","slide":2,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[800,276,50,28]}
+{"kind":"shape","id":"sh/x0jml8v6","slide":2,"bbox":[800,314,205,3]}
+{"kind":"textbox","id":"sh/5gfm58na","slide":2,"text":"沙箱","textPreview":"沙箱","textChars":2,"textLines":1,"bbox":[800,336,205,38]}
+{"kind":"textbox","id":"sh/kf65w3mp","slide":2,"text":"控制权限与边界","textPreview":"控制权限与边界","textChars":7,"textLines":1,"bbox":[800,380,205,54]}
+{"kind":"shape","id":"sh/jex43y5k","slide":2,"name":"last-mile","bbox":[1010,250,208,240]}
+{"kind":"textbox","id":"sh/ido3ut4z","slide":2,"text":"最后\n一公里","textPreview":"最后 | 一公里","textChars":6,"textLines":2,"bbox":[1038,282,150,92]}
+{"kind":"textbox","id":"sh/xcfm18ne","slide":2,"text":"场景 Know-how","textPreview":"场景 Know-how","textChars":11,"textLines":1,"bbox":[1038,400,150,32]}
+{"kind":"textbox","id":"sh/wb6ls3mt","slide":2,"text":"决定价值的，不再只是模型有多强，\n而是它是否真正懂你的工作。","textPreview":"决定价值的，不再只是模型有多强， | 而是它是否真正懂你的工作。","textChars":30,"textLines":2,"bbox":[62,544,880,88]}
+{"kind":"shape","id":"sh/vad4zy58","slide":2,"bbox":[62,650,1156,4]}
+{"kind":"notes","id":"nt/wcur47","slide":2,"text":""}
+{"kind":"slide","id":"sl/fvwp3y","slide":3,"title":"02","textShapes":14}
+{"kind":"textbox","id":"sh/v6tkbqxc","slide":3,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[62,34,48,28]}
+{"kind":"textbox","id":"sh/w7mlkvyx","slide":3,"text":"产品定位","textPreview":"产品定位","textChars":4,"textLines":1,"bbox":[112,34,230,28]}
+{"kind":"textbox","id":"sh/h8v2d0fi","slide":3,"text":"ALPHA","textPreview":"ALPHA","textChars":5,"textLines":1,"bbox":[1120,34,98,28]}
+{"kind":"textbox","id":"sh/mhkjelgv","slide":3,"text":"一个能直接进入工作现场的 Agent","textPreview":"一个能直接进入工作现场的 Agent","textChars":18,"textLines":1,"bbox":[62,94,820,58]}
+{"kind":"textbox","id":"sh/7itk76xg","slide":3,"text":"理解材料、调用能力、查看文件、交付结果，都在同一工作空间完成。","textPreview":"理解材料、调用能力、查看文件、交付结果，都在同一工作空间完成。","textChars":31,"textLines":1,"bbox":[62,154,920,40]}
+{"kind":"shape","id":"sh/8j21gby1","slide":3,"name":"workspace-preview-frame","bbox":[510,222,718,389]}
+{"kind":"textbox","id":"sh/yd0ja1gz","slide":3,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[62,256,54,36]}
+{"kind":"textbox","id":"sh/ze9k36xk","slide":3,"text":"理解已有资料","textPreview":"理解已有资料","textChars":6,"textLines":1,"bbox":[118,252,270,42]}
+{"kind":"textbox","id":"sh/ful0jydw","slide":3,"text":"不从空白开始，先读懂项目。","textPreview":"不从空白开始，先读懂项目。","textChars":13,"textLines":1,"bbox":[118,294,310,40]}
+{"kind":"textbox","id":"sh/etczqdwr","slide":3,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[62,374,54,36]}
+{"kind":"textbox","id":"sh/1gnil8v2","slide":3,"text":"直接完成操作","textPreview":"直接完成操作","textChars":6,"textLines":1,"bbox":[118,370,270,42]}
+{"kind":"textbox","id":"sh/gfu1s3eh","slide":3,"text":"不是只给建议，而是交付文件。","textPreview":"不是只给建议，而是交付文件。","textChars":14,"textLines":1,"bbox":[118,412,320,40]}
+{"kind":"textbox","id":"sh/3i50nid8","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[62,492,54,36]}
+{"kind":"textbox","id":"sh/2hwjudwn","slide":3,"text":"让经验留下来","textPreview":"让经验留下来","textChars":6,"textLines":1,"bbox":[118,488,270,42]}
+{"kind":"textbox","id":"sh/pknipsve","slide":3,"text":"会话、项目和成果持续衔接。","textPreview":"会话、项目和成果持续衔接。","textChars":13,"textLines":1,"bbox":[118,530,320,40]}
+{"kind":"image","id":"im/cfatcbmd","slide":3,"name":"","geometry":"roundRect","alt":"Alpha 内置文档预览和项目文件管理界面","bbox":[520,232,698,369]}
+{"kind":"notes","id":"nt/fvwp3y","slide":3,"text":""}
+{"kind":"slide","id":"sl/iyh6gc","slide":4,"title":"03","textShapes":15}
+{"kind":"textbox","id":"sh/ov65sred","slide":4,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[62,34,48,28]}
+{"kind":"textbox","id":"sh/nuxozmds","slide":4,"text":"知识库模式","textPreview":"知识库模式","textChars":5,"textLines":1,"bbox":[112,34,230,28]}
+{"kind":"textbox","id":"sh/2t4nqhw7","slide":4,"text":"ALPHA","textPreview":"ALPHA","textChars":5,"textLines":1,"bbox":[1120,34,98,28]}
+{"kind":"textbox","id":"sh/xkf65gvu","slide":4,"text":"一键把文档变成持续生长的知识库","textPreview":"一键把文档变成持续生长的知识库","textChars":15,"textLines":1,"bbox":[62,92,870,60]}
+{"kind":"textbox","id":"sh/cj65wbe9","slide":4,"text":"不只是“放进去”，还会发现资料之间的联系，并持续更新维护。","textPreview":"不只是“放进去”，还会发现资料之间的联系，并持续更新维护。","textChars":29,"textLines":1,"bbox":[62,154,920,40]}
+{"kind":"shape","id":"sh/bixo36do","slide":4,"name":"knowledge-base-frame","bbox":[52,225,780,422]}
+{"kind":"shape","id":"sh/loz69gvq","slide":4,"bbox":[862,250,34,34]}
+{"kind":"textbox","id":"sh/knq50bel","slide":4,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[862,250,34,34]}
+{"kind":"textbox","id":"sh/q1ozets7","slide":4,"text":"一键创建","textPreview":"一键创建","textChars":4,"textLines":1,"bbox":[912,246,330,30]}
+{"kind":"textbox","id":"sh/b2x0ny9s","slide":4,"text":"已有项目或空项目，都能快速起步。","textPreview":"已有项目或空项目，都能快速起步。","textChars":16,"textLines":1,"bbox":[912,280,350,48]}
+{"kind":"shape","id":"sh/c36hg3ad","slide":4,"bbox":[862,366,34,34]}
+{"kind":"textbox","id":"sh/d4zip8ry","slide":4,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[862,366,34,34]}
+{"kind":"textbox","id":"sh/yp8zidsj","slide":4,"text":"发现联系","textPreview":"发现联系","textChars":4,"textLines":1,"bbox":[912,362,330,30]}
+{"kind":"textbox","id":"sh/zqh0ri9o","slide":4,"text":"把分散文档整理成可查询的知识网络。","textPreview":"把分散文档整理成可查询的知识网络。","textChars":17,"textLines":1,"bbox":[912,396,350,48]}
+{"kind":"shape","id":"sh/0rqhk3a9","slide":4,"bbox":[862,482,34,34]}
+{"kind":"textbox","id":"sh/lszit8ru","slide":4,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[862,482,34,34]}
+{"kind":"textbox","id":"sh/et4z69sz","slide":4,"text":"持续维护","textPreview":"持续维护","textChars":4,"textLines":1,"bbox":[912,478,330,30]}
+{"kind":"textbox","id":"sh/fudgfe9k","slide":4,"text":"增加、移除、全局整理，知识随工作生长。","textPreview":"增加、移除、全局整理，知识随工作生长。","textChars":19,"textLines":1,"bbox":[912,512,350,48]}
+{"kind":"textbox","id":"sh/jetwnapc","slide":4,"text":"你的资料，不再只是文件夹。","textPreview":"你的资料，不再只是文件夹。","textChars":13,"textLines":1,"bbox":[862,602,350,34]}
+{"kind":"image","id":"im/bipwr610","slide":4,"name":"","geometry":"roundRect","alt":"Alpha 完成意识科学知识库转换并显示维护入口","bbox":[62,235,760,402]}
+{"kind":"notes","id":"nt/iyh6gc","slide":4,"text":""}
+{"kind":"slide","id":"sl/poxo3h","slide":5,"title":"04","textShapes":10}
+{"kind":"textbox","id":"sh/fy54bqd0","slide":5,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[62,34,48,28]}
+{"kind":"textbox","id":"sh/gjel4vul","slide":5,"text":"办公 SKILL","textPreview":"办公 SKILL","textChars":8,"textLines":1,"bbox":[112,34,230,28]}
+{"kind":"textbox","id":"sh/1knmd0b6","slide":5,"text":"ALPHA","textPreview":"ALPHA","textChars":5,"textLines":1,"bbox":[1120,34,98,28]}
+{"kind":"textbox","id":"sh/6tc3ylcj","slide":5,"text":"不用打开 Office，也能直接编辑文档","textPreview":"不用打开 Office，也能直接编辑文档","textChars":20,"textLines":1,"bbox":[62,92,860,60]}
+{"kind":"textbox","id":"sh/rul47qd4","slide":5,"text":"预装文档处理 Skill 与依赖，让 AI 从“告诉你怎么做”变成“替你完成”。","textPreview":"预装文档处理 Skill 与依赖，让 AI 从“告诉你怎么做”变成“替你完成”。","textChars":40,"textLines":1,"bbox":[62,154,980,40]}
+{"kind":"textbox","id":"sh/svul0vup","slide":5,"text":"一句话交代目标","textPreview":"一句话交代目标","textChars":7,"textLines":1,"bbox":[62,256,370,40]}
+{"kind":"textbox","id":"sh/tw3m9gva","slide":5,"text":"创建、修改、排版、预览、导出，\n都可以在工作区内完成。","textPreview":"创建、修改、排版、预览、导出， | 都可以在工作区内完成。","textChars":27,"textLines":2,"bbox":[62,310,370,82]}
+{"kind":"shape","id":"sh/ips3u1cn","slide":5,"bbox":[62,425,340,2]}
+{"kind":"textbox","id":"sh/jq1436d8","slide":5,"text":"PPTX  ·  DOCX  ·  XLSX  ·  PDF","textPreview":"PPTX  ·  DOCX  ·  XLSX  ·  PDF","textChars":30,"textLines":1,"bbox":[62,452,390,34]}
+{"kind":"textbox","id":"sh/bixsn2hk","slide":5,"text":"无需登录 Office 软件","textPreview":"无需登录 Office 软件","textChars":14,"textLines":1,"bbox":[62,512,340,38]}
+{"kind":"textbox","id":"sh/qhobex0z","slide":5,"text":"结果仍是可继续编辑的标准办公文件。","textPreview":"结果仍是可继续编辑的标准办公文件。","textChars":17,"textLines":1,"bbox":[62,558,370,44]}
+{"kind":"shape","id":"sh/dkzapszq","slide":5,"name":"ppt-processing-frame","bbox":[466,222,762,413]}
+{"kind":"image","id":"im/3ito72hg","slide":5,"name":"","geometry":"roundRect","alt":"Alpha 对话生成 PPTX 并在文件区直接预览幻灯片","bbox":[476,232,742,393]}
+{"kind":"notes","id":"nt/poxo3h","slide":5,"text":""}
+{"kind":"slide","id":"sl/6bff05","slide":6,"title":"05","textShapes":10}
+{"kind":"textbox","id":"sh/bap0jetk","slide":6,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[62,34,48,28]}
+{"kind":"textbox","id":"sh/cbyhcja5","slide":6,"text":"高阶提示词 · 对齐","textPreview":"高阶提示词 · 对齐","textChars":10,"textLines":1,"bbox":[112,34,230,28]}
+{"kind":"textbox","id":"sh/xc7ilobq","slide":6,"text":"ALPHA","textPreview":"ALPHA","textChars":5,"textLines":1,"bbox":[1120,34,98,28]}
+{"kind":"textbox","id":"sh/2lwz69c3","slide":6,"text":"先对齐，再执行","textPreview":"先对齐，再执行","textChars":7,"textLines":1,"bbox":[62,94,560,62]}
+{"kind":"textbox","id":"sh/nm50feto","slide":6,"text":"让 AI 先完整复述理解，继续讨论边界；\n只有你明确开始，它才进入实施。","textPreview":"让 AI 先完整复述理解，继续讨论边界； | 只有你明确开始，它才进入实施。","textChars":36,"textLines":2,"bbox":[62,164,430,80]}
+{"kind":"shape","id":"sh/o7eh8ja9","slide":6,"name":"alignment-screen-frame","bbox":[512,190,716,388]}
+{"kind":"textbox","id":"sh/ehcz2pc7","slide":6,"text":"减少误解","textPreview":"减少误解","textChars":4,"textLines":1,"bbox":[62,314,180,36]}
+{"kind":"textbox","id":"sh/fi5gbuts","slide":6,"text":"补充意见不会被误判为“立即开工”。","textPreview":"补充意见不会被误判为“立即开工”。","textChars":17,"textLines":1,"bbox":[62,354,390,42]}
+{"kind":"textbox","id":"sh/32hsny10","slide":6,"text":"减少返工","textPreview":"减少返工","textChars":4,"textLines":1,"bbox":[62,432,180,36]}
+{"kind":"textbox","id":"sh/218betkf","slide":6,"text":"需求边界先收束，结果更接近真实意图。","textPreview":"需求边界先收束，结果更接近真实意图。","textChars":18,"textLines":1,"bbox":[62,472,390,42]}
+{"kind":"shape","id":"sh/p4zap8j6","slide":6,"name":"align-callout","bbox":[676,592,386,54]}
+{"kind":"textbox","id":"sh/o3qtg32l","slide":6,"text":"一个开关，调用成熟的协作方法","textPreview":"一个开关，调用成熟的协作方法","textChars":14,"textLines":1,"bbox":[694,600,350,38]}
+{"kind":"image","id":"im/8bylwru5","slide":6,"name":"","geometry":"roundRect","alt":"Alpha 普通对话页面，输入区提供对齐开关","bbox":[522,200,696,368]}
+{"kind":"notes","id":"nt/6bff05","slide":6,"text":""}
+{"kind":"slide","id":"sl/g9t7hd","slide":7,"title":"06","textShapes":12}
+{"kind":"textbox","id":"sh/xkfilwf6","slide":7,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[62,34,48,28]}
+{"kind":"textbox","id":"sh/ah4zahgf","slide":7,"text":"高阶提示词 · 复盘","textPreview":"高阶提示词 · 复盘","textChars":10,"textLines":1,"bbox":[112,34,230,28]}
+{"kind":"textbox","id":"sh/bix0jmx0","slide":7,"text":"ALPHA","textPreview":"ALPHA","textChars":5,"textLines":1,"bbox":[1120,34,98,28]}
+{"kind":"textbox","id":"sh/ofmh8ryp","slide":7,"text":"把一次协作，变成可复用的经验","textPreview":"把一次协作，变成可复用的经验","textChars":14,"textLines":1,"bbox":[62,92,840,60]}
+{"kind":"textbox","id":"sh/9gvihcfu","slide":7,"text":"回顾项目发生了什么，也把背景、决策和踩过的坑交给下一次对话。","textPreview":"回顾项目发生了什么，也把背景、决策和踩过的坑交给下一次对话。","textChars":30,"textLines":1,"bbox":[62,154,970,40]}
+{"kind":"shape","id":"sh/md4z6hgj","slide":7,"name":"retrospective-screen-frame","bbox":[52,226,770,417]}
+{"kind":"textbox","id":"sh/0rmh47yd","slide":7,"text":"给人看的","textPreview":"给人看的","textChars":4,"textLines":1,"bbox":[862,248,300,30]}
+{"kind":"textbox","id":"sh/1cvidcfy","slide":7,"text":"工作复盘","textPreview":"工作复盘","textChars":4,"textLines":1,"bbox":[862,282,300,44]}
+{"kind":"textbox","id":"sh/d8vipwf2","slide":7,"text":"目标、关键选择、问题、状态与下一步。","textPreview":"目标、关键选择、问题、状态与下一步。","textChars":18,"textLines":1,"bbox":[862,328,330,50]}
+{"kind":"shape","id":"sh/s7mhwryh","slide":7,"bbox":[862,410,320,2]}
+{"kind":"textbox","id":"sh/r6t0nmxw","slide":7,"text":"给 AI 看的","textPreview":"给 AI 看的","textChars":7,"textLines":1,"bbox":[862,438,300,30]}
+{"kind":"textbox","id":"sh/q5kzu1gb","slide":7,"text":"交接报告","textPreview":"交接报告","textChars":4,"textLines":1,"bbox":[862,472,300,44]}
+{"kind":"textbox","id":"sh/54bilwf6","slide":7,"text":"项目背景、用户要求、失败经验与接手起点。","textPreview":"项目背景、用户要求、失败经验与接手起点。","textChars":20,"textLines":1,"bbox":[862,518,330,50]}
+{"kind":"textbox","id":"sh/432hsryl","slide":7,"text":"想开新会话，也不用重新讲一遍。","textPreview":"想开新会话，也不用重新讲一遍。","textChars":15,"textLines":1,"bbox":[862,606,340,34]}
+{"kind":"image","id":"im/e9k3qhkr","slide":7,"name":"","geometry":"roundRect","alt":"Alpha 正在生成项目复盘并预览 AI 交接报告","bbox":[62,236,750,397]}
+{"kind":"notes","id":"nt/g9t7hd","slide":7,"text":""}
+{"kind":"slide","id":"sl/1xo5bd","slide":8,"title":"07","textShapes":17}
+{"kind":"textbox","id":"sh/7ixonmp0","slide":8,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[62,34,48,28]}
+{"kind":"textbox","id":"sh/sj6pgrql","slide":8,"text":"未来方向 · 意识理论启发","textPreview":"未来方向 · 意识理论启发","textChars":13,"textLines":1,"bbox":[112,34,300,28]}
+{"kind":"textbox","id":"sh/tkz6pw76","slide":8,"text":"不是让 AI“有意识”，\n而是让它更像一个理解你的协作者","textPreview":"不是让 AI“有意识”， | 而是让它更像一个理解你的协作者","textChars":28,"textLines":2,"bbox":[62,98,1020,110]}
+{"kind":"textbox","id":"sh/ito7ax8j","slide":8,"text":"借鉴高阶表征、全局工作空间与预测加工，构建在线理解与离线沉淀的闭环。","textPreview":"借鉴高阶表征、全局工作空间与预测加工，构建在线理解与离线沉淀的闭环。","textChars":34,"textLines":1,"bbox":[62,210,1080,44]}
+{"kind":"shape","id":"sh/juxoj294","slide":8,"name":"edge-input-working","bbox":[316,374,116,4]}
+{"kind":"shape","id":"sh/kv6pc7qp","slide":8,"name":"edge-working-observer","bbox":[650,374,116,4]}
+{"kind":"shape","id":"sh/5gf6lcra","slide":8,"name":"edge-observer-memory","bbox":[984,374,116,4]}
+{"kind":"textbox","id":"sh/ap4n6x8n","slide":8,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[414,351,40,44]}
+{"kind":"textbox","id":"sh/vqdof298","slide":8,"text":"⇄","textPreview":"⇄","textChars":1,"textLines":1,"bbox":[742,351,48,44]}
+{"kind":"textbox","id":"sh/bux8n6p4","slide":8,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[1082,351,40,44]}
+{"kind":"shape","id":"sh/qtore1oj","slide":8,"name":"context-node","bbox":[114,296,170,170]}
+{"kind":"textbox","id":"sh/dwfqpg7a","slide":8,"text":"用户与\n工作语境","textPreview":"用户与 | 工作语境","textChars":8,"textLines":2,"bbox":[132,334,134,86]}
+{"kind":"shape","id":"sh/cv69gb6p","slide":8,"name":"working-node","bbox":[446,296,170,170]}
+{"kind":"textbox","id":"sh/zyh8r6p0","slide":8,"text":"行动脑","textPreview":"行动脑","textChars":3,"textLines":1,"bbox":[470,326,122,42]}
+{"kind":"textbox","id":"sh/yx8ri1ov","slide":8,"text":"完成当前任务","textPreview":"完成当前任务","textChars":6,"textLines":1,"bbox":[466,374,130,34]}
+{"kind":"shape","id":"sh/l0zatg76","slide":8,"name":"observer-node","bbox":[782,296,170,170]}
+{"kind":"textbox","id":"sh/0zq9kb6l","slide":8,"text":"主体脑","textPreview":"主体脑","textChars":3,"textLines":1,"bbox":[806,326,122,42]}
+{"kind":"textbox","id":"sh/f2d8fmpw","slide":8,"text":"观察与纠偏","textPreview":"观察与纠偏","textChars":5,"textLines":1,"bbox":[802,374,130,34]}
+{"kind":"shape","id":"sh/u14r6h8b","slide":8,"name":"memory-node","bbox":[1114,296,104,104]}
+{"kind":"textbox","id":"sh/ixcbep8z","slide":8,"text":"记忆","textPreview":"记忆","textChars":2,"textLines":1,"bbox":[1128,327,76,42]}
+{"kind":"textbox","id":"sh/jilcnu9k","slide":8,"text":"理解用户","textPreview":"理解用户","textChars":4,"textLines":1,"bbox":[114,556,250,36]}
+{"kind":"textbox","id":"sh/kjutgzq5","slide":8,"text":"发现偏离","textPreview":"发现偏离","textChars":4,"textLines":1,"bbox":[406,556,250,36]}
+{"kind":"textbox","id":"sh/5k3up4rq","slide":8,"text":"形成连续性","textPreview":"形成连续性","textChars":5,"textLines":1,"bbox":[708,556,250,36]}
+{"kind":"textbox","id":"sh/atsba583","slide":8,"text":"更懂语境，也更会合作。","textPreview":"更懂语境，也更会合作。","textChars":11,"textLines":1,"bbox":[912,634,306,34]}
+{"kind":"notes","id":"nt/1xo5bd","slide":8,"text":""}
+{"kind":"slide","id":"sl/99b9lw","slide":9,"title":"08","textShapes":18}
+{"kind":"textbox","id":"sh/g7i5w3up","slide":9,"text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[62,34,48,28]}
+{"kind":"textbox","id":"sh/f6943yd4","slide":9,"text":"未来场景","textPreview":"未来场景","textChars":4,"textLines":1,"bbox":[112,34,230,28]}
+{"kind":"textbox","id":"sh/e503utcj","slide":9,"text":"ALPHA","textPreview":"ALPHA","textChars":5,"textLines":1,"bbox":[1120,34,98,28]}
+{"kind":"textbox","id":"sh/t4rm1ovy","slide":9,"text":"让 Agent 从办公工具，走向长期协作伙伴","textPreview":"让 Agent 从办公工具，走向长期协作伙伴","textChars":22,"textLines":1,"bbox":[62,92,980,60]}
+{"kind":"textbox","id":"sh/s3ilsjud","slide":9,"text":"更主动、更理解语境，也能陪用户演练复杂场景。","textPreview":"更主动、更理解语境，也能陪用户演练复杂场景。","textChars":22,"textLines":1,"bbox":[62,154,900,40]}
+{"kind":"textbox","id":"sh/r294zeds","slide":9,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[62,242,70,42]}
+{"kind":"textbox","id":"sh/6103q9wn","slide":9,"text":"桌宠式助手","textPreview":"桌宠式助手","textChars":5,"textLines":1,"bbox":[62,292,330,46]}
+{"kind":"textbox","id":"sh/d0vmx8v2","slide":9,"text":"在工作过程中实时观察，\n在合适的时候给出建议。","textPreview":"在工作过程中实时观察， | 在合适的时候给出建议。","textChars":23,"textLines":2,"bbox":[62,346,330,72]}
+{"kind":"shape","id":"sh/cz254nux","slide":9,"bbox":[62,458,328,5]}
+{"kind":"textbox","id":"sh/qt4bax0z","slide":9,"text":"从“等你提问”到“主动发现”","textPreview":"从“等你提问”到“主动发现”","textChars":14,"textLines":1,"bbox":[62,478,330,46]}
+{"kind":"textbox","id":"sh/rudsji1k","slide":9,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[476,242,70,42]}
+{"kind":"textbox","id":"sh/cvmtcni5","slide":9,"text":"沙盘模式","textPreview":"沙盘模式","textChars":4,"textLines":1,"bbox":[476,292,330,46]}
+{"kind":"textbox","id":"sh/dwvalsjq","slide":9,"text":"输入背景与角色，模拟面试、\n演讲、谈判等真实情境。","textPreview":"输入背景与角色，模拟面试、 | 演讲、谈判等真实情境。","textChars":25,"textLines":2,"bbox":[476,346,330,72]}
+{"kind":"shape","id":"sh/2pkb6d03","slide":9,"bbox":[476,458,328,5]}
+{"kind":"textbox","id":"sh/3qdsfi18","slide":9,"text":"先在安全环境中练一遍","textPreview":"先在安全环境中练一遍","textChars":10,"textLines":1,"bbox":[476,478,330,46]}
+{"kind":"textbox","id":"sh/4rmt8nit","slide":9,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[890,242,70,42]}
+{"kind":"textbox","id":"sh/psvahsje","slide":9,"text":"多 Agent 互动","textPreview":"多 Agent 互动","textChars":10,"textLines":1,"bbox":[890,292,330,46]}
+{"kind":"textbox","id":"sh/mlobih07","slide":9,"text":"不同 Agent 扮演不同角色，\n协作、质疑、反馈和复盘。","textPreview":"不同 Agent 扮演不同角色， | 协作、质疑、反馈和复盘。","textChars":29,"textLines":2,"bbox":[890,346,330,72]}
+{"kind":"shape","id":"sh/nmxcr21s","slide":9,"bbox":[890,458,328,5]}
+{"kind":"textbox","id":"sh/jupgnads","slide":9,"text":"把复杂任务变成可观察的互动","textPreview":"把复杂任务变成可观察的互动","textChars":13,"textLines":1,"bbox":[890,478,330,46]}
+{"kind":"shape","id":"sh/ytgzu5c7","slide":9,"name":"closing-strip","bbox":[62,594,1156,62]}
+{"kind":"textbox","id":"sh/lw7ypkvy","slide":9,"text":"Alpha 的方向：让 AI 更懂你的工作，也更懂如何与你一起工作。","textPreview":"Alpha 的方向：让 AI 更懂你的工作，也更懂如何与你一起工作。","textChars":34,"textLines":1,"bbox":[88,603,1104,44]}
+{"kind":"notes","id":"nt/99b9lw","slide":9,"text":""}

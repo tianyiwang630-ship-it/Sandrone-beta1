@@ -17,19 +17,11 @@
 # 要求
 1 目前是前端在web 端，但是后续是打包成exe，弄到前端容器，不会是浏览器，设计要考虑兼容性
 2 web和cli都只是入口层而已，整个harness是分为
-入口层 / Channel Layer
-Gateway 控制平面层
-消息与会话编排层
-Context / Prompt 组装层
-Agent Runtime / Harness 层
-Agent Loop 执行层
-Tool / Skill / Plugin 能力层
-权限 / 沙箱 / 安全层
-Workspace / Memory / State 持久化层
+入口层 / Channel Layer；Gateway 控制平面层；消息与会话编排层；Context / Prompt 组装层；Agent Runtime / Harness 层；Agent Loop 执行层；Tool / Skill / Plugin 能力层；权限 / 沙箱 / 安全层；Workspace / Memory / State 持久化层
 这些部分，做设计改造的时候要明确是在哪个层做改变。
 3 关于agent实例化，至少能够满足以下场景：单agent；平等的多agent；领导agent，去给多个下属agent分配任务，下属agent之间可以对话；有专门的整理记忆/替代用户给AI对话的agent实例。设计agent的时候，要能兼容这些场景，也要能满足当下单agent场景。
 4 做任何改动前，都必须先摸清楚对应的代码和实现链路。
-5 Windows 环境下，文件修改优先直接调用 Codex 内置 apply_patch 工具，禁止调用 apply_patch.bat。若内置工具因 UTF-8、多行参数截断或缺少“*** End Patch”等传输问题失败，则降级为：使用 PowerShell here-string 保存补丁，并直接调用当前版本的 codex.exe --codex-run-as-apply-patch $patch。不要写死 Codex 版本路径；大补丁按文件拆分。
+5 Windows 环境下，修改文件时优先使用 Codex 内置 apply_patch 工具，禁止调用 apply_patch.bat。若内置工具因 UTF-8、补丁内容截断、缺少 *** End Patch、参数传输或 Windows 沙箱包装器等原因无法执行，则使用 PowerShell 单引号 here-string 将补丁内容赋给变量，并调用当前环境中的 codex.exe --codex-run-as-apply-patch $patch。通过 Get-Command codex.exe 动态获取程序路径，禁止写死 Codex 安装目录或版本号。大补丁应按文件拆分；执行后必须检查退出码，并使用 git diff --check 和目标文件内容确认补丁完整生效。不得改用重定向、Set-Content 等方式绕过补丁流程。示例参考codexwindows沙箱问题解法.md
 # 遵守的规范
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.

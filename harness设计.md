@@ -6,14 +6,12 @@
 
 本文只记录 `agent-alpha` 已经落地的 harness 设计和实现现状。
 
-这里的“设计”指源码、配置、测试或项目文档中已经存在的机制，不包含未来规划。`开发日志.md` 只作为线索来源；写入本文前必须回到当前源码、配置或测试中验证。
+“设计”只指源码、配置、测试或项目文档中已落地的机制，不含未来规划。`开发日志.md` 仅作线索，最终以当前实现为准。
 
 更新本文的固定流程：
 
-1. 先看该 harness 模块对应源码。
-2. 再查 `开发日志.md` 找历史线索。
-3. 回到源码、配置或测试验证。
-4. 只写已落地内容；未验证、已删除、仅规划的内容不写。
+1. 先查源码，再用 `开发日志.md` 补充线索。
+2. 回到源码、配置或测试验证，只写已落地内容。
 
 ## 目录
 
@@ -42,41 +40,42 @@ rg -n "def run_single_agent_cli|project.scripts|agent-alpha|channels|input\\(\"Y
 
 ### 已落地设计
 
-当前真正落地的入口是 CLI。
+当前有两个入口：CLI 和 Web。二者共用 `AgentRuntime`，只负责不同的交互方式。
 
 入口定义在：
 
 ```text
 agent-alpha/pyproject.toml
 agent-alpha/agent/cli/main.py
+agent-alpha/agent/server/app.py
+agent-alpha/frontend
 ```
 
 `pyproject.toml` 里注册了命令：
 
 ```text
 agent-alpha = "agent.cli.main:run_single_agent_cli"
+agent-alpha-web = "agent.server.app:main"
 ```
 
-CLI 启动后做这些事：
+CLI 启动后：
 
-- 计算 `PROJECT_ROOT`。
-- 调用 `apply_runtime_env(project_root)` 注入 alpha 本地运行环境。
-- 创建 session id。
-- 创建 session 目录、log 目录和默认 workspace。
-- 创建 `SessionStore`。
-- 创建 `AgentRuntime`。
-- 进入 `while True` 交互循环，读取 `You:` 输入。
+- 初始化运行环境、会话目录和默认 workspace。
+- 创建 `SessionStore` 与 `AgentRuntime`。
+- 进入命令行交互循环。
 
-当前 `agent-alpha/agent/channels` 基本是占位目录，没有独立 channel 实现。也就是说，当前 Channel Layer 不是多入口体系，而是 CLI 单入口。
+Web 入口由 FastAPI 提供 API，并在 `frontend/dist` 存在时托管 React/Vite 构建产物。前端通过 HTTP 管理项目、会话、聊天、权限、设置和文件。
+
+`agent-alpha/agent/channels` 仍是占位目录；CLI 和 Web 尚未抽象成统一 Channel 接口。
 
 ### 实现现状
 
-CLI 同时承担了两类职责：
+CLI 同时承担交互和控制命令；Web 则由前端与 FastAPI 路由分担：
 
-- 用户交互入口：接收普通消息、打印 Agent 回复。
-- 控制命令入口：处理 `reset`、`/resume`、`/workspace`、`/compact`、`/admin`、`save`、`save-log` 等命令。
+- CLI：普通消息、输出回复，以及 `reset`、`/resume`、`/workspace`、`/compact`、`/admin`、`save`、`save-log`。
+- Web：项目、会话、聊天、权限、设置、用户和文件接口。
 
-这说明当前入口层和控制面还没有完全拆开。
+入口层和控制面仍未完全拆开。
 
 <a id="m02"></a>
 
@@ -90,7 +89,7 @@ rg -n "_handle_admin|_handle_workspace_command|_restore_session_interactive|_han
 
 ### 已落地设计
 
-当前没有独立 Gateway 服务，也没有 FastAPI 控制面。已经落地的是“内嵌控制面”：控制逻辑分散在 CLI、Runtime、ToolLoader、LLM profile 和 runtime env 中。
+当前已有本地 FastAPI Gateway，但不是独立部署的远程服务。控制逻辑仍分散在 FastAPI 路由、CLI、`AgentManager`、Runtime、ToolLoader、LLM profile 和 runtime env 中。
 
 控制面能力包括：
 
@@ -98,6 +97,9 @@ rg -n "_handle_admin|_handle_workspace_command|_restore_session_interactive|_han
 - `/workspace`：查看或切换当前 workspace。
 - `/resume`：恢复历史 interactive session。
 - `/compact`：手动压缩上下文。
+- Web API：管理项目、会话、聊天任务、权限确认、设置、用户和文件。
+- `AgentManager`：缓存会话 Agent、调度后台任务、处理中断与失败恢复。
+- `WebPermissionBroker`：把同步工具授权转换为 Web 轮询和决策。
 - LLM profile：从 `config/llm_profiles.json` 选择模型供应商、base_url、model、max_tokens 和 API key env。
 - RoleConfig：按角色过滤工具组、允许工具和拒绝工具。
 - Runtime env：通过 `runtime_paths.py` 统一注入 HOME、TEMP、PATH、缓存目录、凭据配置等运行环境。
@@ -108,6 +110,11 @@ rg -n "_handle_admin|_handle_workspace_command|_restore_session_interactive|_han
 
 ```text
 agent-alpha/agent/cli/main.py
+agent-alpha/agent/server/app.py
+agent-alpha/agent/server/agent_manager.py
+agent-alpha/agent/server/routes
+agent-alpha/agent/server/web_permissions.py
+agent-alpha/agent/server/stores/app_state.py
 agent-alpha/agent/api/llm_profiles.py
 agent-alpha/config/llm_profiles.json
 agent-alpha/agent/core/role_config.py
@@ -116,7 +123,7 @@ agent-alpha/agent/core/runtime_paths.py
 agent-alpha/agent/core/permission_manager.py
 ```
 
-当前设计好处是简单，CLI 就能完成主要控制。代价是控制面和入口层耦合较强，未来如果增加 HTTP/API 入口，需要把这些控制命令抽出来复用。
+FastAPI 已承接 Web 控制面，但 CLI 命令与 Web API 仍是两套入口逻辑，尚未统一成独立控制平面。
 
 <a id="m03"></a>
 
@@ -130,9 +137,9 @@ rg -n "class SessionKind|class SessionRecord|class SessionStore|def save|def loa
 
 ### 已落地设计
 
-当前会话编排分成两部分：主链路和脚手架。
+当前有 CLI、Web 两条主链路，以及 bus/cron 脚手架。
 
-主链路是 CLI 直接驱动：
+CLI 直接同步驱动：
 
 ```text
 CLI input
@@ -142,6 +149,19 @@ CLI input
   -> CLI print
   -> SessionStore save
 ```
+
+Web 通过后台任务驱动：
+
+```text
+HTTP 请求
+  -> AgentManager
+  -> ThreadPoolExecutor
+  -> AgentRuntime.handle(RuntimeRequest)
+  -> 前端轮询状态和事件
+  -> SessionStore save
+```
+
+Web 同一会话只允许一个活动任务，支持中断、手动压缩和权限确认。
 
 会话持久化由 `SessionStore` 负责：
 
@@ -169,6 +189,8 @@ agent-alpha/session-log/logs/<timestamp>_session_<session_id>.json
 - `kind`
 - `workspace`
 - `history`
+- `runtime_history`
+- `runtime_checkpoint`
 - `metadata`
 - `events`
 - `created_at`
@@ -194,11 +216,11 @@ agent-alpha/session-log/logs/<timestamp>_session_<session_id>.json
 - `CronJob`
 - `CronService`
 
-当前这些是轻量脚手架：bus 有 inbound/outbound 两个 async queue，cron service 能把 cron job 转成 inbound trigger。它们尚未成为 CLI 主执行链路。
+bus 提供 inbound/outbound async queue，cron service 可把 cron job 转成 inbound trigger；二者尚未进入主链路。
 
 ### 实现现状
 
-当前“消息与会话编排层”并不是完整异步编排平台。真实主链路仍是同步 CLI 调 `AgentRuntime.handle()`。bus/cron 表示方向已经落地为代码骨架，但还不是主路径。
+当前不是完整异步编排平台。CLI 同步调用 Runtime；Web 用线程池执行、HTTP 轮询状态。bus/cron 仍不是主路径。
 
 <a id="m04"></a>
 
@@ -212,7 +234,7 @@ rg -n "def build_system_prompt|load_workspace_prompt_documents|PROMPT_DOC_NAMES|
 
 ### 已落地设计
 
-这一层负责把“运行时信息、workspace 文档、skill 摘要、工具定义、历史消息”变成模型可用上下文。
+这一层把运行时信息、workspace 文档、skill 摘要、工具定义和历史消息组装成模型上下文。
 
 主要文件：
 
@@ -242,7 +264,7 @@ agent-alpha/agent/core/skill_loader.py
 - session documents。
 - large file strategy。
 
-这里的 prompt 不是纯人格提示，而是运行时契约。它告诉模型 alpha 的路径边界、skill 安装位置、bash cwd、runtime env profile、MCP 资源位置和 workspace 文档规则。
+System Prompt 是运行时契约，规定路径边界、skill 位置、bash cwd、runtime env、MCP 资源和 workspace 文档规则。
 
 ### Workspace Prompt Documents
 
@@ -255,7 +277,7 @@ SOUL.md
 
 不扫描嵌套目录。
 
-这和当前“一个 agent 实例绑定一个 workspace_root”的设计一致。
+每个 Agent 实例只绑定一个 `workspace_root`。
 
 ### ContextManager
 
@@ -290,11 +312,11 @@ SOUL.md
 - 丢弃孤立 tool result。
 - 收集最近完整消息组，避免压缩时把 `assistant tool_calls` 和对应 `tool` 结果切散。
 
-这解决的是 OpenAI tool 消息约束：`tool` 消息必须跟在带 `tool_calls` 的 assistant 消息后。
+这保证 `tool` 消息与对应的 assistant `tool_calls` 成组出现。
 
 ### 实现现状
 
-Context / Prompt 层已经不是简单拼 prompt，而是同时承担：
+Context / Prompt 层负责：
 
 - 路径契约注入。
 - workspace 文档注入。
@@ -360,13 +382,13 @@ rg -n "class AgentRuntime|def __init__|def handle|def compact_history|def _build
 - 自动压缩后记录压缩事件。
 - 创建 `AgentLoop`。
 - 将 llm、tools、tool_loader、history、system_prompt、event_writer、interrupt_event 传给 loop。
-- 返回 `RuntimeResponse`。
+- 返回含中断或恢复信息的 `RuntimeResponse`。
 
 ### 实现现状
 
-`AgentRuntime` 是当前真正的 harness 核心：它不直接写 CLI 交互，但它把模型、工具、上下文、workspace 和中断连接起来。
+`AgentRuntime` 是 harness 核心，连接模型、工具、上下文、workspace 和中断机制，不处理具体 UI。
 
-它目前仍是同步执行边界。bus/worker 还没有接管 `handle()`。
+Runtime 本身仍是同步执行边界；Web 由 `AgentManager` 在线程池中调用它。bus/worker 未接管 `handle()`。
 
 <a id="m06"></a>
 
@@ -401,7 +423,11 @@ LLM 调用通过线程包装：
 - 如果 ESC 中断，放弃等待并返回。
 - LLM 请求线程是 daemon。
 
-这让用户在等待模型时可以通过 ESC 返回 CLI。
+CLI 等待模型时可按 ESC 中断。
+
+Web 会开启流式响应，将增量事件写入日志；前端仍通过轮询读取状态。
+
+模型响应无效时，Loop 会依次尝试原消息、补充纠错指令和降级上下文。仍失败则标记为可恢复，供会话下次继续。
 
 ### Tool Call 处理
 
@@ -423,7 +449,7 @@ LLM 调用通过线程包装：
 - 写入同一个 tool_call_id 对应的 tool result。
 - 记录 `llm_output_truncated` 实时事件。
 
-这避免“模型参数截断”被误判成路径错误或工具错误。
+这样不会把参数截断误判为路径或工具错误。
 
 ### 工具异常包装
 
@@ -449,7 +475,7 @@ ESC 中断多个工具调用时，已完成的保留，未执行的补“用户�
 
 ### 实现现状
 
-Agent Loop 层是当前 harness 的稳定性关键点：它处理 LLM 等待中断、工具等待中断、残缺参数、工具异常和历史合法性。
+Agent Loop 负责中断、残缺参数、工具异常、响应恢复和历史合法性。
 
 <a id="m07"></a>
 
@@ -518,11 +544,11 @@ execute(**kwargs)
 
 ### Bash 工具
 
-`bash` 是 CLI 型 skill 的受控运行底座。
+`bash` 是 CLI 型 skill 的受控执行底座。
 
 已落地设计：
 
-- 默认 cwd 是 `agent-alpha`。
+- 默认 cwd 是当前 workspace。
 - 支持 `working_dir`。
 - 简单 `cd 目录 && 命令` 自动拆分。
 - 复杂 `cd` 返回指导。
@@ -535,7 +561,7 @@ execute(**kwargs)
 
 ### 浏览器工具
 
-浏览器工具由两层组成：
+浏览器工具分两层：
 
 - `browser_tool.py`：模型可见工具定义。
 - `browser_manager.py`：实际状态机。
@@ -554,6 +580,7 @@ execute(**kwargs)
 - `profile_login_headed`
 - `profile_save_headed`
 - `profile_close_headed`
+- `profile_force_close_headed`
 - `browser_connect_cdp`
 - `browser_disconnect_cdp`
 - `browser_cdp_status`
@@ -617,7 +644,7 @@ Profile 5 同步脚本：
 agent-alpha/sync-chrome-profile5-to-alpha.ps1
 ```
 
-已落地能力：
+脚本能力：
 
 - 从宿主 Chrome `Profile 5` 单向同步到 alpha default profile。
 - 使用 `profile-copy-default.lock`。
@@ -653,7 +680,7 @@ agent-alpha/skills/install-alpha-skill/SKILL.md
 
 ### MCP / Plugin
 
-当前没有独立 plugin marketplace。已落地的 plugin 形态主要是 MCP server 接入。
+当前没有独立 plugin marketplace；扩展主要通过 MCP server 接入。
 
 MCP 链路：
 
@@ -700,7 +727,7 @@ rg -n "class SandboxGuard|def check_tool_call|def _check_bash_command|PROTECTED_
 
 ### 已落地设计
 
-安全层分成三块：
+安全层包括：
 
 - `path_policy.py`：路径分类与访问决策。
 - `sandbox_guard.py`：按工具类型调度检查。
@@ -708,14 +735,14 @@ rg -n "class SandboxGuard|def check_tool_call|def _check_bash_command|PROTECTED_
 
 ### 路径策略
 
-当前路径分区：
+路径分区：
 
 - `workspace`
 - `project`
 - `outside`
 - `unknown`
 
-当前访问规则：
+访问规则：
 
 - workspace 内读写允许。
 - agent-alpha 项目内读取允许。
@@ -723,18 +750,18 @@ rg -n "class SandboxGuard|def check_tool_call|def _check_bash_command|PROTECTED_
 - 外部路径读取允许。
 - 外部路径写入拒绝。
 
-当前保护目录：
+当前只读目录：
 
 ```text
-agent/core
-agent/tools
+agent
+session-log
 ```
 
 ### Bash 沙箱
 
-Bash 会先通过 `command_path_extractor.py` 做静态分类。
+Bash 先由 `command_path_extractor.py` 静态分类。
 
-当前分类包括：
+分类包括：
 
 - dangerous。
 - package_install。
@@ -744,7 +771,7 @@ Bash 会先通过 `command_path_extractor.py` 做静态分类。
 - path_mutation。
 - general / unknown。
 
-已落地安全点：
+主要规则：
 
 - 拒绝危险系统命令。
 - 拒绝外部 Python 和宿主 Python 污染。
@@ -765,7 +792,7 @@ Bash 会先通过 `command_path_extractor.py` 做静态分类。
 
 ### 实现现状
 
-安全层已经覆盖文件工具和 bash 主路径。MCP、浏览器、fetch 等工具目前不是逐参数深度沙箱，而是通过工具自身设计和整体运行边界控制。
+文件工具和 bash 已接入安全层；MCP、浏览器和 fetch 主要依靠各自规则及整体运行边界。
 
 <a id="m09"></a>
 
@@ -779,12 +806,13 @@ rg -n "workspace_root|get_default_workspace_root|create_cli_session_paths|ensure
 
 ### 已落地设计
 
-当前持久化层包括四类状态：
+当前持久化层包括五类状态：
 
 1. workspace。
 2. session logs。
 3. runtime env / config / cache / temp。
 4. browser state。
+5. Web app state。
 
 ### Workspace
 
@@ -802,7 +830,18 @@ CLI 支持：
 /workspace set <path>
 ```
 
-当前设计是一个 agent 实例只绑定一个 `workspace_root`。额外目录不通过运行时配置输入，如果用户需要访问其他路径，需要在对话中明确给路径。
+每个 Agent 实例只绑定一个 `workspace_root`；访问其他目录需在对话中给出明确路径。
+
+Web 项目支持两种 workspace：
+
+- 托管目录：`agent-alpha/workspace/projects/<project_id>`。
+- 用户选择的外部目录。
+
+项目路径、设置和用户信息保存在：
+
+```text
+agent-alpha/state/web/app_state.json
+```
 
 ### Session State
 
@@ -814,7 +853,7 @@ agent-alpha/session-log/events
 agent-alpha/session-log/logs
 ```
 
-三者职责不同：
+职责：
 
 - `sessions/*.json`：可恢复会话快照。
 - `events/*.jsonl`：实时 append-only history/event 记录。
@@ -853,9 +892,19 @@ agent-alpha/session-log/logs
 - `TEMP`
 - `PIP_CACHE_DIR`
 - `UV_CACHE_DIR`
+- `UV_TOOL_DIR`
+- `UV_TOOL_BIN_DIR`
+- `NODE_PATH`
+- `NPM_CONFIG_PREFIX`
+- `NPM_CONFIG_CACHE`
 - `PYTHONUSERBASE`
 - `PYTHONPYCACHEPREFIX`
+- `HF_HOME`
+- `TRANSFORMERS_CACHE`
 - `PLAYWRIGHT_BROWSERS_PATH`
+- `DOTNET_CLI_HOME`
+- `CARGO_HOME`
+- `RUSTUP_HOME`
 - `VIRTUAL_ENV`
 - `PYTHONNOUSERSITE`
 
@@ -865,7 +914,7 @@ agent-alpha/session-log/logs
 agent-alpha/config/runtime_env.local.json
 ```
 
-这个文件用于 token、cookie、API key、auth header、proxy 等服务配置，不允许覆盖路径策略变量。
+该文件保存 token、cookie、API key、auth header、proxy 等服务配置，不能覆盖路径策略变量。
 
 ### Browser State
 
@@ -879,7 +928,7 @@ agent-alpha/state/browser
 
 ### Memory
 
-当前 `agent-alpha` 源码中没有独立记忆模块。已有的“记忆/状态”主要是 session history、runtime events、workspace 文档、skill 内容和浏览器 profile 状态。
+当前没有独立记忆模块。“记忆/状态”来自 session history、runtime events、workspace 文档、skill 和浏览器 profile。
 
 <a id="m10"></a>
 
@@ -893,7 +942,7 @@ rg -n "print\\(|save_session_log|save_context|write_text|append_session_index|ex
 
 ### 已落地设计
 
-当前输出和副作用不是独立 UI 层，而是分布在 CLI、工具和日志系统中。
+输出和副作用分布在 CLI、Web、工具和日志系统中。
 
 ### CLI UI
 
@@ -931,7 +980,7 @@ CLI 输出包括：
 
 ### 浏览器副作用
 
-浏览器副作用包括：
+浏览器会写入：
 
 - 创建 runtime profile。
 - 写 profile registry。
@@ -944,9 +993,11 @@ CLI 输出包括：
 
 ### 实现现状
 
-当前没有独立前端 UI。交付和副作用控制主要靠：
+当前已有 React/Vite Web UI；FastAPI 可托管构建产物，CLI 也可独立使用。
 
-- CLI 文本交互。
+交付和副作用控制主要靠：
+
+- CLI 或 Web 交互。
 - 工具返回结构。
 - session events。
 - sandbox / permission。
@@ -978,7 +1029,15 @@ Ops / Debug / Eval 由三部分组成：
 agent-alpha/session-log/events/<session_id>.jsonl
 ```
 
-虽然扩展名是 `.jsonl`，当前实际格式是多行格式化 JSON 块，块间空行，更方便人工阅读。
+该文件虽名为 `.jsonl`，实际是以空行分隔的多行 JSON 块。
+
+`RealtimeLogWriter` 另写：
+
+```text
+agent-alpha/session-log/logs/<session_id>.jsonl
+```
+
+它保留完整请求、流式输出和工具结果，用于排障和复盘。
 
 记录内容包括：
 
@@ -989,6 +1048,7 @@ agent-alpha/session-log/events/<session_id>.jsonl
 - context compaction failed。
 - runtime error。
 - llm output truncated。
+- 流式输出与恢复事件。
 
 工具结果有统一截断：
 
@@ -1027,7 +1087,7 @@ workspace/temp/last_llm_response.json
 
 ### Eval / Test
 
-当前没有独立评测系统，但测试覆盖较多 harness 边界。
+当前没有独立评测系统，测试主要覆盖 harness 边界。
 
 测试目录：
 
@@ -1035,35 +1095,11 @@ workspace/temp/last_llm_response.json
 agent-alpha/tests/core
 ```
 
-已覆盖方向包括：
-
-- agent loop。
-- bash interrupt。
-- bash output streaming。
-- bash sandbox。
-- bash working_dir。
-- browser tools。
-- bus。
-- context manager。
-- cron。
-- LLM。
-- LLM profiles。
-- main CLI。
-- package layout。
-- prompt docs loader。
-- role config。
-- runtime paths。
-- sandbox guard。
-- session events。
-- session paths。
-- session store。
-- skill loader。
-- tool loader policy / sandbox / skills。
-- system prompt builder。
+覆盖 Agent Loop、LLM、CLI、Web Server、消息修复、上下文、会话、路径、沙箱、权限、工具、Skill、Browser、bus/cron 和运行环境。
 
 ### 实现现状
 
-Ops 层当前更偏“可追溯运行记录 + 回归测试”，还不是独立观测平台或自动 eval 平台。
+Ops 层目前是“可追溯日志 + 回归测试”，不是独立观测或自动 eval 平台。
 
 <a id="m12"></a>
 
@@ -1071,13 +1107,12 @@ Ops 层当前更偏“可追溯运行记录 + 回归测试”，还不是独立�
 
 以下内容不写成当前实现现状：
 
-- 独立 FastAPI Gateway。用户规范要求后端接口使用 FastAPI，但当前 agent-alpha 没有落地后端接口。
+- 统一的 Channel 接口。
 - 独立 plugin marketplace。
 - 独立 tool service。
-- 独立前端 UI。
 - 独立记忆模块。
 - bus/cron 作为主执行链路。
 - 当前目录中未验证到的历史 Playwright MCP 运行实现。
 - 未来多 agent / subagent 规划。
 
-本文以后更新时，仍按“源码 -> 开发日志 -> 源码验证 -> 写入”的流程维护。
+后续仍按“源码 → 开发日志线索 → 当前实现验证 → 更新文档”维护。

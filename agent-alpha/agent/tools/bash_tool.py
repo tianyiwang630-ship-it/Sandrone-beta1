@@ -122,6 +122,7 @@ class BashTool(BaseTool):
                 "description": (
                     "执行 bash/shell 命令并返回结果。working_dir 不传则使用当前 workspace；"
                     "通常不要在 command 里写 cd ... && ...，需要切换目录时请使用 working_dir。"
+                    "POSIX shell 丢弃输出必须使用 /dev/null，不要使用 CMD 的 nul。"
                 ),
                 "parameters": {
                     "type": "object",
@@ -178,6 +179,11 @@ class BashTool(BaseTool):
 
         command = prepared["command"]
         cwd = prepared["cwd"]
+        null_redirection_error = self._validate_null_redirection(command)
+        if null_redirection_error is not None:
+            null_redirection_error["command"] = command
+            null_redirection_error["working_dir"] = str(cwd)
+            return null_redirection_error
 
         try:
             # 根据 shell 类型调整命令格式
@@ -267,6 +273,344 @@ class BashTool(BaseTool):
                 "command": command,
                 "working_dir": str(cwd),
             }
+
+    def _validate_null_redirection(self, command: str) -> Dict[str, Any] | None:
+        if self.shell == "cmd":
+            return None
+        if not self._has_posix_null_redirection(command):
+            return None
+        return {
+            "success": False,
+            "error": "POSIX shell 不支持 CMD 的 nul 空设备重定向；命令未执行。",
+            "guidance": "请使用 /dev/null，例如：2>/dev/null。",
+            "stdout": "",
+            "stderr": "",
+            "returncode": None,
+        }
+
+    @classmethod
+    def _has_posix_null_redirection(cls, command: str) -> bool:
+        index = 0
+        while index < len(command):
+            char = command[index]
+            if char == "\\":
+                index += 2
+                continue
+            if char == "'":
+                index = cls._skip_quoted_text(command, index)
+                continue
+            if char == '"':
+                index, quote_redirect = cls._scan_double_quoted_text(command, index)
+                if quote_redirect:
+                    return True
+                continue
+            if char == "#" and cls._starts_shell_comment(command, index):
+                newline = command.find("\n", index)
+                if newline == -1:
+                    break
+                index = newline + 1
+                continue
+            if cls._starts_conditional_expression(command, index):
+                block_end = cls._skip_until_token(command, index + 2, "]]")
+                if cls._has_command_substitution_null_redirection(
+                    command[index + 2:block_end - 2]
+                ):
+                    return True
+                index = block_end
+                continue
+            if command.startswith("$((", index):
+                block_end = cls._skip_arithmetic(command, index + 3)
+                if cls._has_command_substitution_null_redirection(
+                    command[index + 3:block_end - 2]
+                ):
+                    return True
+                index = block_end
+                continue
+            if command.startswith("((", index):
+                block_end = cls._skip_arithmetic(command, index + 2)
+                if cls._has_command_substitution_null_redirection(
+                    command[index + 2:block_end - 2]
+                ):
+                    return True
+                index = block_end
+                continue
+            if command.startswith("<<", index) and not command.startswith("<<<", index):
+                index, same_line_redirect = cls._skip_heredoc(command, index + 2)
+                if same_line_redirect:
+                    return True
+                continue
+            if char != ">":
+                index += 1
+                continue
+
+            index += 2 if index + 1 < len(command) and command[index + 1] == ">" else 1
+            while index < len(command) and command[index].isspace():
+                index += 1
+            target, index = cls._read_shell_word(command, index)
+            if target.casefold() == "nul":
+                return True
+        return False
+
+    @staticmethod
+    def _skip_quoted_text(command: str, index: int) -> int:
+        quote = command[index]
+        index += 1
+        while index < len(command):
+            if quote == '"' and command[index] == "\\" and index + 1 < len(command):
+                index += 2
+                continue
+            if command[index] == quote:
+                return index + 1
+            index += 1
+        return index
+
+    @classmethod
+    def _scan_double_quoted_text(cls, command: str, index: int) -> tuple[int, bool]:
+        index += 1
+        while index < len(command):
+            if command[index] == "\\":
+                index += 2
+                continue
+            if command.startswith("$(", index) and not command.startswith("$((", index):
+                block_end = cls._skip_parenthesized_command(command, index + 2)
+                if cls._has_posix_null_redirection(command[index + 2:block_end - 1]):
+                    return block_end, True
+                index = block_end
+                continue
+            if command[index] == "`":
+                block_end = cls._skip_backtick(command, index)
+                if cls._has_posix_null_redirection(command[index + 1:block_end - 1]):
+                    return block_end, True
+                index = block_end
+                continue
+            if command[index] == '"':
+                return index + 1, False
+            index += 1
+        return index, False
+
+    @staticmethod
+    def _starts_shell_comment(command: str, index: int) -> bool:
+        return index == 0 or command[index - 1].isspace() or command[index - 1] in ";|&()"
+
+    @staticmethod
+    def _starts_conditional_expression(command: str, index: int) -> bool:
+        if not command.startswith("[[", index):
+            return False
+        has_left_boundary = (
+            index == 0
+            or command[index - 1].isspace()
+            or command[index - 1] in ";|&()"
+        )
+        after = index + 2
+        has_right_boundary = after == len(command) or command[after].isspace()
+        return has_left_boundary and has_right_boundary
+
+    @classmethod
+    def _skip_until_token(cls, command: str, index: int, token: str) -> int:
+        while index < len(command):
+            if command[index] == "\\":
+                index += 2
+                continue
+            if command[index] in {"'", '"'}:
+                index = cls._skip_quoted_text(command, index)
+                continue
+            if command.startswith(token, index):
+                return index + len(token)
+            index += 1
+        return index
+
+    @classmethod
+    def _skip_arithmetic(cls, command: str, index: int) -> int:
+        depth = 1
+        while index < len(command):
+            if command[index] == "\\":
+                index += 2
+                continue
+            if command[index] in {"'", '"'}:
+                index = cls._skip_quoted_text(command, index)
+                continue
+            if command.startswith("((", index):
+                depth += 1
+                index += 2
+                continue
+            if command.startswith("))", index):
+                depth -= 1
+                index += 2
+                if depth == 0:
+                    return index
+                continue
+            index += 1
+        return index
+
+    @classmethod
+    def _skip_heredoc(cls, command: str, index: int) -> tuple[int, bool]:
+        delimiter, delimiter_end, strip_tabs, delimiter_is_quoted = (
+            cls._read_heredoc_spec(command, index)
+        )
+        if not delimiter:
+            return delimiter_end, False
+
+        line_end = command.find("\n", delimiter_end)
+        if line_end == -1:
+            return len(command), cls._has_posix_null_redirection(command[delimiter_end:])
+        same_line_redirect = cls._has_posix_null_redirection(
+            command[delimiter_end:line_end]
+        )
+
+        specs = [(delimiter, strip_tabs, delimiter_is_quoted)]
+        scan_index = delimiter_end
+        while scan_index < line_end:
+            if command[scan_index] == "\\":
+                scan_index += 2
+                continue
+            if command[scan_index] in {"'", '"'}:
+                scan_index = cls._skip_quoted_text(command, scan_index)
+                continue
+            if command.startswith("<<", scan_index) and not command.startswith(
+                "<<<", scan_index
+            ):
+                next_spec = cls._read_heredoc_spec(command, scan_index + 2)
+                next_delimiter, scan_index, next_strip_tabs, next_is_quoted = next_spec
+                if next_delimiter:
+                    specs.append((next_delimiter, next_strip_tabs, next_is_quoted))
+                continue
+            scan_index += 1
+
+        line_start = line_end + 1
+        for delimiter, strip_tabs, delimiter_is_quoted in specs:
+            body_start = line_start
+            while line_start <= len(command):
+                line_end = command.find("\n", line_start)
+                if line_end == -1:
+                    line_end = len(command)
+                line = command[line_start:line_end].rstrip("\r")
+                if strip_tabs:
+                    line = line.lstrip("\t")
+                if line == delimiter:
+                    body = command[body_start:line_start]
+                    if (
+                        not delimiter_is_quoted
+                        and cls._has_command_substitution_null_redirection(body)
+                    ):
+                        return line_end, True
+                    line_start = line_end + 1 if line_end < len(command) else line_end
+                    break
+                if line_end == len(command):
+                    return len(command), same_line_redirect
+                line_start = line_end + 1
+        return line_start, same_line_redirect
+
+    @classmethod
+    def _read_heredoc_spec(
+        cls,
+        command: str,
+        index: int,
+    ) -> tuple[str, int, bool, bool]:
+        strip_tabs = index < len(command) and command[index] == "-"
+        if strip_tabs:
+            index += 1
+        while index < len(command) and command[index] in " \t":
+            index += 1
+        delimiter_start = index
+        delimiter, delimiter_end = cls._read_shell_word(command, index)
+        delimiter_is_quoted = any(
+            char in {"'", '"', "\\"}
+            for char in command[delimiter_start:delimiter_end]
+        )
+        return delimiter, delimiter_end, strip_tabs, delimiter_is_quoted
+
+    @classmethod
+    def _has_command_substitution_null_redirection(cls, command: str) -> bool:
+        index = 0
+        while index < len(command):
+            if command[index] == "\\":
+                index += 2
+                continue
+            if command[index] == "'":
+                index = cls._skip_quoted_text(command, index)
+                continue
+            if command[index] == "`":
+                block_end = cls._skip_backtick(command, index)
+                if cls._has_posix_null_redirection(command[index + 1:block_end - 1]):
+                    return True
+                index = block_end
+                continue
+            if command.startswith("$((", index):
+                index += 3
+                continue
+            if not command.startswith("$(", index):
+                index += 1
+                continue
+
+            block_end = cls._skip_parenthesized_command(command, index + 2)
+            content_end = block_end - 1 if block_end <= len(command) else len(command)
+            if cls._has_posix_null_redirection(command[index + 2:content_end]):
+                return True
+            index = block_end
+        return False
+
+    @staticmethod
+    def _skip_backtick(command: str, index: int) -> int:
+        index += 1
+        while index < len(command):
+            if command[index] == "\\":
+                index += 2
+                continue
+            if command[index] == "`":
+                return index + 1
+            index += 1
+        return index
+
+    @classmethod
+    def _skip_parenthesized_command(cls, command: str, index: int) -> int:
+        depth = 1
+        while index < len(command):
+            if command[index] == "\\":
+                index += 2
+                continue
+            if command[index] in {"'", '"'}:
+                index = cls._skip_quoted_text(command, index)
+                continue
+            if command[index] == "(":
+                depth += 1
+            elif command[index] == ")":
+                depth -= 1
+                if depth == 0:
+                    return index + 1
+            index += 1
+        return index
+
+    @staticmethod
+    def _read_shell_word(command: str, index: int) -> tuple[str, int]:
+        chars: list[str] = []
+        quote: str | None = None
+        while index < len(command):
+            char = command[index]
+            if quote is not None:
+                if char == quote:
+                    quote = None
+                    index += 1
+                    continue
+                if quote == '"' and char == "\\" and index + 1 < len(command):
+                    chars.append(command[index + 1])
+                    index += 2
+                    continue
+                chars.append(char)
+                index += 1
+                continue
+            if char.isspace() or char in "<>|&;()":
+                break
+            if char in {"'", '"'}:
+                quote = char
+                index += 1
+                continue
+            if char == "\\" and index + 1 < len(command):
+                chars.append(command[index + 1])
+                index += 2
+                continue
+            chars.append(char)
+            index += 1
+        return "".join(chars), index
 
     def _resolve_timeout_seconds(self, value: Any) -> int | Dict[str, Any]:
         if value is None:

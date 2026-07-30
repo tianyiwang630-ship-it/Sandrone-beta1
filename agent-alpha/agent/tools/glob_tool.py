@@ -37,7 +37,10 @@ class GlobTool(BaseTool):
                         },
                         "path": {
                             "type": "string",
-                            "description": "搜索目录（可选，默认为当前工作目录）"
+                            "description": (
+                                "搜索目录。不传或相对路径均按当前 workspace 解析；"
+                                "访问 AGENT_ALPHA_ROOT 或其他位置时必须传绝对路径。"
+                            )
                         }
                     },
                     "required": ["pattern"]

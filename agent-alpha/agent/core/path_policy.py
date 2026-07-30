@@ -55,6 +55,13 @@ def resolve_working_directory(
     return resolved
 
 
+def resolve_workspace_input_path(path: str | Path, *, workspace_root: Path) -> Path:
+    user_path = _path_from_user_input(path)
+    if not user_path.is_absolute():
+        user_path = Path(workspace_root).resolve() / user_path
+    return user_path.resolve()
+
+
 def classify_path(path: Path | None, *, workspace_root: Path, project_root: Path) -> SandboxZone:
     if path is None:
         return "unknown"
@@ -115,8 +122,16 @@ def _is_relative_to(path: Path, base: Path) -> bool:
 
 def _path_from_user_input(path: str | Path) -> Path:
     text = str(path)
-    if os.name == "nt" and len(text) > 3 and text[0] == "/" and text[2] == "/" and text[1].isalpha():
-        return Path(f"{text[1].upper()}:{text[2:]}")
+    if (
+        os.name == "nt"
+        and len(text) > 3
+        and text[0] == "/"
+        and text[1].isalpha()
+        and text[2] in {"/", ":"}
+    ):
+        suffix = text[3:] if text[2] == ":" else text[2:]
+        if suffix.startswith("/"):
+            return Path(f"{text[1].upper()}:{suffix}")
     return Path(text)
 
 

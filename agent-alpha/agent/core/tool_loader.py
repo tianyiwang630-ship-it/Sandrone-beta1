@@ -18,6 +18,7 @@ from typing import Any, Dict, List
 
 from agent.core.bm25 import BM25Index
 from agent.core.config import BASH_TOOL_MAX_TIMEOUT, BASH_TOOL_TIMEOUT, DEFAULT_MCP_CATEGORY
+from agent.core.path_policy import resolve_workspace_input_path
 from agent.core.role_config import RoleConfig
 from agent.core.sandbox_guard import SandboxGuard
 from agent.core.skill_loader import SkillLoader
@@ -437,6 +438,7 @@ class ToolLoader:
 
     def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         """Execute a tool after optional permission checks."""
+        arguments = self._normalize_search_arguments(tool_name, arguments)
         sandbox_result = self.sandbox_guard.check_tool_call(tool_name, arguments)
         if sandbox_result.decision == "deny":
             error = {
@@ -493,6 +495,23 @@ class ToolLoader:
             return executor(**arguments)
 
         return {"error": f"Unknown tool: {tool_name}"}
+
+    def _normalize_search_arguments(
+        self,
+        tool_name: str,
+        arguments: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        if tool_name not in {"glob", "grep"}:
+            return arguments
+
+        normalized = dict(arguments)
+        raw_path = normalized.get("path")
+        path_text = str(raw_path).strip() if raw_path is not None else ""
+        path = path_text or self.workspace_root
+        normalized["path"] = str(
+            resolve_workspace_input_path(path, workspace_root=self.workspace_root)
+        )
+        return normalized
 
     def get_tools(self) -> List[Dict[str, Any]]:
         """Return the currently registered tools."""

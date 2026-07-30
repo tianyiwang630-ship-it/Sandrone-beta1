@@ -542,6 +542,8 @@ execute(**kwargs)
 - `grep`：调用 `rg`。
 - `fetch`：urllib 抓取 URL，清洗 HTML/XML/JSON，长内容保存到 `fetch_results`。
 
+`glob/grep` 缺省或相对 `path` 按当前 workspace 解析；绝对路径保持不变。ToolLoader 将同一解析结果交给 sandbox 和工具执行。
+
 ### Bash 工具
 
 `bash` 是 CLI 型 skill 的受控执行底座。
@@ -550,6 +552,7 @@ execute(**kwargs)
 
 - 默认 cwd 是当前 workspace。
 - 支持 `working_dir`。
+- POSIX shell 拒绝 `>nul`、`2>nul` 等 CMD 空设备写法，并提示改用 `/dev/null`；`cmd` fallback 不拦截。
 - 简单 `cd 目录 && 命令` 自动拆分。
 - 复杂 `cd` 返回指导。
 - 拦截错误的 `agent-alpha/temp`、`agent-alpha/home` 等相对路径。

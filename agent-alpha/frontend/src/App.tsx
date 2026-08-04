@@ -32,6 +32,7 @@ import {
 } from 'react'
 import { api } from './api/client'
 import {
+  ALIGNMENT_PROMPT_PREFIX,
   draftAfterSend,
   insertAlignmentPrompt,
   removeUnchangedAlignmentPrompt,
@@ -54,6 +55,13 @@ import {
 import FileDrawer from './components/FileDrawer'
 import KnowledgeBaseComposerActions from './components/KnowledgeBaseComposerActions'
 import KnowledgeBaseProjectAction from './components/KnowledgeBaseProjectAction'
+import {
+  acquireComposerUploadLock,
+  collectComposerUploadPaths,
+  prepareComposerUploadDraftUpdate,
+  selectComposerUploadTargetDraft,
+  type ComposerUploadKind,
+} from './composerUploadPaths'
 import { EMPTY_STATE_QUOTES } from './emptyStateQuotes'
 import {
   INITIALIZE_KNOWLEDGE_BASE_PROMPT,
@@ -135,6 +143,13 @@ interface FailedRunSnapshot {
 interface QueueDropTarget {
   id: string
   placement: 'before' | 'after'
+}
+
+interface ComposerUploadBatch {
+  projectId: string
+  draftKey: string | null
+  kind: ComposerUploadKind
+  entries: UploadEntry[]
 }
 
 const FALLBACK_COMPOSER_SKILLS: CapabilityItem[] = [
@@ -539,7 +554,7 @@ export default function App() {
   const [retrospectiveStarting, setRetrospectiveStarting] = useState(false)
   const [composerUploading, setComposerUploading] = useState(false)
   const [composerConflicts, setComposerConflicts] = useState<UploadConflictItem[]>([])
-  const [composerPendingUpload, setComposerPendingUpload] = useState<UploadEntry[] | null>(null)
+  const [composerPendingUpload, setComposerPendingUpload] = useState<ComposerUploadBatch | null>(null)
   const [showComposerConflictDialog, setShowComposerConflictDialog] = useState(false)
   const [permissionInstruction, setPermissionInstruction] = useState('')
   const [permissionSubmittingId, setPermissionSubmittingId] = useState<string | null>(null)
@@ -577,11 +592,13 @@ export default function App() {
   const selectedSessionIdRef = useRef<string | null>(null)
   const messageQueuesRef = useRef<Record<string, SessionMessageQueue>>({})
   const runningSessionsRef = useRef<Record<string, RunningSession>>({})
+  const draftRef = useRef('')
   const draftKeyRef = useRef<string | null>(null)
   const alignmentKeyRef = useRef<string | null>(null)
   const alignmentEnabledRef = useRef(false)
   const initializingKnowledgeBaseProjectIdRef = useRef<string | null>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const composerUploadBusyRef = useRef(false)
   const deletedSessionIdsRef = useRef(new Set<string>())
   const composerFileInputRef = useRef<HTMLInputElement | null>(null)
   const composerFolderInputRef = useRef<HTMLInputElement | null>(null)
@@ -845,7 +862,9 @@ export default function App() {
     const nextAlignmentKey = alignmentKeyFor(selectedProjectId, selectedSessionId)
     draftKeyRef.current = nextDraftKey
     alignmentKeyRef.current = nextAlignmentKey
-    setDraft(nextDraftKey ? readLocalValue(nextDraftKey) || '' : '')
+    const nextDraft = nextDraftKey ? readLocalValue(nextDraftKey) || '' : ''
+    draftRef.current = nextDraft
+    setDraft(nextDraft)
     const nextAlignmentEnabled = nextAlignmentKey ? readLocalValue(nextAlignmentKey) === '1' : false
     alignmentEnabledRef.current = nextAlignmentEnabled
     setAlignmentEnabled(nextAlignmentEnabled)
@@ -1414,6 +1433,7 @@ export default function App() {
   }
 
   const updateDraft = (value: string) => {
+    draftRef.current = value
     setDraft(value)
     if (draftKeyRef.current) {
       writeLocalValue(draftKeyRef.current, value)
@@ -1634,54 +1654,102 @@ export default function App() {
     focusComposer(change.selectionStart, change.selectionEnd)
   }
 
-  const uploadComposerBatch = async (entries: UploadEntry[], strategy?: ConflictStrategy) => {
-    if (!selectedProject || !entries.length) return
+  const uploadComposerBatch = async (batch: ComposerUploadBatch, strategy?: ConflictStrategy) => {
+    if (!batch.entries.length) return
+    const releaseUploadLock = acquireComposerUploadLock(composerUploadBusyRef)
+    if (!releaseUploadLock) return
     setComposerUploading(true)
     setNotice(null)
     try {
-      await uploadProjectFiles(selectedProject.id, '', entries, strategy)
+      const uploadedFiles = await uploadProjectFiles(batch.projectId, '', batch.entries, strategy)
+      const paths = collectComposerUploadPaths(batch.kind, batch.entries, uploadedFiles)
+      const currentDraftKey = draftKeyRef.current
+      const appliesToCurrent = batch.draftKey === currentDraftKey
+      const textarea = appliesToCurrent ? composerTextareaRef.current : null
+      const storedDraft = batch.draftKey ? readLocalValue(batch.draftKey) || '' : ''
+      const targetDraft = selectComposerUploadTargetDraft(
+        appliesToCurrent,
+        textarea?.value,
+        draftRef.current,
+        storedDraft,
+      )
+      const update = prepareComposerUploadDraftUpdate({
+        uploadDraftKey: batch.draftKey,
+        currentDraftKey,
+        currentDraft: targetDraft,
+        storedDraft,
+        paths,
+        selectionStart: textarea?.selectionStart,
+        selectionEnd: textarea?.selectionEnd,
+        alignmentPromptPrefix: ALIGNMENT_PROMPT_PREFIX,
+      })
+      if (update.applyToCurrent) {
+        updateDraft(update.change.value)
+        focusComposer(update.change.selectionStart, update.change.selectionEnd)
+      } else if (update.draftKey) {
+        writeLocalValue(update.draftKey, update.change.value)
+      }
       setShowComposerConflictDialog(false)
       setComposerPendingUpload(null)
       setComposerConflicts([])
       setComposerMenuOpen(false)
       setFileDrawerRefreshKey((value) => value + 1)
-      setNotice(`已上传 ${entries.length} 个文件到项目根目录。`)
+      setNotice(`已上传 ${batch.entries.length} 个文件到项目根目录。`)
     } catch (err) {
       setNotice(err instanceof Error ? err.message : String(err))
     } finally {
       setComposerUploading(false)
+      releaseUploadLock()
     }
   }
 
-  const handleComposerPickedFiles = async (entries: UploadEntry[]) => {
+  const handleComposerPickedFiles = async (kind: ComposerUploadKind, entries: UploadEntry[]) => {
     if (!selectedProject) {
       setNotice('请先选择项目。')
       return
     }
     if (!entries.length) return
+    const batch: ComposerUploadBatch = {
+      projectId: selectedProject.id,
+      draftKey: draftKeyRef.current,
+      kind,
+      entries,
+    }
+    const releaseUploadLock = acquireComposerUploadLock(composerUploadBusyRef)
+    if (!releaseUploadLock) return
+    setComposerUploading(true)
+    let readyToUpload = false
     try {
-      const conflictData = await checkProjectUploadConflicts(selectedProject.id, '', entries)
+      const conflictData = await checkProjectUploadConflicts(batch.projectId, '', batch.entries)
       if (conflictData.has_conflicts) {
-        setComposerPendingUpload(entries)
+        if (selectedProjectIdRef.current !== batch.projectId) {
+          setNotice('项目已切换，请回到原项目重新上传。')
+          return
+        }
+        setComposerPendingUpload(batch)
         setComposerConflicts(conflictData.conflicts)
         setShowComposerConflictDialog(true)
         setComposerMenuOpen(false)
         return
       }
-      await uploadComposerBatch(entries)
+      readyToUpload = true
     } catch (err) {
       setNotice(err instanceof Error ? err.message : String(err))
+    } finally {
+      setComposerUploading(false)
+      releaseUploadLock()
     }
+    if (readyToUpload) await uploadComposerBatch(batch)
   }
 
   const handleComposerFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const entries = Array.from(event.target.files || []).map((file) => ({ file, relativePath: file.name }))
-    await handleComposerPickedFiles(entries)
+    await handleComposerPickedFiles('files', entries)
     event.target.value = ''
   }
 
   const handleComposerFolderSelect = async (event: ChangeEvent<HTMLInputElement>) => {
-    await handleComposerPickedFiles(buildFolderFiles(event.target.files))
+    await handleComposerPickedFiles('folder', buildFolderFiles(event.target.files))
     event.target.value = ''
   }
 
@@ -1832,6 +1900,7 @@ export default function App() {
     }
 
     const nextDraft = draftAfterSend(alignmentEnabledRef.current)
+    draftRef.current = nextDraft
     setDraft(nextDraft)
     const sessionDraftKey = draftKeyFor(projectIdForList, sessionId)
     if (sessionDraftKey) {

@@ -1,5 +1,5 @@
-import { api } from './api/client'
-import type { UploadConflictItem } from './types'
+import { api } from './api/client.ts'
+import type { FileInfo, UploadConflictItem } from './types'
 
 export type ConflictStrategy = 'replace' | 'rename'
 
@@ -33,7 +33,8 @@ export async function uploadProjectFiles(
   targetPath: string,
   entries: UploadEntry[],
   strategy?: ConflictStrategy,
-) {
+): Promise<FileInfo[]> {
+  const uploadedFiles: FileInfo[] = []
   for (const entry of entries) {
     const formData = new FormData()
     formData.set('project_id', projectId)
@@ -41,6 +42,7 @@ export async function uploadProjectFiles(
     formData.set('relative_path', entry.relativePath)
     if (strategy) formData.set('conflict_strategy', strategy)
     formData.set('file', entry.file)
-    await api.uploadFile(formData)
+    uploadedFiles.push(await api.uploadFile(formData))
   }
+  return uploadedFiles
 }

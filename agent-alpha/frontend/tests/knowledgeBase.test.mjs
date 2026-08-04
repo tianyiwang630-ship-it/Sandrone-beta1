@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import {
-  ADD_KNOWLEDGE_BASE_PROMPT,
   INITIALIZE_KNOWLEDGE_BASE_PROMPT,
   MAINTAIN_KNOWLEDGE_BASE_PROMPT,
   REMOVE_KNOWLEDGE_BASE_DRAFT,
@@ -18,11 +18,48 @@ test('初始化提示词要求先盘点、等待确认，不直接改文件', ()
   )
 })
 
-test('新增提示词只盘点新资料并等待确认', () => {
+test('增加按钮使用可编辑草稿且不点名 Skill', async () => {
+  const knowledgeBase = await import('../src/knowledgeBase.ts')
   assert.equal(
-    ADD_KNOWLEDGE_BASE_PROMPT,
-    '请使用 managing-knowledge-wikis Skill 的“新增资料”模式，检查当前项目中是否存在尚未加入知识库的新文档。请对照 raw/、wiki/index.md、inbox/ 和项目中的其他文件，只做盘点，不要移动文件或修改 Wiki。列出发现的新资料、可能的重复资料、建议加入或暂不加入的内容，等待我确认后再执行。如果没有发现新文档，请提醒我先上传或下载资料。',
+    knowledgeBase.ADD_KNOWLEDGE_BASE_DRAFT,
+    '请加入知识库：\n未指定文件时，请检查尚未入库的新知识文档并询问我；忽略代码、配置、日志和临时文件。',
   )
+  assert.equal(knowledgeBase.ADD_KNOWLEDGE_BASE_PROMPT, undefined)
+  assert.doesNotMatch(knowledgeBase.ADD_KNOWLEDGE_BASE_DRAFT, /Skill|managing-knowledge-wikis/i)
+})
+
+test('增加草稿插入空文本并把光标停在第一行冒号后', async () => {
+  const knowledgeBase = await import('../src/knowledgeBase.ts')
+  assert.equal(typeof knowledgeBase.insertKnowledgeBaseAdditionDraft, 'function')
+  const change = knowledgeBase.insertKnowledgeBaseAdditionDraft('', 0, 0)
+  assert.equal(change.value, knowledgeBase.ADD_KNOWLEDGE_BASE_DRAFT)
+  assert.equal(change.selectionStart, '请加入知识库：'.length)
+  assert.equal(change.selectionEnd, '请加入知识库：'.length)
+})
+
+test('增加草稿在当前光标插入且不覆盖选区', async () => {
+  const knowledgeBase = await import('../src/knowledgeBase.ts')
+  assert.equal(typeof knowledgeBase.insertKnowledgeBaseAdditionDraft, 'function')
+  const change = knowledgeBase.insertKnowledgeBaseAdditionDraft('甲乙丙', 1, 2)
+  assert.equal(change.value, `甲${knowledgeBase.ADD_KNOWLEDGE_BASE_DRAFT}乙丙`)
+  assert.equal(change.selectionStart, 1 + '请加入知识库：'.length)
+  assert.equal(change.selectionEnd, 1 + '请加入知识库：'.length)
+})
+
+test('增加草稿无法取得有效光标时追加到末尾', async () => {
+  const knowledgeBase = await import('../src/knowledgeBase.ts')
+  assert.equal(typeof knowledgeBase.insertKnowledgeBaseAdditionDraft, 'function')
+  for (const position of [undefined, -1, 99]) {
+    const change = knowledgeBase.insertKnowledgeBaseAdditionDraft('已有草稿', position, position)
+    assert.equal(change.value, `已有草稿${knowledgeBase.ADD_KNOWLEDGE_BASE_DRAFT}`)
+    assert.equal(change.selectionStart, '已有草稿'.length + '请加入知识库：'.length)
+  }
+})
+
+test('增加入口只插入草稿，不走自动消息发送', () => {
+  const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  assert.match(appSource, /onAdd=\{insertKnowledgeBaseAddition\}/)
+  assert.doesNotMatch(appSource, /onAdd=\{\(\) => void sendKnowledgeBasePrompt\(ADD_KNOWLEDGE_BASE_PROMPT\)\}/)
 })
 
 test('全局整理提示词允许低风险修复，但重大结构变化先确认', () => {

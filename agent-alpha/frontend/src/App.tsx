@@ -56,9 +56,9 @@ import KnowledgeBaseComposerActions from './components/KnowledgeBaseComposerActi
 import KnowledgeBaseProjectAction from './components/KnowledgeBaseProjectAction'
 import { EMPTY_STATE_QUOTES } from './emptyStateQuotes'
 import {
-  ADD_KNOWLEDGE_BASE_PROMPT,
   INITIALIZE_KNOWLEDGE_BASE_PROMPT,
   MAINTAIN_KNOWLEDGE_BASE_PROMPT,
+  insertKnowledgeBaseAdditionDraft,
   insertKnowledgeBaseRemovalDraft,
   replaceProjectById,
 } from './knowledgeBase'
@@ -1622,6 +1622,18 @@ export default function App() {
     focusComposer(change.selectionStart, change.selectionEnd)
   }
 
+  const insertKnowledgeBaseAddition = () => {
+    const textarea = composerTextareaRef.current
+    const currentDraft = textarea?.value ?? draft
+    const change = insertKnowledgeBaseAdditionDraft(
+      currentDraft,
+      textarea?.selectionStart,
+      textarea?.selectionEnd,
+    )
+    updateDraft(change.value)
+    focusComposer(change.selectionStart, change.selectionEnd)
+  }
+
   const uploadComposerBatch = async (entries: UploadEntry[], strategy?: ConflictStrategy) => {
     if (!selectedProject || !entries.length) return
     setComposerUploading(true)
@@ -2494,7 +2506,7 @@ export default function App() {
                     {selectedProject?.is_knowledge_base && (
                       <KnowledgeBaseComposerActions
                         key={selectedProject.id}
-                        onAdd={() => void sendKnowledgeBasePrompt(ADD_KNOWLEDGE_BASE_PROMPT)}
+                        onAdd={insertKnowledgeBaseAddition}
                         onRemove={insertKnowledgeBaseRemoval}
                         onMaintain={() => void sendKnowledgeBasePrompt(MAINTAIN_KNOWLEDGE_BASE_PROMPT)}
                       />

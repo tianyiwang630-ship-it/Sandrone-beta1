@@ -1,7 +1,5 @@
 import { api } from './api/client.ts'
-import type { FileInfo, UploadConflictItem } from './types'
-
-export type ConflictStrategy = 'replace' | 'rename'
+import type { FileInfo } from './types'
 
 export interface UploadEntry {
   file: File
@@ -16,23 +14,10 @@ export function buildFolderFiles(entries: FileList | null): UploadEntry[] {
   }))
 }
 
-export async function checkProjectUploadConflicts(
-  projectId: string,
-  targetPath: string,
-  entries: UploadEntry[],
-): Promise<{ has_conflicts: boolean; conflicts: UploadConflictItem[] }> {
-  return api.checkFileConflicts({
-    project_id: projectId,
-    target_path: targetPath,
-    relative_paths: entries.map((entry) => entry.relativePath),
-  })
-}
-
 export async function uploadProjectFiles(
   projectId: string,
   targetPath: string,
   entries: UploadEntry[],
-  strategy?: ConflictStrategy,
 ): Promise<FileInfo[]> {
   const uploadedFiles: FileInfo[] = []
   for (const entry of entries) {
@@ -40,7 +25,7 @@ export async function uploadProjectFiles(
     formData.set('project_id', projectId)
     formData.set('target_path', targetPath)
     formData.set('relative_path', entry.relativePath)
-    if (strategy) formData.set('conflict_strategy', strategy)
+    formData.set('conflict_strategy', 'rename')
     formData.set('file', entry.file)
     uploadedFiles.push(await api.uploadFile(formData))
   }

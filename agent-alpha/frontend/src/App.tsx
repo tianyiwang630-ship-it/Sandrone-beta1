@@ -104,14 +104,11 @@ import type {
   SessionDetail,
   SessionEvent,
   Settings as SettingsType,
-  UploadConflictItem,
   User,
 } from './types'
 import {
   buildFolderFiles,
-  checkProjectUploadConflicts,
   uploadProjectFiles,
-  type ConflictStrategy,
   type UploadEntry,
 } from './upload'
 
@@ -553,9 +550,6 @@ export default function App() {
   const [composerMenuOpen, setComposerMenuOpen] = useState(false)
   const [retrospectiveStarting, setRetrospectiveStarting] = useState(false)
   const [composerUploading, setComposerUploading] = useState(false)
-  const [composerConflicts, setComposerConflicts] = useState<UploadConflictItem[]>([])
-  const [composerPendingUpload, setComposerPendingUpload] = useState<ComposerUploadBatch | null>(null)
-  const [showComposerConflictDialog, setShowComposerConflictDialog] = useState(false)
   const [permissionInstruction, setPermissionInstruction] = useState('')
   const [permissionSubmittingId, setPermissionSubmittingId] = useState<string | null>(null)
   const [permissionError, setPermissionError] = useState<string | null>(null)
@@ -1654,14 +1648,14 @@ export default function App() {
     focusComposer(change.selectionStart, change.selectionEnd)
   }
 
-  const uploadComposerBatch = async (batch: ComposerUploadBatch, strategy?: ConflictStrategy) => {
+  const uploadComposerBatch = async (batch: ComposerUploadBatch) => {
     if (!batch.entries.length) return
     const releaseUploadLock = acquireComposerUploadLock(composerUploadBusyRef)
     if (!releaseUploadLock) return
     setComposerUploading(true)
     setNotice(null)
     try {
-      const uploadedFiles = await uploadProjectFiles(batch.projectId, '', batch.entries, strategy)
+      const uploadedFiles = await uploadProjectFiles(batch.projectId, '', batch.entries)
       const paths = collectComposerUploadPaths(batch.kind, batch.entries, uploadedFiles)
       const currentDraftKey = draftKeyRef.current
       const appliesToCurrent = batch.draftKey === currentDraftKey
@@ -1689,9 +1683,6 @@ export default function App() {
       } else if (update.draftKey) {
         writeLocalValue(update.draftKey, update.change.value)
       }
-      setShowComposerConflictDialog(false)
-      setComposerPendingUpload(null)
-      setComposerConflicts([])
       setComposerMenuOpen(false)
       setFileDrawerRefreshKey((value) => value + 1)
       setNotice(`已上传 ${batch.entries.length} 个文件到项目根目录。`)
@@ -1715,31 +1706,7 @@ export default function App() {
       kind,
       entries,
     }
-    const releaseUploadLock = acquireComposerUploadLock(composerUploadBusyRef)
-    if (!releaseUploadLock) return
-    setComposerUploading(true)
-    let readyToUpload = false
-    try {
-      const conflictData = await checkProjectUploadConflicts(batch.projectId, '', batch.entries)
-      if (conflictData.has_conflicts) {
-        if (selectedProjectIdRef.current !== batch.projectId) {
-          setNotice('项目已切换，请回到原项目重新上传。')
-          return
-        }
-        setComposerPendingUpload(batch)
-        setComposerConflicts(conflictData.conflicts)
-        setShowComposerConflictDialog(true)
-        setComposerMenuOpen(false)
-        return
-      }
-      readyToUpload = true
-    } catch (err) {
-      setNotice(err instanceof Error ? err.message : String(err))
-    } finally {
-      setComposerUploading(false)
-      releaseUploadLock()
-    }
-    if (readyToUpload) await uploadComposerBatch(batch)
+    await uploadComposerBatch(batch)
   }
 
   const handleComposerFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -2659,40 +2626,6 @@ export default function App() {
                     </button>
                   </div>
                 </form>
-              </div>
-            )}
-            {showComposerConflictDialog && (
-              <div className="modal-backdrop">
-                <div className="modal-panel">
-                  <h3>发现重名</h3>
-                  <p>项目根目录里已经有同名文件或文件夹。请选择处理方式。</p>
-                  <div className="conflict-list">
-                    {composerConflicts.slice(0, 6).map((item) => (
-                      <div key={item.path}>{item.name}</div>
-                    ))}
-                    {composerConflicts.length > 6 && <div>还有更多...</div>}
-                  </div>
-                  <div className="modal-actions">
-                    <button
-                      className="secondary"
-                      onClick={() => {
-                        setShowComposerConflictDialog(false)
-                        setComposerPendingUpload(null)
-                      }}
-                    >
-                      取消
-                    </button>
-                    <button
-                      className="secondary"
-                      onClick={() => composerPendingUpload && void uploadComposerBatch(composerPendingUpload, 'rename')}
-                    >
-                      保留两份
-                    </button>
-                    <button onClick={() => composerPendingUpload && void uploadComposerBatch(composerPendingUpload, 'replace')}>
-                      覆盖
-                    </button>
-                  </div>
-                </div>
               </div>
             )}
           </section>

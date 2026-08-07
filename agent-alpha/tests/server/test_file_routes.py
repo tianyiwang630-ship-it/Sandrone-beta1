@@ -244,7 +244,7 @@ def test_create_folder_stays_inside_workspace(monkeypatch, tmp_path):
     assert (root / "notes").is_dir()
 
 
-def test_upload_file_renames_on_conflict(monkeypatch, tmp_path):
+def test_upload_file_renames_on_conflict_without_overwriting_original(monkeypatch, tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()
     (root / "report.txt").write_text("old", encoding="utf-8")
@@ -263,8 +263,28 @@ def test_upload_file_renames_on_conflict(monkeypatch, tmp_path):
         conflict_strategy="rename",
     )
 
-    assert result.path == "report_(1).txt"
-    assert (root / "report_(1).txt").read_text(encoding="utf-8") == "new"
+    assert result.path == "report（副本）.txt"
+    assert (root / "report.txt").read_text(encoding="utf-8") == "old"
+    assert (root / "report（副本）.txt").read_text(encoding="utf-8") == "new"
+
+
+@pytest.mark.parametrize(
+    ("existing_names", "upload_name", "expected_name"),
+    [
+        (["报告.pdf", "报告（副本）.pdf"], "报告.pdf", "报告（副本2）.pdf"),
+        (["报告.pdf", "报告（副本）.pdf", "报告（副本3）.pdf"], "报告.pdf", "报告（副本2）.pdf"),
+        (["资料.tar.gz"], "资料.tar.gz", "资料（副本）.tar.gz"),
+        (["研究 报告（副本）.pdf"], "研究 报告（副本）.pdf", "研究 报告（副本2）.pdf"),
+        (["研究 报告（副本2）.pdf"], "研究 报告（副本2）.pdf", "研究 报告（副本3）.pdf"),
+    ],
+)
+def test_rename_candidate_uses_windows_style_copy_names(tmp_path, existing_names, upload_name, expected_name):
+    for name in existing_names:
+        (tmp_path / name).write_text("existing", encoding="utf-8")
+
+    candidate = files._rename_candidate(tmp_path / upload_name)
+
+    assert candidate.name == expected_name
 
 
 def test_open_in_folder_selects_file_in_explorer(monkeypatch, tmp_path):

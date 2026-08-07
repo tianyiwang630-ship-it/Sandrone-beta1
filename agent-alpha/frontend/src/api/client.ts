@@ -11,7 +11,6 @@ import type {
   SessionDetail,
   SessionEvent,
   Settings,
-  UploadConflictItem,
   User,
 } from '../types'
 
@@ -106,11 +105,6 @@ export const api = {
     const prefix = encodedParts.length ? `${encodedParts.join('/')}/` : ''
     return `/api/files/assets/${encodeURIComponent(projectId)}/${prefix}`
   },
-  checkFileConflicts: (body: { project_id: string; target_path: string; relative_paths: string[] }) =>
-    request<{ has_conflicts: boolean; conflicts: UploadConflictItem[] }>('/files/conflicts/check', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
   uploadFile: (body: FormData) =>
     fetch('/api/files/upload', {
       method: 'POST',

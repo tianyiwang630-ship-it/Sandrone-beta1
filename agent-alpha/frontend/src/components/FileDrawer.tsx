@@ -14,13 +14,11 @@ import {
 import { ChangeEvent, MouseEvent, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import { renderMarkdown as renderMarkdownContent } from '../markdown'
-import type { FileContent, FileInfo, Project, UploadConflictItem } from '../types'
+import type { FileContent, FileInfo, Project } from '../types'
 import PptxPreview from './PptxPreview'
 import {
   buildFolderFiles,
-  checkProjectUploadConflicts,
   uploadProjectFiles,
-  type ConflictStrategy,
   type UploadEntry,
 } from '../upload'
 
@@ -94,9 +92,6 @@ export default function FileDrawer({ project, open, onClose, width, onResizeStar
   const [contextItem, setContextItem] = useState<FileInfo | null>(null)
   const [contextPos, setContextPos] = useState({ x: 0, y: 0 })
   const [targetUploadPath, setTargetUploadPath] = useState('')
-  const [conflicts, setConflicts] = useState<UploadConflictItem[]>([])
-  const [pendingUpload, setPendingUpload] = useState<UploadEntry[] | null>(null)
-  const [showConflictDialog, setShowConflictDialog] = useState(false)
   const [fileListWidth, setFileListWidth] = useState(320)
   const [renderMarkdown, setRenderMarkdown] = useState(false)
   const [draggingInternalSplit, setDraggingInternalSplit] = useState(false)
@@ -195,7 +190,6 @@ export default function FileDrawer({ project, open, onClose, width, onResizeStar
 
   const uploadBatch = async (
     files: UploadEntry[],
-    strategy?: ConflictStrategy,
     explicitTargetPath?: string,
   ) => {
     if (!project || !files.length) return
@@ -203,9 +197,7 @@ export default function FileDrawer({ project, open, onClose, width, onResizeStar
     setUploading(true)
     setError(null)
     try {
-      await uploadProjectFiles(project.id, targetPath, files, strategy)
-      setPendingUpload(null)
-      setShowConflictDialog(false)
+      await uploadProjectFiles(project.id, targetPath, files)
       setTargetUploadPath('')
       await load(targetPath)
     } catch (err) {
@@ -218,18 +210,7 @@ export default function FileDrawer({ project, open, onClose, width, onResizeStar
   const handlePickedFiles = async (entries: UploadEntry[], target = path) => {
     if (!project || !entries.length) return
     setTargetUploadPath(target)
-    try {
-      const conflictData = await checkProjectUploadConflicts(project.id, target, entries)
-      if (conflictData.has_conflicts) {
-        setPendingUpload(entries)
-        setConflicts(conflictData.conflicts)
-        setShowConflictDialog(true)
-        return
-      }
-      await uploadBatch(entries, undefined, target)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
+    await uploadBatch(entries, target)
   }
 
   const handleFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -488,38 +469,6 @@ export default function FileDrawer({ project, open, onClose, width, onResizeStar
         </div>
       )}
 
-      {showConflictDialog && (
-        <div className="modal-backdrop">
-          <div className="modal-panel">
-            <h3>发现重名</h3>
-            <p>目标目录里已经有同名文件或文件夹。请选择处理方式。</p>
-            <div className="conflict-list">
-              {conflicts.slice(0, 6).map((item) => (
-                <div key={item.path}>{item.name}</div>
-              ))}
-              {conflicts.length > 6 && <div>还有更多…</div>}
-            </div>
-            <div className="modal-actions">
-              <button
-                className="secondary"
-                onClick={() => {
-                  setShowConflictDialog(false)
-                  setPendingUpload(null)
-                }}
-              >
-                取消
-              </button>
-              <button
-                className="secondary"
-                onClick={() => pendingUpload && void uploadBatch(pendingUpload, 'rename')}
-              >
-                保留两份
-              </button>
-              <button onClick={() => pendingUpload && void uploadBatch(pendingUpload, 'replace')}>覆盖</button>
-            </div>
-          </div>
-        </div>
-      )}
     </aside>
   )
 }

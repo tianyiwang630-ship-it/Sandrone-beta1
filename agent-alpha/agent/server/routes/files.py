@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import mimetypes
+import re
 import shutil
 import subprocess
 import tempfile
@@ -97,9 +98,15 @@ def _split_name(name: str) -> tuple[str, str]:
 
 def _rename_candidate(path: Path) -> Path:
     base, ext = _split_name(path.name)
-    counter = 1
+    copy_match = re.fullmatch(r"(.*)（副本(?:(\d+))?）", base)
+    if copy_match:
+        base = copy_match.group(1)
+        counter = int(copy_match.group(2) or 1) + 1
+    else:
+        counter = 1
     while True:
-        candidate = path.with_name(f"{base}_({counter}){ext}")
+        copy_suffix = "（副本）" if counter == 1 else f"（副本{counter}）"
+        candidate = path.with_name(f"{base}{copy_suffix}{ext}")
         if not candidate.exists():
             return candidate
         counter += 1

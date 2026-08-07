@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { ALIGNMENT_PROMPT_PREFIX } from '../src/alignmentPrompt.ts'
@@ -75,10 +76,10 @@ test('文件上传使用后端返回的最终路径', () => {
   const paths = collectComposerUploadPaths(
     'files',
     [{ relativePath: '论文.pdf' }],
-    [{ name: '论文_(1).pdf', path: '论文_(1).pdf', size: 10, is_dir: false }],
+    [{ name: '论文（副本）.pdf', path: '论文（副本）.pdf', size: 10, is_dir: false }],
   )
 
-  assert.deepEqual(paths, ['论文_(1).pdf'])
+  assert.deepEqual(paths, ['论文（副本）.pdf'])
 })
 
 test('文件夹上传只展示根目录并兼容中文空格和多层内容', () => {
@@ -104,8 +105,10 @@ test('上传公共函数按顺序返回后端最终文件信息', async () => {
     { name: '乙.txt', path: '乙.txt', size: 1, is_dir: false },
   ]
   const relativePaths = []
+  const strategies = []
   api.uploadFile = async (formData) => {
     relativePaths.push(formData.get('relative_path'))
+    strategies.push(formData.get('conflict_strategy'))
     return responses[relativePaths.length - 1]
   }
 
@@ -117,14 +120,30 @@ test('上传公共函数按顺序返回后端最终文件信息', async () => {
         { file: new Blob(['a']), relativePath: '甲.txt' },
         { file: new Blob(['b']), relativePath: '乙.txt' },
       ],
-      'rename',
     )
 
     assert.deepEqual(relativePaths, ['甲.txt', '乙.txt'])
+    assert.deepEqual(strategies, ['rename', 'rename'])
     assert.deepEqual(files, responses)
   } finally {
     api.uploadFile = originalUploadFile
   }
+})
+
+test('两个上传入口不再预检查重名或显示处理弹窗', () => {
+  const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  const drawerSource = readFileSync(new URL('../src/components/FileDrawer.tsx', import.meta.url), 'utf8')
+  const uploadSource = readFileSync(new URL('../src/upload.ts', import.meta.url), 'utf8')
+  const clientSource = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
+  const typesSource = readFileSync(new URL('../src/types/index.ts', import.meta.url), 'utf8')
+
+  for (const source of [appSource, drawerSource]) {
+    assert.doesNotMatch(source, /checkProjectUploadConflicts/)
+    assert.doesNotMatch(source, /发现重名|保留两份/)
+  }
+  assert.match(uploadSource, /formData\.set\('conflict_strategy', 'rename'\)/)
+  assert.doesNotMatch(clientSource, /checkFileConflicts/)
+  assert.doesNotMatch(typesSource, /interface UploadConflictItem/)
 })
 
 test('上传期间切换会话时只准备更新原草稿', () => {

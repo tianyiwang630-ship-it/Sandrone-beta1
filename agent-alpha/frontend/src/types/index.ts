@@ -114,12 +114,6 @@ export interface FileInfo {
   is_dir: boolean
 }
 
-export interface UploadConflictItem {
-  path: string
-  name: string
-  is_dir: boolean
-}
-
 export interface FileContent {
   path: string
   name: string

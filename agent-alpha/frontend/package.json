@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "desktop/main.cjs",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "tsc && vite build",
-    "test": "node --test tests/alignmentPrompt.test.mjs tests/sessionDeletion.test.mjs tests/messageQueue.test.mjs tests/chatScroll.test.mjs tests/sessionRename.test.mjs tests/chatPresentation.test.mjs tests/permissionPrompt.test.mjs tests/knowledgeBase.test.mjs tests/composerUploadPaths.test.mjs",
+    "desktop:start": "electron .",
+    "desktop:prepare": "powershell -ExecutionPolicy Bypass -File scripts/prepare-desktop.ps1",
+    "test": "node --test tests/alignmentPrompt.test.mjs tests/sessionDeletion.test.mjs tests/messageQueue.test.mjs tests/chatScroll.test.mjs tests/sessionRename.test.mjs tests/chatPresentation.test.mjs tests/permissionPrompt.test.mjs tests/knowledgeBase.test.mjs tests/composerUploadPaths.test.mjs tests/desktopBackend.test.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 5173"
   },
   "dependencies": {
@@ -20,6 +23,7 @@
   "devDependencies": {
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "electron": "44.3.0",
     "typescript": "^5.7.2"
   }
 }

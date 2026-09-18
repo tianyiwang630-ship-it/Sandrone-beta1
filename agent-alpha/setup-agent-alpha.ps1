@@ -85,4 +85,7 @@ Invoke-NativeCommand uv @("pip", "install", "--python", $PythonExe, "-r", "requi
 Write-Host "Installing/updating agent-alpha in editable mode..." -ForegroundColor Cyan
 Invoke-NativeCommand uv @("pip", "install", "--python", $PythonExe, "-e", ".")
 
+Write-Host "Installing Browser Harness 0.1.13 in its isolated tool environment..." -ForegroundColor Cyan
+Invoke-NativeCommand uv @("tool", "install", "--python", $PythonVersion, "--force", "browser-harness==0.1.13")
+
 Write-Host "agent-alpha environment is ready." -ForegroundColor Green

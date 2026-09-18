@@ -4,6 +4,9 @@ import test from 'node:test'
 import {
   attachesLiveRunToTurn,
   displayedAssistantText,
+  displayedProcessContent,
+  formatRunFailureMessage,
+  hasAssistantProcessText,
   mergeActiveRunEvents,
   mergeProcessPresentation,
   processMessageKey,
@@ -70,4 +73,68 @@ test('only the last chat turn receives live state', () => {
 test('streamed answer remains authoritative until the final snapshot takes over', () => {
   assert.equal(displayedAssistantText('流式回答', ''), '流式回答')
   assert.equal(displayedAssistantText('', '正式回答'), '正式回答')
+})
+
+test('completed process presentation keeps assistant text visible', () => {
+  const assistantWithTool = {
+    ...toolCall('call-bash', 'bash'),
+    content: '端口通了，jobsdb 页面也加载出来了。',
+  }
+  const items = mergeProcessPresentation([assistantWithTool, toolResult('call-bash')], [])
+
+  assert.equal(hasAssistantProcessText(items), true)
+})
+
+test('tool-only process presentation does not force the process group open', () => {
+  const items = mergeProcessPresentation([toolCall('call-bash', 'bash'), toolResult('call-bash')], [])
+
+  assert.equal(hasAssistantProcessText(items), false)
+})
+
+test('assistant text is shown instead of being replaced by the tool label', () => {
+  const assistantWithTool = {
+    ...toolCall('call-bash', 'bash'),
+    content: '端口通了，jobsdb 页面也加载出来了。',
+  }
+
+  assert.equal(displayedProcessContent(assistantWithTool, '调用工具: bash'), assistantWithTool.content)
+})
+
+test('tool label remains as the fallback when the assistant emitted no text', () => {
+  assert.equal(displayedProcessContent(toolCall('call-bash', 'bash'), '调用工具: bash'), '调用工具: bash')
+  assert.equal(
+    displayedProcessContent({ ...toolCall('call-bash', 'bash'), content: '   ' }, '调用工具: bash'),
+    '调用工具: bash',
+  )
+})
+
+test('unexpected run failures use a generic runtime message', () => {
+  assert.equal(
+    formatRunFailureMessage({ requestId: 'req', startedAfterSeq: 0, error: 'boom' }),
+    '运行失败：boom。已保留本轮已完成工具记录。',
+  )
+})
+
+test('recoverable model failures keep recovery guidance', () => {
+  assert.equal(
+    formatRunFailureMessage({
+      requestId: 'req',
+      startedAfterSeq: 0,
+      error: 'timeout',
+      recoverable: true,
+    }),
+    '本轮模型请求暂未完成：timeout。现场已保存，可直接发送“继续”恢复。',
+  )
+})
+
+test('context compaction failures keep compaction-specific guidance', () => {
+  assert.equal(
+    formatRunFailureMessage({
+      requestId: 'req',
+      startedAfterSeq: 0,
+      error: 'too large',
+      operation: 'compact',
+    }),
+    '上下文压缩失败：too large。原会话历史和模型上下文未改变。',
+  )
 })

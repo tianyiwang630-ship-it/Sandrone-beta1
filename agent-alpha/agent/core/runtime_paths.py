@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
-from typing import Mapping, MutableMapping
+from typing import Any, Mapping, MutableMapping
 
 
 RESERVED_RUNTIME_ENV_KEYS = {
     "AGENT_ALPHA_ROOT",
+    "AGENT_ALPHA_HOST_LOCALAPPDATA",
+    "AGENT_ALPHA_HOST_PROGRAMFILES",
+    "AGENT_ALPHA_HOST_PROGRAMFILES_X86",
     "AGENT_ALPHA_RUNTIME_PROFILE_KEYS",
     "HOME",
     "USERPROFILE",
@@ -57,6 +61,25 @@ HOST_PYTHON_ENV_KEYS = {
 RUNTIME_PROFILE_KEYS_ENV = "AGENT_ALPHA_RUNTIME_PROFILE_KEYS"
 
 
+def configure_standard_streams(
+    stdout: Any | None = None,
+    stderr: Any | None = None,
+) -> None:
+    """Keep diagnostic output from crashing under Windows legacy encodings."""
+    streams = (
+        sys.stdout if stdout is None else stdout,
+        sys.stderr if stderr is None else stderr,
+    )
+    for stream in streams:
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+
 def ensure_runtime_directories(project_root: Path) -> None:
     """Create agent-alpha's project-local runtime directory tree."""
     root = Path(project_root)
@@ -91,6 +114,11 @@ def ensure_runtime_directories(project_root: Path) -> None:
         "state/browser/sockets",
         "state/browser/downloads",
         "state/browser/runtime",
+        "state/browser-harness",
+        "state/browser-harness/runtime",
+        "state/browser-harness/browser-profile",
+        "state/browser-harness/agent-workspace",
+        "temp/browser-harness",
     ]:
         (root / relative).mkdir(parents=True, exist_ok=True)
 
@@ -121,7 +149,8 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
     agent_bin_dir = root / "bin"
     npm_prefix = root / "config" / "appdata" / "npm"
     npm_bin_dir = npm_prefix if os_name == "nt" else npm_prefix / "bin"
-    env = _normalize_runtime_env(base_env or os.environ, os_name=os_name)
+    source_env = base_env or os.environ
+    env = _normalize_runtime_env(source_env, os_name=os_name)
     _remove_previous_profile_keys(env, os_name=os_name)
     for key in HOST_PYTHON_ENV_KEYS | PYTHON_ENCODING_ENV_KEYS:
         _pop_env_key(env, key, os_name=os_name)
@@ -131,6 +160,9 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
 
     runtime_values = {
         "AGENT_ALPHA_ROOT": root,
+        "AGENT_ALPHA_HOST_LOCALAPPDATA": _host_env_value(source_env, "LOCALAPPDATA"),
+        "AGENT_ALPHA_HOST_PROGRAMFILES": _host_env_value(source_env, "PROGRAMFILES"),
+        "AGENT_ALPHA_HOST_PROGRAMFILES_X86": _host_env_value(source_env, "PROGRAMFILES(X86)"),
         RUNTIME_PROFILE_KEYS_ENV: json.dumps(sorted(profile), ensure_ascii=True),
         "HOME": home,
         "USERPROFILE": home,
@@ -160,7 +192,7 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
         "VIRTUAL_ENV": venv,
         "PYTHONNOUSERSITE": "1",
     }
-    env.update({key: str(value) for key, value in runtime_values.items()})
+    env.update({key: str(value) for key, value in runtime_values.items() if value})
 
     if os_name == "nt":
         drive = root.drive or home.drive
@@ -248,6 +280,11 @@ def _get_env_value(env: Mapping[str, str], key: str, *, os_name: str) -> str | N
                 return value
         return None
     return env.get(key)
+
+
+def _host_env_value(env: Mapping[str, str], key: str) -> str | None:
+    preserved_key = f"AGENT_ALPHA_HOST_{key.replace('(', '_').replace(')', '')}"
+    return env.get(preserved_key) or env.get(key)
 
 
 def _local_python_scripts_dirs(project_root: Path) -> list[Path]:

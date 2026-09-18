@@ -4,6 +4,14 @@ export type ProcessPresentationItem =
   | { key: string; kind: 'message'; message: Message }
   | { key: string; kind: 'event'; event: SessionEvent }
 
+export interface FailedRunSnapshot {
+  requestId: string
+  startedAfterSeq: number
+  error: string
+  operation?: 'chat' | 'compact'
+  recoverable?: boolean
+}
+
 function stableHash(value: string) {
   let hash = 2166136261
   for (let index = 0; index < value.length; index += 1) {
@@ -67,6 +75,23 @@ export function mergeProcessPresentation(
   return items
 }
 
+export function hasAssistantProcessText(items: ProcessPresentationItem[]) {
+  return items.some(
+    (item) =>
+      item.kind === 'message'
+      && Array.isArray(item.message.tool_calls)
+      && typeof item.message.content === 'string'
+      && item.message.content.trim().length > 0,
+  )
+}
+
+export function displayedProcessContent(message: Message, fallback: string) {
+  const content = message.content
+  if (typeof content === 'string') return content.trim() ? content : fallback
+  if (content == null) return fallback
+  return JSON.stringify(content, null, 2)
+}
+
 function sessionEventKey(event: SessionEvent) {
   const seq = Number(event.seq)
   if (Number.isFinite(seq) && seq > 0) return `${event.session_id || ''}:${seq}`
@@ -90,4 +115,19 @@ export function attachesLiveRunToTurn(
 
 export function displayedAssistantText(liveText: string, historicalText: string) {
   return liveText || historicalText
+}
+
+export function formatRunFailureMessage(snapshot: FailedRunSnapshot) {
+  if (snapshot.recoverable) {
+    return snapshot.error
+      ? `本轮模型请求暂未完成：${snapshot.error}。现场已保存，可直接发送“继续”恢复。`
+      : '本轮模型请求暂未完成。现场已保存，可直接发送“继续”恢复。'
+  }
+  if (snapshot.operation === 'compact') {
+    return snapshot.error
+      ? `上下文压缩失败：${snapshot.error}。原会话历史和模型上下文未改变。`
+      : '上下文压缩失败。原会话历史和模型上下文未改变。'
+  }
+  const preserved = '已保留本轮已完成工具记录。'
+  return snapshot.error ? `运行失败：${snapshot.error}。${preserved}` : `运行失败。${preserved}`
 }

@@ -43,16 +43,27 @@ if not exist "%FRONTEND%\node_modules" (
   popd
 )
 
-for %%P in (8787 5173) do (
-  for /f "tokens=5" %%A in ('netstat -ano ^| findstr /R /C:":%%P .*LISTENING"') do (
-    if not "%%A"=="0" (
-      echo Stopping old agent-alpha service on port %%P, pid %%A
-      taskkill /PID %%A /F >nul 2>nul
-    )
+"powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\check-web-backend.ps1"
+if errorlevel 2 (
+  echo Port 8787 is occupied by another service. Nothing was stopped.
+  pause
+  exit /b 1
+)
+set "START_API=1"
+if not errorlevel 1 set "START_API=0"
+
+for /f "tokens=5" %%A in ('netstat -ano ^| findstr /R /C:":5173 .*LISTENING"') do (
+  if not "%%A"=="0" (
+    echo Stopping old frontend server on port 5173, pid %%A
+    taskkill /PID %%A /F >nul 2>nul
   )
 )
 
-start "agent-alpha api" /D "%ROOT%" cmd /k ""%PYTHON%" -m agent.server.app"
+if "%START_API%"=="1" (
+  start "agent-alpha api" /D "%ROOT%" cmd /k ""%PYTHON%" -m agent.server.app"
+) else (
+  echo Reusing the existing agent-alpha backend.
+)
 start "agent-alpha frontend" /D "%FRONTEND%" cmd /k "npm.cmd run dev"
 
 timeout /t 3 >nul

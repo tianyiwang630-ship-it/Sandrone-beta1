@@ -3,7 +3,38 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from agent.core.runtime_paths import build_runtime_env
+from agent.core.runtime_paths import build_runtime_env, configure_standard_streams, ensure_runtime_directories
+
+
+class RecordingStream:
+    def __init__(self, *, error: Exception | None = None):
+        self.error = error
+        self.calls: list[dict[str, str]] = []
+
+    def reconfigure(self, **kwargs: str) -> None:
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+
+
+def test_standard_streams_are_reconfigured_to_utf8():
+    stdout = RecordingStream()
+    stderr = RecordingStream()
+
+    configure_standard_streams(stdout, stderr)
+
+    expected = [{"encoding": "utf-8", "errors": "replace"}]
+    assert stdout.calls == expected
+    assert stderr.calls == expected
+
+
+def test_standard_stream_failure_does_not_block_the_other_stream():
+    stdout = RecordingStream(error=RuntimeError("unsupported"))
+    stderr = RecordingStream()
+
+    configure_standard_streams(stdout, stderr)
+
+    assert stderr.calls == [{"encoding": "utf-8", "errors": "replace"}]
 
 
 def test_runtime_env_exposes_harness_node_and_tool_locations(tmp_path: Path):
@@ -29,6 +60,30 @@ def test_runtime_env_exposes_harness_node_and_tool_locations(tmp_path: Path):
     else:
         expected_entries.add((npm_prefix / "bin").resolve())
     assert expected_entries.issubset(set(path_entries))
+
+
+def test_runtime_env_preserves_host_browser_install_locations(tmp_path: Path):
+    env = build_runtime_env(
+        tmp_path,
+        base_env={
+            "LOCALAPPDATA": r"C:\Users\person\AppData\Local",
+            "PROGRAMFILES": r"C:\Program Files",
+            "PROGRAMFILES(X86)": r"C:\Program Files (x86)",
+        },
+    )
+
+    assert env["AGENT_ALPHA_HOST_LOCALAPPDATA"] == r"C:\Users\person\AppData\Local"
+    assert env["AGENT_ALPHA_HOST_PROGRAMFILES"] == r"C:\Program Files"
+    assert env["AGENT_ALPHA_HOST_PROGRAMFILES_X86"] == r"C:\Program Files (x86)"
+
+
+def test_browser_harness_runtime_directories_are_created(tmp_path: Path):
+    ensure_runtime_directories(tmp_path)
+
+    assert (tmp_path / "state" / "browser-harness" / "runtime").is_dir()
+    assert (tmp_path / "state" / "browser-harness" / "browser-profile").is_dir()
+    assert (tmp_path / "state" / "browser-harness" / "agent-workspace").is_dir()
+    assert (tmp_path / "temp" / "browser-harness").is_dir()
 
 
 def test_runtime_path_entries_are_not_duplicated_when_env_is_applied_twice(tmp_path: Path):

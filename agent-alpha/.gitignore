@@ -60,6 +60,7 @@ ENV/
 /temp/
 
 # MCP 子模块
+/frontend/node_modules/
 mcp-servers/**/node_modules/
 mcp-servers/**/.venv/
 mcp-servers/**/.auto-config.json

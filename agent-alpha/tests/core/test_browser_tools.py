@@ -425,9 +425,10 @@ def test_force_close_headed_no_lock_is_noop(browser_manager):
     assert result["interactive_lock_released"] is False
 
 
-def test_force_close_headed_tool_is_registered():
-    assert ToolLoader.TOOL_GROUPS["profile_force_close_headed"] == "browser_profile"
-    assert ("agent.tools.browser_tool", "ProfileForceCloseHeadedTool", {}) in ToolLoader.BUILTIN_TOOLS
+def test_force_close_headed_tool_is_preserved_but_not_registered():
+    assert "profile_force_close_headed" not in ToolLoader.TOOL_GROUPS
+    assert ("agent.tools.browser_tool", "ProfileForceCloseHeadedTool", {}) not in ToolLoader.BUILTIN_TOOLS
+    assert ProfileForceCloseHeadedTool().name == "profile_force_close_headed"
 
 
 def test_force_close_headed_tool_schema_has_no_profile_parameter():

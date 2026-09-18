@@ -38,22 +38,7 @@ class ToolLoader:
         "fetch": "network",
         "load_skill": "skill",
         "tool_search": "meta",
-        "browser_navigate": "browser_headless",
-        "browser_snapshot": "browser_headless",
-        "browser_click": "browser_headless",
-        "browser_type": "browser_headless",
-        "browser_scroll": "browser_headless",
-        "browser_press": "browser_headless",
-        "browser_close": "browser_headless",
-        "profile_list": "browser_profile",
-        "profile_create": "browser_profile",
-        "profile_login_headed": "browser_profile",
-        "profile_save_headed": "browser_profile",
-        "profile_close_headed": "browser_profile",
-        "profile_force_close_headed": "browser_profile",
-        "browser_connect_cdp": "browser_cdp",
-        "browser_disconnect_cdp": "browser_cdp",
-        "browser_cdp_status": "browser_cdp",
+        "browser_harness_exec": "browser_harness",
     }
 
     BUILTIN_TOOLS = [
@@ -65,22 +50,7 @@ class ToolLoader:
         ("agent.tools.glob_tool", "GlobTool", {}),
         ("agent.tools.grep_tool", "GrepTool", {}),
         ("agent.tools.fetch_tool", "FetchTool", {}),
-        ("agent.tools.browser_tool", "BrowserNavigateTool", {}),
-        ("agent.tools.browser_tool", "BrowserSnapshotTool", {}),
-        ("agent.tools.browser_tool", "BrowserClickTool", {}),
-        ("agent.tools.browser_tool", "BrowserTypeTool", {}),
-        ("agent.tools.browser_tool", "BrowserScrollTool", {}),
-        ("agent.tools.browser_tool", "BrowserPressTool", {}),
-        ("agent.tools.browser_tool", "BrowserCloseTool", {}),
-        ("agent.tools.browser_tool", "ProfileListTool", {}),
-        ("agent.tools.browser_tool", "ProfileCreateTool", {}),
-        ("agent.tools.browser_tool", "ProfileLoginHeadedTool", {}),
-        ("agent.tools.browser_tool", "ProfileSaveHeadedTool", {}),
-        ("agent.tools.browser_tool", "ProfileCloseHeadedTool", {}),
-        ("agent.tools.browser_tool", "ProfileForceCloseHeadedTool", {}),
-        ("agent.tools.browser_tool", "BrowserConnectCdpTool", {}),
-        ("agent.tools.browser_tool", "BrowserDisconnectCdpTool", {}),
-        ("agent.tools.browser_tool", "BrowserCdpStatusTool", {}),
+        ("agent.tools.browser_harness_tool", "BrowserHarnessTool", {}),
     ]
 
     def __init__(
@@ -424,7 +394,7 @@ class ToolLoader:
                 tool_class = getattr(module, class_name)
                 if class_name == "BashTool":
                     init_kwargs = {**init_kwargs, "project_root": self.project_root, "workspace_root": self.workspace_root}
-                elif class_name.startswith(("Browser", "Profile")):
+                elif class_name == "BrowserHarnessTool":
                     init_kwargs = {**init_kwargs, "project_root": self.project_root}
                 tool_instance = tool_class(**init_kwargs)
                 if self.interrupt_event is not None and hasattr(tool_instance, "set_interrupt_event"):

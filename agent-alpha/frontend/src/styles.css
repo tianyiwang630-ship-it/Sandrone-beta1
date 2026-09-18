@@ -829,6 +829,71 @@ button {
   font-size: 12px;
 }
 
+.tool-call-card {
+  min-width: 0;
+  border: 1px solid #e2e7eb;
+  border-radius: 7px;
+  background: #fbfcfd;
+}
+
+.tool-call-name {
+  overflow: hidden;
+  min-height: 36px;
+  padding: 8px 12px;
+  color: #53616a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tool-call-card[open] > .tool-call-name {
+  border-bottom: 1px solid #e2e7eb;
+}
+
+.tool-call-note {
+  margin: 0;
+  color: #62717a;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.tool-call-details {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.tool-call-section,
+.tool-output-orphan {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tool-call-section-label {
+  color: #62717a;
+  font-size: 12px;
+}
+
+.tool-call-content,
+.tool-call-output,
+.tool-output-orphan pre {
+  max-height: 220px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 7px;
+  background: #eef2f4;
+  color: #53616a;
+  font-size: 12px;
+}
+
+.tool-output-orphan {
+  padding: 12px;
+  border: 1px dashed #d7e0e5;
+  border-radius: 7px;
+  background: #fbfcfd;
+}
+
 .process-group.live summary {
   color: #5f6c74;
 }

@@ -49,8 +49,12 @@ import {
 import {
   attachesLiveRunToTurn,
   displayedAssistantText,
+  displayedProcessContent,
+  formatRunFailureMessage,
+  hasAssistantProcessText,
   mergeActiveRunEvents,
   mergeProcessPresentation,
+  type FailedRunSnapshot,
 } from './chatPresentation'
 import FileDrawer from './components/FileDrawer'
 import KnowledgeBaseComposerActions from './components/KnowledgeBaseComposerActions'
@@ -127,14 +131,6 @@ interface RunningSession {
   startedAfterSeq: number
   operation?: 'chat' | 'compact'
   pendingPermission?: PendingPermission | null
-}
-
-interface FailedRunSnapshot {
-  requestId: string
-  startedAfterSeq: number
-  error: string
-  operation?: 'chat' | 'compact'
-  recoverable?: boolean
 }
 
 interface QueueDropTarget {
@@ -303,7 +299,7 @@ function summarizeLiveStatus(events: SessionEvent[]) {
     if (type === 'context_compaction_skipped') return '当前上下文无需压缩'
     if (type === 'context_compaction_failed') return '上下文压缩失败'
     if (type === 'context_compaction_interrupted') return '压缩已中断'
-    if (type === 'run_failed') return '模型连接失败'
+    if (type === 'run_failed') return '运行失败'
     if (type === 'run_recoverable') return '现场已保存，可继续恢复'
   }
   return '正在思考'
@@ -335,7 +331,7 @@ function eventSummary(event: SessionEvent) {
   if (type === 'context_compaction_skipped') return '当前上下文无需压缩'
   if (type === 'context_compaction_failed') return '上下文压缩失败'
   if (type === 'context_compaction_interrupted') return '上下文压缩已中断'
-  if (type === 'run_failed') return '模型连接失败'
+  if (type === 'run_failed') return '运行失败'
   if (type === 'run_recoverable') return '模型请求暂未完成，现场已保存'
   if (type.includes('tool') && name) return `工具 ${name}`
   if (name) return `${type} ${name}`
@@ -426,23 +422,10 @@ function failedRunFromEvents(events: SessionEvent[]): FailedRunSnapshot | null {
   }
 }
 
-function formatRunFailureMessage(snapshot: FailedRunSnapshot) {
-  if (snapshot.recoverable) {
-    return snapshot.error
-      ? `本轮模型请求暂未完成：${snapshot.error}。现场已保存，可直接发送“继续”恢复。`
-      : '本轮模型请求暂未完成。现场已保存，可直接发送“继续”恢复。'
-  }
-  if (snapshot.operation === 'compact') {
-    return snapshot.error ? `上下文压缩失败：${snapshot.error}。原会话历史和模型上下文未改变。` : '上下文压缩失败。原会话历史和模型上下文未改变。'
-  }
-  const preserved = '已保留本轮已完成工具记录。'
-  return snapshot.error ? `模型连接失败：${snapshot.error}。${preserved}` : `模型连接失败。${preserved}`
-}
-
 function renderProcessContent(step: Message) {
   if (hasToolCalls(step)) {
     const toolNames = step.tool_calls?.map(toolCallName).join(', ')
-    return toolNames ? `调用工具: ${toolNames}` : '调用工具'
+    return displayedProcessContent(step, toolNames ? `调用工具: ${toolNames}` : '调用工具')
   }
   return messageText(step)
 }
@@ -2220,6 +2203,7 @@ export default function App() {
                   hasAttachedLiveRun ? visibleLiveEvents : [],
                 )
                 const visibleProcessItems = hasAttachedLiveRun ? processItems.slice(-8) : processItems
+                const keepProcessTextVisible = !hasAttachedLiveRun && hasAssistantProcessText(processItems)
                 const assistantText = hasAttachedLiveRun
                   ? displayedAssistantText(currentStreamText, turn.assistant ? messageText(turn.assistant) : '')
                   : turn.assistant ? messageText(turn.assistant) : ''
@@ -2234,7 +2218,10 @@ export default function App() {
                     )}
                     <div className="assistant-stack">
                       {processItems.length > 0 && (
-                        <details className={`process-group ${hasAttachedLiveRun ? 'live' : ''} ${hasAttachedLiveRun && isShowingFailedRun ? 'failed' : ''}`}>
+                        <details
+                          className={`process-group ${hasAttachedLiveRun ? 'live' : ''} ${hasAttachedLiveRun && isShowingFailedRun ? 'failed' : ''}`}
+                          open={keepProcessTextVisible ? true : undefined}
+                        >
                           <summary>
                             {hasAttachedLiveRun ? (
                               <span className="live-summary-content">

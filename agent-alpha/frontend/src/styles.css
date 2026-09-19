@@ -490,7 +490,9 @@ button {
 }
 
 .topbar > :first-child {
+  flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
 }
 
 .topbar h1,
@@ -501,7 +503,9 @@ button {
 }
 
 .topbar h1 {
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .eyebrow {
@@ -864,14 +868,16 @@ button {
 }
 
 .tool-call-details {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   padding: 12px;
 }
 
 .tool-call-section,
 .tool-output-orphan {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   min-width: 0;
 }

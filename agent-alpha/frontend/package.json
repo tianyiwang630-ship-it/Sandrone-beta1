@@ -9,7 +9,7 @@
     "build": "tsc && vite build",
     "desktop:start": "electron .",
     "desktop:prepare": "powershell -ExecutionPolicy Bypass -File scripts/prepare-desktop.ps1",
-    "test": "node --test tests/alignmentPrompt.test.mjs tests/sessionDeletion.test.mjs tests/messageQueue.test.mjs tests/chatScroll.test.mjs tests/sessionRename.test.mjs tests/chatPresentation.test.mjs tests/chatLayoutStyles.test.mjs tests/permissionPrompt.test.mjs tests/knowledgeBase.test.mjs tests/composerUploadPaths.test.mjs tests/desktopBackend.test.mjs",
+    "test": "node --test tests/alignmentPrompt.test.mjs tests/sessionDeletion.test.mjs tests/messageQueue.test.mjs tests/chatScroll.test.mjs tests/sessionRename.test.mjs tests/chatPresentation.test.mjs tests/chatLayoutStyles.test.mjs tests/paneLayout.test.mjs tests/permissionPrompt.test.mjs tests/knowledgeBase.test.mjs tests/composerUploadPaths.test.mjs tests/desktopBackend.test.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 5173"
   },
   "dependencies": {

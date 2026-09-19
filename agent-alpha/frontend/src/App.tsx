@@ -95,6 +95,12 @@ import {
   type QueuedMessage,
   type SessionMessageQueue,
 } from './messageQueue'
+import {
+  fitDrawerWidth,
+  MIN_CHAT_WIDTH,
+  MIN_CHAT_WIDTH_WITH_DRAWER,
+  SHELL_RESIZER_WIDTH,
+} from './paneLayout'
 import { excludeDeletedSessions } from './sessionDeletion'
 import {
   mergeSessionDetail,
@@ -154,11 +160,6 @@ const FALLBACK_COMPOSER_SKILLS: CapabilityItem[] = [
   { name: 'ljg-plain', kind: 'skill', path: '', summary: '把复杂内容讲成白话' },
   { name: 'pdf', kind: 'skill', path: '', summary: '读取、拆分、合并或生成 PDF' },
 ]
-
-const SHELL_RESIZER_WIDTH = 8
-const MIN_CHAT_WIDTH = 520
-const MIN_CHAT_WIDTH_WITH_DRAWER = 180
-const MIN_DRAWER_WIDTH = 520
 
 function pickEmptyStateQuote(currentQuotes: Record<string, string>) {
   const usedQuotes = new Set(Object.values(currentQuotes))
@@ -946,6 +947,18 @@ export default function App() {
     pendingScrollRestoreRef.current = null
   }, [selectedSessionId, sessionDetail])
 
+  useLayoutEffect(() => {
+    if (!drawerOpen) return
+
+    const fitToViewport = () => {
+      setDrawerWidth((current) => fitDrawerWidth(current, window.innerWidth, sidebarWidth))
+    }
+
+    fitToViewport()
+    window.addEventListener('resize', fitToViewport)
+    return () => window.removeEventListener('resize', fitToViewport)
+  }, [drawerOpen, sidebarWidth])
+
   useEffect(() => {
     if (!draggingPane) return
 
@@ -960,8 +973,11 @@ export default function App() {
         return
       }
 
-      const maxWidth = Math.max(MIN_DRAWER_WIDTH, window.innerWidth - sidebarWidth - MIN_CHAT_WIDTH_WITH_DRAWER - SHELL_RESIZER_WIDTH)
-      setDrawerWidth(clamp(dragStateRef.current.drawerWidth - deltaX, MIN_DRAWER_WIDTH, maxWidth))
+      setDrawerWidth(fitDrawerWidth(
+        dragStateRef.current.drawerWidth - deltaX,
+        window.innerWidth,
+        sidebarWidth,
+      ))
     }
 
     const handleMouseUp = () => setDraggingPane(null)

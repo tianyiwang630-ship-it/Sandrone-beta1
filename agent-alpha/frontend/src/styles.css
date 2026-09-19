@@ -489,8 +489,12 @@ button {
   border-bottom: 1px solid var(--line);
 }
 
+.topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .topbar > :first-child {
-  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
 }

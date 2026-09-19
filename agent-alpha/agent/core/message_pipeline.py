@@ -78,6 +78,9 @@ def prepare_runtime_history(
 
         content = _normalize_content(raw.get("content"))
         item: dict[str, Any] = {"role": role, "content": content}
+        for key in ("_message_id", "_sender_id", "_source"):
+            if key in raw:
+                item[key] = raw[key]
         runtime_kind = raw.get("_runtime_kind")
         if runtime_kind:
             item["_runtime_kind"] = str(runtime_kind)

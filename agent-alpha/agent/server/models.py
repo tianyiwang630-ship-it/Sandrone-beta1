@@ -58,6 +58,7 @@ class MessageItem(BaseModel):
     content: Any = None
     tool_calls: list[dict[str, Any]] | None = None
     tool_call_id: str | None = None
+    source_agent_id: str | None = Field(default=None, validation_alias="_sender_id")
 
 
 class SessionDetail(SessionInfo):
@@ -83,6 +84,7 @@ class RetrospectiveStartResponse(BaseModel):
 class ChatRequest(BaseModel):
     session_id: str
     message: str = Field(min_length=1)
+    mode: Literal["queue", "steer"] = "queue"
 
 
 class CompactRequest(BaseModel):
@@ -94,7 +96,7 @@ class ChatStartResponse(BaseModel):
     session_id: str
 
 
-ChatRunStatus = Literal["running", "success", "failed", "interrupted", "recoverable"]
+ChatRunStatus = Literal["running", "stopping", "stop_failed", "success", "failed", "interrupted", "recoverable"]
 ChatRunOperation = Literal["chat", "compact"]
 
 

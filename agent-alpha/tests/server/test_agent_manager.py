@@ -83,7 +83,9 @@ def test_delete_session_removes_snapshot_events_and_logs(tmp_path):
     manager.events_dir = events_dir
     manager.logs_dir = logs_dir
     manager._agents = {"sess1": object()}
-    manager._lock = None
+    manager._lock = __import__("threading").RLock()
+    manager._runs = {}
+    manager.interrupt = lambda session_id: True
     manager.release = lambda session_id: manager._agents.pop(session_id, None)
 
     assert AgentManager.delete_session(manager, "sess1") is True
@@ -161,6 +163,8 @@ def test_get_agent_passes_session_created_at_to_runtime(monkeypatch, tmp_path):
         created_at="2026-06-30T09:15:00",
     )
 
+    manager.store = SessionStore(tmp_path / "sessions")
+    manager.store.save(record)
     agent = AgentManager._get_agent(manager, record, "ask", {"model": "x"})
 
     assert captured["session_created_at"] == "2026-06-30T09:15:00"
@@ -197,6 +201,8 @@ def test_get_agent_prefers_runtime_history_for_model_context(monkeypatch, tmp_pa
         metadata={"project_id": "proj1"},
     )
 
+    manager.store = SessionStore(tmp_path / "sessions")
+    manager.store.save(record)
     agent = AgentManager._get_agent(manager, record, "ask", {})
 
     assert agent.history == [{"role": "assistant", "content": "compressed context"}]
@@ -235,6 +241,8 @@ def test_get_agent_reuses_runtime_across_web_turns(monkeypatch, tmp_path):
         metadata={"project_id": "proj1"},
     )
 
+    manager.store = SessionStore(tmp_path / "sessions")
+    manager.store.save(record)
     first = AgentManager._get_agent(manager, record, "ask", {"model": "x"})
     setattr(first, "browser_session_mode", "local-headed-login")
     second = AgentManager._get_agent(manager, record, "ask", {"model": "x"})

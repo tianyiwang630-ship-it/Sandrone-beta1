@@ -29,9 +29,9 @@ def test_handle_clears_stale_interrupt_and_auto_compaction_allows_fallback(monke
     runtime.runtime_events = []
     runtime.runtime_events_dir = None
     runtime.context_manager = FakeContextManager()
-    runtime.llm = object()
+    runtime.llm = SimpleNamespace(set_interrupt_event=lambda event: None)
     runtime.tools = []
-    runtime.tool_loader = object()
+    runtime.tool_loader = SimpleNamespace(set_interrupt_event=lambda event: None)
     runtime.system_prompt = "system"
     runtime.max_turns = 10
     runtime._interrupted = threading.Event()

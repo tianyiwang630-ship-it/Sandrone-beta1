@@ -28,6 +28,15 @@ export interface Message {
   content?: unknown
   tool_calls?: Array<Record<string, unknown>> | null
   tool_call_id?: string | null
+  source_agent_id?: string | null
+  _sender_id?: string | null
+}
+
+export interface SubagentInfo {
+  agent_id: string
+  task_name: string
+  status: string
+  pending_permission?: PendingPermission | null
 }
 
 export interface SessionEvent {
@@ -70,7 +79,7 @@ export type PermissionDecision = 'allow_once' | 'deny' | 'retry_with_context'
 export interface ChatStatus {
   request_id: string
   session_id: string
-  status: 'running' | 'success' | 'failed' | 'interrupted' | 'recoverable'
+  status: 'running' | 'stopping' | 'stop_failed' | 'success' | 'failed' | 'interrupted' | 'recoverable'
   operation?: 'chat' | 'compact'
   started_after_seq?: number
   response?: string | null

@@ -43,8 +43,8 @@ async function start() {
   if (!fs.existsSync(python)) throw new Error('缺少项目 Python 环境，请先运行 setup-agent-alpha.ps1。')
 
   const current = await inspectBackend(url, projectRoot)
-  if (current === 'foreign') throw new Error('8787 端口已被其他服务占用，请先释放该端口。')
-  if (current === 'missing') await startBackend()
+  if (current !== 'missing') throw new Error('8787 端口已有服务。桌面版需要启动自己管理的后端，请先关闭已有服务后重试。')
+  await startBackend()
 
   app.setAppUserModelId('agent-alpha.desktop')
   mainWindow = new BrowserWindow({
@@ -67,7 +67,7 @@ async function start() {
 async function startBackend() {
   let startupOutput = ''
   let exited = false
-  ownedBackend = spawn(python, ['-m', 'agent.server.app'], {
+  ownedBackend = spawn(python, ['-m', 'agent.server.desktop_host', '--owner-pid', String(process.pid)], {
     cwd: projectRoot,
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -157,7 +158,10 @@ def test_permission_decision_endpoint_maps_conflicts_and_validates_retry(monkeyp
 def test_agent_manager_release_all_cancels_every_pending_permission():
     broker = WebPermissionBroker(timeout_seconds=1)
     manager = AgentManager.__new__(AgentManager)
-    manager._agents = {"sess-1": object()}
+    lifecycle = []
+    manager._agents = {"sess-1": SimpleNamespace(
+        interrupt=lambda: lifecycle.append("interrupt"), close=lambda: lifecycle.append("close"),
+    )}
     manager._lock = threading.RLock()
     manager._web_permission_broker = broker
     results = []
@@ -169,6 +173,7 @@ def test_agent_manager_release_all_cancels_every_pending_permission():
 
     assert results == [{"permission_denied_reason": "Permission request cancelled"}]
     assert manager._agents == {}
+    assert lifecycle == ["interrupt", "close"]
 
 
 def test_fastapi_status_and_decision_complete_pending_permission_flow(monkeypatch):

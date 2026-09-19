@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import threading
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from agent.core.agent_runtime import AgentRuntime, PROJECT_ROOT
+from agent.core.agent_runtime import PROJECT_ROOT
+from agent.core.process_runtime import ProcessRuntime as AgentRuntime
+from agent.core.collaboration import Collaboration
+from agent.core.execution_threads import ExecutionThreads
 from agent.core.message_pipeline import prepare_runtime_history
 from agent.core.runtime_types import RuntimeRequest
 from agent.core.realtime_log import RealtimeLogWriter
@@ -26,11 +29,14 @@ class AgentManager:
         self.store = SessionStore(self.sessions_dir)
         self._agents: dict[str, AgentRuntime] = {}
         self._runs: dict[str, dict[str, Any]] = {}
+        self._futures = {}
         self._lock = threading.RLock()
-        self._executor = ThreadPoolExecutor(max_workers=4)
+        self._executor = ExecutionThreads()
+        self._closing = False
         self._web_permission_broker = WebPermissionBroker(timeout_seconds=600)
         self.cleanup_legacy_sessions()
         self.migrate_historical_events()
+        self.collaboration = Collaboration(self)
 
     def create_session(self, *, project_id: str, workspace: Path, title: str | None = None) -> SessionRecord:
         session_id = new_id("sess")
@@ -65,28 +71,60 @@ class AgentManager:
 
     def get_session(self, session_id: str) -> SessionRecord | None:
         record = self.store.load(session_id)
-        if record and record.kind == SessionKind.INTERACTIVE and not record.metadata.get("is_archived"):
+        if record and record.kind in {SessionKind.INTERACTIVE, SessionKind.SUBAGENT} and not record.metadata.get("is_archived"):
             return record
         return None
 
     def update_session(self, session_id: str, updates: dict[str, Any]) -> SessionRecord | None:
-        record = self.get_session(session_id)
-        if record is None:
-            return None
-        metadata = dict(record.metadata)
-        for key in ("title", "is_pinned", "is_archived"):
-            if key in updates and updates[key] is not None:
-                metadata[key] = updates[key]
-        record.metadata = metadata
-        record.updated_at = now_iso()
-        return self.store.save(record)
+        with self._lock:
+            record = self.store.load(session_id)
+            if record is None:
+                return None
+            for key in ("title", "is_pinned", "is_archived"):
+                if key in updates and updates[key] is not None:
+                    record.metadata[key] = updates[key]
+            record.updated_at = now_iso()
+            self.store.save(record)
+        if updates.get("is_archived"):
+            self._retire_sessions(session_id)
+        return self.store.load(session_id)
 
     def archive_project_sessions(self, project_id: str) -> None:
         for record in self.list_sessions(project_id=project_id, include_archived=True):
             self.update_session(record.session_id, {"is_archived": True})
-            self.release(record.session_id)
+
+    def _retire_sessions(self, session_id: str) -> list[str]:
+        """Close admission first; drain writers before deleting their records."""
+        with self._lock:
+            session_ids = [session_id] + [
+                child.session_id for child in self.store.list_recent(kind=SessionKind.SUBAGENT, limit=None)
+                if child.metadata.get("root_session_id") == session_id
+            ]
+            for target_id in session_ids:
+                record = self.store.load(target_id)
+                if record is not None:
+                    record.metadata["is_archived"] = True
+                    self.store.save(record)
+                self.interrupt(target_id)
+            futures = [getattr(self, "_futures", {}).get(run_id)
+                       for run_id, run in self._runs.items() if run["session_id"] in session_ids]
+        with ThreadPoolExecutor(max_workers=max(1, len(session_ids))) as cleanup:
+            releases = [cleanup.submit(self.release, target_id) for target_id in session_ids]
+            for future in releases:
+                future.result()
+        _, unfinished = wait([future for future in futures if future is not None], timeout=3)
+        if unfinished:
+            raise TimeoutError("Session execution has not finished shutting down")
+        return session_ids
 
     def delete_session(self, session_id: str) -> bool:
+        session_ids = self._retire_sessions(session_id)
+        removed = False
+        for target_id in session_ids:
+            removed = self._delete_session_files(target_id) or removed
+        return removed
+
+    def _delete_session_files(self, session_id: str) -> bool:
         removed = self.store.delete(session_id)
         event_path = self.events_dir / f"{session_id}.jsonl"
         if event_path.exists():
@@ -99,7 +137,6 @@ class AgentManager:
         if realtime_log_path.exists():
             realtime_log_path.unlink()
             removed = True
-        self.release(session_id)
         return removed
 
     def delete_project_sessions(self, project_id: str) -> None:
@@ -115,11 +152,52 @@ class AgentManager:
         llm_settings: dict[str, Any] | None = None,
         runtime_metadata: dict[str, Any] | None = None,
     ) -> str:
+        with self._lock:
+            return self._start_chat_locked(
+                session_id=session_id, message=message, permission_mode=permission_mode,
+                llm_settings=llm_settings, runtime_metadata=runtime_metadata,
+            )
+
+    def submit_chat(self, *, mode="queue", **arguments):
+        with self._lock:
+            session_id = arguments["session_id"]
+            if mode == "steer" or self._has_active_run(session_id):
+                record = self.collaboration.record(session_id)
+                record.metadata["runtime_config"] = {
+                    "permission_mode": arguments.get("permission_mode", "ask"),
+                    "llm_settings": dict(arguments.get("llm_settings") or {}),
+                }
+                self.store.save(record)
+                receipt = self.collaboration.deliver(None, session_id, arguments["message"], delivery=mode)
+                return receipt["request_id"]
+            return self.start_chat(**arguments)
+
+    def _start_chat_locked(
+        self, *, session_id, message, permission_mode="ask", llm_settings=None, runtime_metadata=None,
+    ) -> str:
+        if getattr(self, "_closing", False):
+            raise RuntimeError("Application is shutting down")
         record = self.get_session(session_id)
         if record is None:
             raise ValueError(f"Session not found: {session_id}")
         if self._has_active_run(session_id):
             raise RuntimeError("Session already has an active run")
+        record.metadata["runtime_config"] = {"permission_mode": permission_mode, "llm_settings": dict(llm_settings or {})}
+        collaboration = getattr(self, "collaboration", None)
+        if collaboration is not None and session_id in collaboration.stopping:
+            raise RuntimeError("Previous execution is still stopping")
+        if (collaboration is not None and record.kind == SessionKind.SUBAGENT
+                and collaboration._active_count(collaboration.root(record)) >= 10):
+            raise RuntimeError("This conversation already has 10 executing subagents")
+        if (collaboration is not None and session_id in collaboration.restart_roots
+                and record.metadata.get("restart_notice_boot") != collaboration.boot_id):
+            record.runtime_history = self._runtime_history_for_record(record)
+            record.runtime_history.append({"role": "system", "content": "应用已重新启动。此会话曾创建子 agent；上次退出前尚未完成的执行可能已中断，未自动恢复。"})
+            record.metadata["restart_notice_boot"] = collaboration.boot_id
+        self.store.save(record)
+        cached = getattr(self, "_agents", {}).get(session_id)
+        if cached is not None:
+            cached.clear_interrupt()
         request_id = uuid.uuid4().hex
         timestamp = now_iso()
         started_after_seq = self._latest_event_seq(session_id)
@@ -129,6 +207,7 @@ class AgentManager:
             timestamp,
             request_id=request_id,
             started_after_seq=started_after_seq,
+            entry=(runtime_metadata or {}).get("input_entry"),
         )
         with self._lock:
             self._runs[request_id] = {
@@ -143,7 +222,7 @@ class AgentManager:
                 "created_at": timestamp,
                 "updated_at": timestamp,
             }
-        self._executor.submit(
+        future = self._executor.submit(
             self._run_chat,
             request_id,
             record,
@@ -152,6 +231,7 @@ class AgentManager:
             dict(llm_settings or {}),
             dict(runtime_metadata or {}),
         )
+        self.__dict__.setdefault("_futures", {})[request_id] = future
         return request_id
 
     def start_compact(
@@ -161,11 +241,20 @@ class AgentManager:
         permission_mode: str = "ask",
         llm_settings: dict[str, Any] | None = None,
     ) -> str:
+        with self._lock:
+            return self._start_compact_locked(session_id=session_id, permission_mode=permission_mode, llm_settings=llm_settings)
+
+    def _start_compact_locked(self, *, session_id, permission_mode="ask", llm_settings=None) -> str:
+        if getattr(self, "_closing", False):
+            raise RuntimeError("Application is shutting down")
         record = self.get_session(session_id)
         if record is None:
             raise ValueError(f"Session not found: {session_id}")
         if self._has_active_run(session_id):
             raise RuntimeError("Session already has an active run")
+        cached = getattr(self, "_agents", {}).get(session_id)
+        if cached is not None:
+            cached.clear_interrupt()
         request_id = uuid.uuid4().hex
         timestamp = now_iso()
         with self._lock:
@@ -181,7 +270,8 @@ class AgentManager:
                 "created_at": timestamp,
                 "updated_at": timestamp,
             }
-        self._executor.submit(self._run_compact, request_id, record, permission_mode, dict(llm_settings or {}))
+        future = self._executor.submit(self._run_compact, request_id, record, permission_mode, dict(llm_settings or {}))
+        self.__dict__.setdefault("_futures", {})[request_id] = future
         return request_id
 
     def get_run(self, request_id: str) -> dict[str, Any] | None:
@@ -197,7 +287,9 @@ class AgentManager:
             runs = [
                 dict(run)
                 for run in self._runs.values()
-                if run.get("session_id") == session_id and run.get("status") == "running"
+                if run.get("session_id") == session_id and (
+                    run.get("status") in {"running", "stopping", "stop_failed"} or run.get("finalizing")
+                )
             ]
         if not runs:
             return None
@@ -212,33 +304,55 @@ class AgentManager:
     def _has_active_run(self, session_id: str) -> bool:
         with self._lock:
             return any(
-                run.get("session_id") == session_id and run.get("status") == "running"
+                run.get("session_id") == session_id and (
+                    run.get("status") in {"running", "stopping", "stop_failed"} or run.get("finalizing")
+                )
                 for run in self._runs.values()
             )
 
     def interrupt(self, session_id: str) -> bool:
         self._permission_broker().cancel_session(session_id)
         with self._lock:
+            found = False
+            for run in getattr(self, "_runs", {}).values():
+                if run.get("session_id") == session_id and run.get("status") in {"running", "stopping"}:
+                    run["status"] = "stopping"
+                    found = True
             agent = self._agents.get(session_id)
         if agent is None:
-            return False
+            return found
         agent.interrupt()
         return True
 
     def release(self, session_id: str) -> None:
         self._permission_broker().cancel_session(session_id)
         with self._lock:
-            self._agents.pop(session_id, None)
+            agent = self._agents.get(session_id)
+        if agent is not None:
+            agent.close()
+            with self._lock:
+                if self._agents.get(session_id) is agent:
+                    self._agents.pop(session_id)
 
     def release_all(self) -> None:
+        with self._lock:
+            self._closing = True
+            agents = list(self._agents.values())
         self._permission_broker().cancel_all()
+        # Send all cancellations before waiting for any individual process group.
+        for agent in agents:
+            agent.interrupt()
+        with ThreadPoolExecutor(max_workers=max(1, len(agents))) as cleanup:
+            futures = [cleanup.submit(agent.close) for agent in agents]
+            for future in futures:
+                future.result()
         with self._lock:
             self._agents.clear()
 
     def cleanup_legacy_sessions(self) -> int:
         removed = 0
         for record in self.store.list_recent(kind=SessionKind.INTERACTIVE, limit=None):
-            if record.metadata.get("project_id"):
+            if record.metadata.get("project_id") or record.metadata.get("project_root"):
                 continue
             removed += 1
             self.store.delete(record.session_id)
@@ -268,10 +382,13 @@ class AgentManager:
 
     def _get_agent(self, record: SessionRecord, permission_mode: str, llm_settings: dict[str, Any]) -> AgentRuntime:
         with self._lock:
+            if self.get_session(record.session_id) is None:
+                raise RuntimeError("Session is no longer available")
             agent = self._agents.get(record.session_id)
             if agent is not None and not self._should_rebuild_agent(agent, record, permission_mode, llm_settings):
                 return agent
             if agent is not None:
+                agent.close()
                 self._agents.pop(record.session_id, None)
         agent = AgentRuntime(
             workspace_root=record.workspace,
@@ -279,6 +396,7 @@ class AgentManager:
             events_dir=str(self.events_dir),
             session_created_at=record.created_at,
             llm_settings=llm_settings,
+            **({"collaboration": self.collaboration.identity(record)} if hasattr(self, "collaboration") else {}),
         )
         agent.llm.stream_responses = True
         agent.history = self._runtime_history_for_record(record)
@@ -286,6 +404,10 @@ class AgentManager:
             agent.tool_loader.permission_manager.set_mode(permission_mode)
         setattr(agent, "_web_permission_mode", permission_mode)
         with self._lock:
+            if getattr(self, "_closing", False):
+                raise RuntimeError("Application is shutting down")
+            if self.get_session(record.session_id) is None:
+                raise RuntimeError("Session is no longer available")
             self._agents[record.session_id] = agent
         return agent
 
@@ -303,6 +425,12 @@ class AgentManager:
         runtime_event_start = 0
         try:
             agent = self._get_agent(record, permission_mode, llm_settings)
+            agent.checkpoint_handler = lambda history: self._save_live_checkpoint(record.session_id, request_id, history)
+            if hasattr(self, "collaboration"):
+                agent.rpc_handler = lambda method, payload: self.collaboration.call(record.session_id, request_id, method, payload)
+            with self._lock:
+                if self._runs.get(request_id, {}).get("status") == "stopping" or getattr(self, "_closing", False):
+                    agent.interrupt()
             permission_manager = getattr(getattr(agent, "tool_loader", None), "permission_manager", None)
             if permission_manager is not None and hasattr(permission_manager, "set_approval_handler"):
                 permission_manager.set_approval_handler(
@@ -328,7 +456,7 @@ class AgentManager:
                 metadata["title"] = message.strip().replace("\n", " ")[:80] or "新对话"
             saved = SessionRecord(
                 session_id=record.session_id,
-                kind=SessionKind.INTERACTIVE,
+                kind=record.kind,
                 workspace=latest.workspace or record.workspace,
                 history=self._merge_display_history(latest.history, agent.history, message),
                 runtime_history=[dict(item) for item in agent.history],
@@ -351,7 +479,7 @@ class AgentManager:
                 created_at=latest.created_at or record.created_at,
                 updated_at=datetime.now().isoformat(timespec="seconds"),
             )
-            self.store.save(saved)
+            self._save_run_record(saved)
             if not response.metadata.get("interrupted") and not response.metadata.get("recoverable"):
                 try:
                     SessionEventWriter(self.events_dir, record.session_id).compact_completed_request(request_id)
@@ -383,11 +511,43 @@ class AgentManager:
                 tool_calls_count=tool_calls_count,
                 runtime_event_start=runtime_event_start,
             )
-            self._set_run(request_id, status="failed", error=str(exc), tool_calls_count=tool_calls_count)
+            self._set_run(request_id, status="stop_failed" if isinstance(exc, TimeoutError) else "failed", error=str(exc), tool_calls_count=tool_calls_count)
         finally:
             if permission_manager is not None and hasattr(permission_manager, "set_approval_handler"):
                 permission_manager.set_approval_handler(None)
             self._permission_broker().cancel_request(request_id)
+            if hasattr(self, "collaboration"):
+                self.collaboration.finish(record.session_id, request_id)
+
+    def _save_live_checkpoint(self, session_id, request_id, history):
+        with self._lock:
+            run = self._runs.get(request_id)
+            if not run or run.get("status") != "running":
+                return
+            record = self.store.load(session_id)
+            if record is None:
+                return
+            record.runtime_history = [dict(item) for item in history]
+            agent = self._agents.get(session_id)
+            context = getattr(agent, "context_snapshot", None)
+            if context:
+                record.metadata["runtime_context"] = dict(context)
+            if hasattr(self, "collaboration"):
+                self.collaboration.acknowledge(record, request_id, history)
+            record.runtime_checkpoint.update({
+                "request_id": request_id, "status": "running", "phase": "executing",
+                "started_after_seq": self._latest_event_seq(session_id), "updated_at": now_iso(),
+            })
+            self.store.save(record)
+
+    def _save_run_record(self, record):
+        with self._lock:
+            latest = self.store.load(record.session_id)
+            if latest is not None:
+                # Admission can occur while a completed response is being saved.
+                # Mailbox state belongs to the supervisor, not the old snapshot.
+                record.metadata = {**record.metadata, **latest.metadata}
+            return self.store.save(record)
 
     def _run_compact(
         self,
@@ -403,8 +563,13 @@ class AgentManager:
         log_writer = RealtimeLogWriter(logs_dir, record.session_id) if logs_dir is not None else None
         try:
             agent = self._get_agent(record, permission_mode, llm_settings)
+            agent.checkpoint_handler = lambda history: self._save_live_checkpoint(record.session_id, request_id, history)
+            if hasattr(self, "collaboration"):
+                agent.rpc_handler = lambda method, payload: self.collaboration.call(record.session_id, request_id, method, payload)
             runtime_event_start = len(getattr(agent, "runtime_events", []))
-            agent.clear_interrupt()
+            with self._lock:
+                if self._runs.get(request_id, {}).get("status") == "stopping" or getattr(self, "_closing", False):
+                    agent.interrupt()
             started_event = {
                 "type": "context_compaction_started",
                 "timestamp": now_iso(),
@@ -517,6 +682,9 @@ class AgentManager:
                     update_runtime_history=False,
                 )
             self._set_run(request_id, status="failed", error=str(exc), tool_calls_count=0)
+        finally:
+            if hasattr(self, "collaboration"):
+                self.collaboration.finish(record.session_id, request_id)
 
     def _save_incoming_user_message(
         self,
@@ -526,13 +694,15 @@ class AgentManager:
         *,
         request_id: str,
         started_after_seq: int,
+        entry: dict[str, Any] | None = None,
     ) -> SessionRecord:
         latest = self.store.load(record.session_id) or record
         history = [dict(item) for item in latest.history]
-        history.append({"role": "user", "content": message})
+        history.append(entry or {"role": "user", "content": message})
         runtime_history = self._runtime_history_for_record(latest)
-        runtime_history.append({"role": "user", "content": message})
+        runtime_history.append(entry or {"role": "user", "content": message})
         metadata = dict(latest.metadata or record.metadata)
+        metadata["agent_status"] = "running"
         if metadata.get("title") in {None, "", "新对话", "鏂板璇?"}:
             metadata["title"] = message.strip().replace("\n", " ")[:80] or "新对话"
         saved = SessionRecord(
@@ -613,7 +783,7 @@ class AgentManager:
         )
         saved = SessionRecord(
             session_id=record.session_id,
-            kind=SessionKind.INTERACTIVE,
+            kind=record.kind,
             workspace=latest.workspace or record.workspace,
             history=history,
             runtime_history=runtime_history,
@@ -631,7 +801,7 @@ class AgentManager:
             created_at=latest.created_at or record.created_at,
             updated_at=timestamp,
         )
-        self.store.save(saved)
+        self._save_run_record(saved)
 
     def _save_compact_run_snapshot(
         self,
@@ -644,7 +814,7 @@ class AgentManager:
         latest = self.store.load(record.session_id) or record
         saved = SessionRecord(
             session_id=record.session_id,
-            kind=SessionKind.INTERACTIVE,
+            kind=record.kind,
             workspace=latest.workspace or record.workspace,
             history=[dict(item) for item in latest.history],
             runtime_history=(
@@ -658,7 +828,7 @@ class AgentManager:
             created_at=latest.created_at or record.created_at,
             updated_at=now_iso(),
         )
-        self.store.save(saved)
+        self._save_run_record(saved)
 
     def _record_compaction_event(
         self,
@@ -711,7 +881,14 @@ class AgentManager:
                     skipped_pending = True
                     continue
                 history.append(dict(entry))
-        return prepare_runtime_history(history, request_id=f"load_{record.session_id}").history
+        seen_results = {item.get("tool_call_id") for item in history if item.get("role") == "tool"}
+        uncertain = {
+            call["id"] for item in history for call in item.get("tool_calls", [])
+            if call.get("id") and call["id"] not in seen_results
+        }
+        return prepare_runtime_history(
+            history, request_id=f"load_{record.session_id}", uncertain_tool_call_ids=uncertain,
+        ).history
 
     @staticmethod
     def _last_user_index(history: list[dict[str, Any]], message: str) -> int | None:
@@ -744,7 +921,19 @@ class AgentManager:
             run = self._runs.get(request_id)
             if not run:
                 return
+            if run.get("status") == "stopping" and updates.get("status") in {"success", "failed", "recoverable", "interrupted"}:
+                # A stop can arrive after the worker reply but before publication.
+                # Do not admit another run until its process group is gone.
+                agent = self._agents.get(run["session_id"])
+                try:
+                    if agent is not None:
+                        agent.close()
+                    updates["status"] = "interrupted"
+                except Exception as exc:
+                    updates.update(status="stop_failed", error=str(exc))
             run.update(updates)
+            if hasattr(self, "collaboration") and updates.get("status") in {"success", "failed", "recoverable", "interrupted", "stop_failed"}:
+                run["finalizing"] = True
             run["updated_at"] = now_iso()
 
     def _permission_broker(self) -> WebPermissionBroker:

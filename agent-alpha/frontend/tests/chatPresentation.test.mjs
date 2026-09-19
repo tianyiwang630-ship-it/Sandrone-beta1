@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   attachesLiveRunToTurn,
+  buildToolPresentation,
   displayedAssistantText,
   displayedProcessContent,
   formatRunFailureMessage,
@@ -12,14 +13,25 @@ import {
   processMessageKey,
 } from '../src/chatPresentation.ts'
 
-const toolCall = (id, name) => ({
+const toolCalls = (calls, content = null) => ({
   role: 'assistant',
-  content: null,
-  tool_calls: [{ id, type: 'function', function: { name, arguments: '{}' } }],
+  content,
+  tool_calls: calls.map(({ id, name, arguments: argumentsValue = '{}' }) => ({
+    id,
+    type: 'function',
+    function: { name, arguments: argumentsValue },
+  })),
 })
+
+const toolCall = (id, name, argumentsValue = '{}', content = null) => (
+  toolCalls([{ id, name, arguments: argumentsValue }], content)
+)
 
 const toolResult = (id, content = 'ok') => ({ role: 'tool', tool_call_id: id, content })
 const entryEvent = (seq, entry) => ({ session_id: 'session', seq, entry })
+const toolPresentation = (history, liveEvents = [], options = { isLive: false, runFinished: true }) => (
+  buildToolPresentation(mergeProcessPresentation(history, liveEvents), options)
+)
 
 test('partial history and live events become one deduplicated process collection', () => {
   const bashCall = toolCall('call-bash', 'bash')
@@ -137,4 +149,142 @@ test('context compaction failures keep compaction-specific guidance', () => {
     }),
     '上下文压缩失败：too large。原会话历史和模型上下文未改变。',
   )
+})
+
+test('tool results pair with same-name calls by call id when results arrive out of order', () => {
+  const calls = toolCalls([
+    { id: 'bash-first', name: 'bash', arguments: '{"command":"first"}' },
+    { id: 'bash-second', name: 'bash', arguments: '{"command":"second"}' },
+  ])
+  const presentation = toolPresentation([
+    calls,
+    toolResult('bash-second', 'second output'),
+    toolResult('bash-first', 'first output'),
+  ])
+
+  assert.deepEqual(
+    presentation.toolCalls.map((call) => ({
+      name: call.name,
+      arguments: call.arguments,
+      output: call.output,
+      outputState: call.outputState,
+    })),
+    [
+      {
+        name: 'bash',
+        arguments: '{\n  "command": "first"\n}',
+        output: 'first output',
+        outputState: 'received',
+      },
+      {
+        name: 'bash',
+        arguments: '{\n  "command": "second"\n}',
+        output: 'second output',
+        outputState: 'received',
+      },
+    ],
+  )
+  assert.equal(presentation.unpairedResults.length, 0)
+  assert.equal(presentation.otherItems.length, 0)
+})
+
+test('live and history copies of the same tool entries render only once', () => {
+  const call = toolCall('read-1', 'read', '{"path":"README.md"}')
+  const result = toolResult('read-1', 'read output')
+  const presentation = toolPresentation(
+    [call, result],
+    [entryEvent(11, call), entryEvent(12, result)],
+    { isLive: true, runFinished: false },
+  )
+
+  assert.equal(presentation.toolCalls.length, 1)
+  assert.equal(presentation.toolCalls[0].name, 'read')
+  assert.equal(presentation.toolCalls[0].output, 'read output')
+  assert.equal(presentation.toolCalls[0].outputState, 'received')
+})
+
+test('tool arguments are formatted as JSON and preserve malformed source text', () => {
+  const presentation = toolPresentation([
+    toolCalls([
+      { id: 'valid', name: 'read', arguments: '{"path":"a.md","line":2}' },
+      { id: 'empty', name: 'list', arguments: '' },
+      { id: 'missing', name: 'clock', arguments: null },
+      { id: 'malformed', name: 'bash', arguments: '{command: broken' },
+    ]),
+    toolResult('valid'),
+    toolResult('empty'),
+    toolResult('missing'),
+    toolResult('malformed'),
+  ])
+
+  assert.deepEqual(
+    presentation.toolCalls.map((call) => call.arguments),
+    [
+      '{\n  "path": "a.md",\n  "line": 2\n}',
+      '{}',
+      '{}',
+      '{command: broken',
+    ],
+  )
+})
+
+test('tool cards distinguish running, missing, empty, received, and failed outputs', () => {
+  const running = toolPresentation(
+    [toolCall('running', 'bash')],
+    [],
+    { isLive: true, runFinished: false },
+  ).toolCalls[0]
+  const missing = toolPresentation(
+    [toolCall('missing', 'bash')],
+    [],
+    { isLive: true, runFinished: true },
+  ).toolCalls[0]
+  const completed = toolPresentation([
+    toolCalls([
+      { id: 'empty', name: 'bash' },
+      { id: 'received', name: 'bash' },
+      { id: 'failed', name: 'bash' },
+    ]),
+    toolResult('empty', ''),
+    toolResult('received', 'normal output'),
+    toolResult('failed', '执行失败：权限不足'),
+  ]).toolCalls
+
+  assert.deepEqual(
+    [
+      { output: running.output, outputState: running.outputState },
+      { output: missing.output, outputState: missing.outputState },
+      ...completed.map((call) => ({ output: call.output, outputState: call.outputState })),
+    ],
+    [
+      { output: '执行中…', outputState: 'running' },
+      { output: '未收到输出', outputState: 'missing' },
+      { output: '无输出', outputState: 'empty' },
+      { output: 'normal output', outputState: 'received' },
+      { output: '执行失败：权限不足', outputState: 'received' },
+    ],
+  )
+})
+
+test('assistant text before a tool call is retained separately from the tool card', () => {
+  const presentation = toolPresentation([
+    toolCall('read-1', 'read', '{"path":"notes.md"}', '我先读取笔记，再给你结论。'),
+    toolResult('read-1', '笔记内容'),
+  ])
+  const call = presentation.toolCalls[0]
+
+  assert.equal(call.assistantText, '我先读取笔记，再给你结论。')
+  assert.equal(call.name, 'read')
+  assert.equal(call.arguments, '{\n  "path": "notes.md"\n}')
+  assert.equal(call.output, '笔记内容')
+  assert.equal(Object.hasOwn(call, 'id'), false)
+  assert.equal(Object.hasOwn(call, 'toolCallId'), false)
+})
+
+test('a historical result without its call remains available as a separate tool output', () => {
+  const presentation = toolPresentation([toolResult('missing-call', '保留的历史输出')])
+
+  assert.equal(presentation.toolCalls.length, 0)
+  assert.equal(presentation.unpairedResults.length, 1)
+  assert.match(JSON.stringify(presentation.unpairedResults[0]), /保留的历史输出/)
 })

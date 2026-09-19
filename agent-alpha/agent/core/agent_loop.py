@@ -56,6 +56,8 @@ class AgentLoop:
         interrupt_event: Optional[threading.Event] = None,
         start_interrupt_listener: Optional[Callable[[], Any]] = None,
         request_id: str = "runtime",
+        input_provider: Callable[[], list[dict[str, Any]]] | None = None,
+        checkpoint: Callable[[list[dict[str, Any]]], None] | None = None,
     ):
         self.llm = llm
         self.tools = tools
@@ -69,22 +71,23 @@ class AgentLoop:
         self._interrupted = interrupt_event or threading.Event()
         self._start_interrupt_listener = start_interrupt_listener
         self.request_id = request_id
+        self.input_provider = input_provider
+        self.checkpoint = checkpoint
         self._llm_recovery_prompt_injected = False
         self.was_interrupted = False
         self.was_recoverable = False
         self.recovery_stage: str | None = None
         self.recovery_error: str | None = None
 
-    def run(self, user_input: str) -> str:
+    def run(self, user_input: str, *, input_entry: dict[str, Any] | None = None) -> str:
         """Execute the multi-turn loop for one user input."""
         self.was_interrupted = False
         self.was_recoverable = False
         self.recovery_stage = None
         self.recovery_error = None
         self._fill_missing_tool_results()
-        self._append_history_entry({"role": "user", "content": user_input})
+        self._append_history_entry(input_entry or {"role": "user", "content": user_input})
 
-        self._interrupted.clear()
         if self._start_interrupt_listener:
             self._start_interrupt_listener()
 
@@ -93,6 +96,7 @@ class AgentLoop:
                 if self._interrupted.is_set():
                     break
 
+                self._receive_inputs()
                 messages = self._build_messages()
                 try:
                     choice = self._call_llm_with_recovery(messages)
@@ -123,6 +127,8 @@ class AgentLoop:
                     continue
 
                 self._append_history_entry({"role": "assistant", "content": message.content})
+                if self._receive_inputs():
+                    continue
                 return message.content
 
             if self._interrupted.is_set():
@@ -542,6 +548,15 @@ class AgentLoop:
         if self.event_writer is not None:
             event_metadata.setdefault("request_id", self.request_id)
             self.event_writer.write(entry, **event_metadata)
+        if self.checkpoint is not None:
+            self.checkpoint(self.history)
+
+    def _receive_inputs(self) -> bool:
+        """Admit steering only between complete model/tool exchanges."""
+        entries = self.input_provider() if self.input_provider else []
+        for entry in entries:
+            self._append_history_entry(entry)
+        return bool(entries)
 
     def _insert_history_entry(self, index: int, entry: dict[str, Any], **event_metadata: Any) -> None:
         self.history.insert(index, entry)

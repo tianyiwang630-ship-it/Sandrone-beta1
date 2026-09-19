@@ -61,7 +61,7 @@ test('still stops only the owned backend when browser cleanup fails', async () =
   assert.equal(killed, 1)
 })
 
-test('cleans a shared browser without stopping an external backend', async () => {
+test('does not control an external backend or its browser', async () => {
   let requests = 0
 
   const stopped = await shutdownDesktop('', null, async () => {
@@ -69,8 +69,17 @@ test('cleans a shared browser without stopping an external backend', async () =>
     return { ok: true, json: async () => ({ success: true }) }
   })
 
-  assert.equal(stopped, true)
-  assert.equal(requests, 1)
+  assert.equal(stopped, false)
+  assert.equal(requests, 0)
+})
+
+test('desktop exit is bounded even when the backend ignores cancellation', async () => {
+  let killed = false
+  const child = { exitCode: null, killed: false, kill() { killed = true } }
+  const start = Date.now()
+  assert.equal(await shutdownDesktop('', child, () => new Promise(() => {}), 20), false)
+  assert.equal(killed, true)
+  assert.ok(Date.now() - start < 1000)
 })
 
 test('treats an unsuccessful cleanup result as a failed shutdown', async () => {

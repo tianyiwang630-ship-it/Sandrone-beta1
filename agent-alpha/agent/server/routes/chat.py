@@ -21,7 +21,8 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 def start_chat(body: ChatRequest):
     settings = normalize_settings(state_store.get_settings())
     try:
-        request_id = agent_manager.start_chat(
+        request_id = agent_manager.submit_chat(
+            mode=body.mode,
             session_id=body.session_id,
             message=body.message,
             permission_mode=str(settings.get("permission_mode") or "ask"),

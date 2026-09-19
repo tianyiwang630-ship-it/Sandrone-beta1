@@ -11,6 +11,7 @@ import type {
   SessionDetail,
   SessionEvent,
   Settings,
+  SubagentInfo,
   User,
 } from '../types'
 
@@ -68,6 +69,9 @@ export const api = {
     request<RetrospectiveStart>('/sessions/retrospective', { method: 'POST', body: JSON.stringify(body) }),
   sendMessage: (sessionId: string, message: string) =>
     request<ChatStart>('/chat', { method: 'POST', body: JSON.stringify({ session_id: sessionId, message }) }),
+  steerMessage: (sessionId: string, message: string) =>
+    request<ChatStart>('/chat', { method: 'POST', body: JSON.stringify({ session_id: sessionId, message, mode: 'steer' }) }),
+  listSubagents: (sessionId: string) => request<{ agents: SubagentInfo[]; next_offset: number | null }>(`/sessions/${sessionId}/subagents`),
   compactSession: (sessionId: string) =>
     request<ChatStart>('/chat/compact', { method: 'POST', body: JSON.stringify({ session_id: sessionId }) }),
   getChatStatus: (requestId: string) => request<ChatStatus>(`/chat/status/${requestId}`),

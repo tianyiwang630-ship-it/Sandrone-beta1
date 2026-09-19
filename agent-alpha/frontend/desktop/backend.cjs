@@ -58,10 +58,27 @@ async function shutdownBrowser(url, fetchShutdown = fetch, timeoutMs = 30000) {
   }
 }
 
-async function shutdownDesktop(url, child, fetchShutdown = fetch) {
-  const browserStopped = await shutdownBrowser(url, fetchShutdown)
-  stopOwnedBackend(child)
-  return browserStopped
+async function shutdownDesktop(url, child, fetchShutdown = fetch, timeoutMs = 1000) {
+  if (!child) return false
+  let stopped = false
+  let timer
+  try {
+    stopped = await Promise.race([
+      (async () => {
+        const response = await fetchShutdown(`${url}/api/runtime/executions`, {
+          method: 'DELETE', signal: AbortSignal.timeout(timeoutMs),
+        })
+        return response.ok && (await response.json()).success === true
+      })(),
+      new Promise((resolve) => { timer = setTimeout(() => resolve(false), timeoutMs) }),
+    ])
+  } catch {
+    // The host's Job handle also covers an unresponsive backend and browsers.
+  } finally {
+    clearTimeout(timer)
+    stopOwnedBackend(child)
+  }
+  return stopped
 }
 
 module.exports = { inspectBackend, shutdownBrowser, shutdownDesktop, stopOwnedBackend }

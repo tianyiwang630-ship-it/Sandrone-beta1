@@ -48,13 +48,16 @@ import {
 } from './chatScroll'
 import {
   attachesLiveRunToTurn,
+  buildToolPresentation,
   displayedAssistantText,
-  displayedProcessContent,
   formatRunFailureMessage,
-  hasAssistantProcessText,
   mergeActiveRunEvents,
   mergeProcessPresentation,
+  toolCallName,
   type FailedRunSnapshot,
+  type ToolProcessPresentation,
+  type ToolPresentation,
+  type ToolResultPresentation,
 } from './chatPresentation'
 import FileDrawer from './components/FileDrawer'
 import KnowledgeBaseComposerActions from './components/KnowledgeBaseComposerActions'
@@ -107,6 +110,7 @@ import type {
   Session,
   SessionDetail,
   SessionEvent,
+  SubagentInfo,
   Settings as SettingsType,
   User,
 } from './types'
@@ -178,27 +182,8 @@ function firstLine(value: string, fallback: string) {
     ?.slice(0, 140) || fallback
 }
 
-function toolCallName(call: Record<string, unknown>) {
-  const fn = call.function
-  if (fn && typeof fn === 'object' && 'name' in fn) {
-    return String((fn as { name?: unknown }).name || 'tool')
-  }
-  return String(call.name || call.type || 'tool')
-}
-
 function hasToolCalls(message: Message) {
   return Array.isArray(message.tool_calls) && message.tool_calls.length > 0
-}
-
-function processSummary(message: Message) {
-  if (hasToolCalls(message)) {
-    const names = message.tool_calls?.map(toolCallName).join(', ')
-    return names ? `调用工具 ${names}` : '准备调用工具'
-  }
-  if (message.role === 'tool') {
-    return firstLine(messageText(message), '工具返回结果')
-  }
-  return firstLine(messageText(message), '正在思考')
 }
 
 function buildChatTurns(messages: Message[]): ChatTurn[] {
@@ -338,10 +323,6 @@ function eventSummary(event: SessionEvent) {
   return firstLine(text, type)
 }
 
-function eventDetails(event: SessionEvent) {
-  return JSON.stringify(eventPayload(event), null, 2)
-}
-
 function isVisibleLiveEvent(event: SessionEvent) {
   const payload = eventPayload(event)
   const type = String(event.type || payload.type || '')
@@ -422,14 +403,6 @@ function failedRunFromEvents(events: SessionEvent[]): FailedRunSnapshot | null {
   }
 }
 
-function renderProcessContent(step: Message) {
-  if (hasToolCalls(step)) {
-    const toolNames = step.tool_calls?.map(toolCallName).join(', ')
-    return displayedProcessContent(step, toolNames ? `调用工具: ${toolNames}` : '调用工具')
-  }
-  return messageText(step)
-}
-
 function formatTime(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
@@ -453,6 +426,56 @@ function shortPath(path: string) {
   const parts = path.replace(/\\/g, '/').split('/').filter(Boolean)
   if (parts.length <= 4) return path
   return `${parts.slice(0, 1).join('/')}/.../${parts.slice(-3).join('/')}`
+}
+
+function ToolCallCard({ toolCall }: { toolCall: ToolPresentation }) {
+  return (
+    <div className="tool-call-presentation">
+      {toolCall.assistantText && <div className="tool-call-note">{toolCall.assistantText}</div>}
+      <details className="tool-call-card">
+        <summary className="tool-call-name">{toolCall.name}</summary>
+        <div className="tool-call-details">
+          <section className="tool-call-section">
+            <div className="tool-call-section-label">参数</div>
+            <pre className="tool-call-content">{toolCall.arguments}</pre>
+          </section>
+          <section className="tool-call-section">
+            <div className="tool-call-section-label">输出</div>
+            <pre className="tool-call-output">{toolCall.output}</pre>
+          </section>
+        </div>
+      </details>
+    </div>
+  )
+}
+
+function ToolOutputCard({ result }: { result: ToolResultPresentation }) {
+  return (
+    <section className="tool-output-orphan">
+      <div className="tool-call-section-label">工具输出</div>
+      <pre>{result.output}</pre>
+    </section>
+  )
+}
+
+function ToolProcessList({ presentation }: { presentation: ToolProcessPresentation }) {
+  return (
+    <div className="process-list">
+      {presentation.toolCalls.map((toolCall) => (
+        <ToolCallCard key={toolCall.key} toolCall={toolCall} />
+      ))}
+      {presentation.unpairedResults.map((result) => (
+        <ToolOutputCard key={result.key} result={result} />
+      ))}
+      {presentation.otherItems.map((item) => (
+        <div key={item.key} className="process-item">
+          <div className="process-item-title">
+            {item.kind === 'event' ? eventSummary(item.event) : firstLine(messageText(item.message), '正在思考')}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 const SELECTED_PROJECT_STORAGE_KEY = 'sandrone:selectedProjectId'
@@ -526,6 +549,9 @@ export default function App() {
   const [pendingMessagesBySession, setPendingMessagesBySession] = useState<Record<string, Message[]>>({})
   const [messageQueuesBySession, setMessageQueuesBySession] = useState<Record<string, SessionMessageQueue>>({})
   const [liveEventsBySession, setLiveEventsBySession] = useState<Record<string, SessionEvent[]>>({})
+  const [subagentsBySession, setSubagentsBySession] = useState<Record<string, SubagentInfo[]>>({})
+  const [steeringMessage, setSteeringMessage] = useState(false)
+  const steeringMessageRef = useRef(false)
   const [runningSessions, setRunningSessions] = useState<Record<string, RunningSession>>({})
   const [failedRunsBySession, setFailedRunsBySession] = useState<Record<string, FailedRunSnapshot>>({})
   const [apiKeyVisible, setApiKeyVisible] = useState(false)
@@ -606,8 +632,12 @@ export default function App() {
   const currentQueuedMessages = currentMessageQueue.items
   const currentLiveEvents = selectedSessionId ? liveEventsBySession[selectedSessionId] || [] : []
   const selectedRun = selectedSessionId ? runningSessions[selectedSessionId] || null : null
-  const currentPendingPermission = selectedRun?.pendingPermission || null
+  const currentSubagents = selectedSessionId ? subagentsBySession[selectedSessionId] || [] : []
+  const activeSubagents = currentSubagents.filter((agent) => ['running', 'waiting', 'queued', 'stopping', 'stop_failed'].includes(agent.status))
+  const permissionSubagent = selectedRun?.pendingPermission ? null : currentSubagents.find((agent) => agent.pending_permission)
+  const currentPendingPermission = selectedRun?.pendingPermission || permissionSubagent?.pending_permission || null
   const pendingPermissionCount = Object.values(runningSessions).filter(hasPendingPermission).length
+    + Object.values(subagentsBySession).flat().filter((agent) => agent.pending_permission).length
   const currentPermissionSeconds = currentPendingPermission
     ? remainingPermissionSeconds(currentPendingPermission.expires_at, permissionNow)
     : 0
@@ -632,6 +662,16 @@ export default function App() {
   const visibleLiveEvents = useMemo(
     () => currentRunEvents.filter(isVisibleLiveEvent),
     [currentRunEvents],
+  )
+  const detachedLiveProcessPresentation = useMemo(
+    () => buildToolPresentation(
+      mergeProcessPresentation([], visibleLiveEvents),
+      {
+        isLive: Boolean(selectedRun && !isShowingFailedRun),
+        runFinished: isShowingFailedRun,
+      },
+    ),
+    [isShowingFailedRun, selectedRun, visibleLiveEvents],
   )
   const liveRunAttachedToChat = Boolean(
     currentLiveWindow && currentLiveWindow.operation !== 'compact' && chatTurns.length > 0,
@@ -1164,6 +1204,9 @@ export default function App() {
     try {
       await api.resolvePermission(permissionId, decision, decision === 'retry_with_context' ? instruction : undefined)
       updatePendingPermission(sessionId, null)
+      setSubagentsBySession((current) => ({ ...current, [sessionId]: (current[sessionId] || []).map((agent) =>
+        agent.pending_permission?.permission_id === permissionId ? { ...agent, pending_permission: null } : agent),
+      }))
       setPermissionInstruction('')
     } catch (err) {
       setPermissionError(err instanceof Error ? err.message : String(err))
@@ -1201,7 +1244,7 @@ export default function App() {
   }, [selectedSessionId])
 
   const resumeActiveRun = async (sessionId: string, projectIdForList = selectedProjectIdRef.current) => {
-    if (resumeInFlightRef.current.has(sessionId)) return
+    if (resumeInFlightRef.current.has(sessionId) || runningSessionsRef.current[sessionId]) return
     resumeInFlightRef.current.add(sessionId)
     let activeRun
     try {
@@ -1211,13 +1254,17 @@ export default function App() {
       return
     }
     const existingRun = runningSessionsRef.current[sessionId]
-    if (existingRun?.requestId === activeRun.request_id) {
+    if (existingRun) {
       resumeInFlightRef.current.delete(sessionId)
       return
     }
 
     clearFailedRun(sessionId)
     const events = await refreshLiveEvents(sessionId)
+    if (runningSessionsRef.current[sessionId]) {
+      resumeInFlightRef.current.delete(sessionId)
+      return
+    }
     const startedAfterSeq = activeRun.started_after_seq ?? latestUserEventSeq(events)
     const resumedRuns = {
       ...runningSessionsRef.current,
@@ -1236,12 +1283,12 @@ export default function App() {
       while (true) {
         const status = await api.getChatStatus(activeRun.request_id)
         updatePendingPermission(sessionId, status.pending_permission || null)
-        if (status.status === 'running') {
+        if (status.status === 'running' || status.status === 'stopping') {
           await refreshLiveEvents(sessionId, { preserveActiveRunEvents: true })
           await new Promise((resolve) => window.setTimeout(resolve, 1000))
           continue
         }
-        if (status.status === 'failed') {
+        if (status.status === 'failed' || status.status === 'stop_failed') {
           await refreshLiveEvents(sessionId, { preserveActiveRunEvents: true })
           throw new Error(status.error || '运行失败')
         }
@@ -1297,6 +1344,33 @@ export default function App() {
     if (!selectedSessionId) return
     void resumeActiveRun(selectedSessionId)
   }, [selectedSessionId])
+
+  useEffect(() => {
+    let disposed = false
+    let refreshing = false
+    const refreshCollaboration = async () => {
+      const sessionId = selectedSessionIdRef.current
+      if (!sessionId || refreshing || document.visibilityState === 'hidden') return
+      refreshing = true
+      try {
+        const result = await api.listSubagents(sessionId)
+        if (disposed) return
+        setSubagentsBySession((current) => ({ ...current, [sessionId]: result.agents }))
+        if (!runningSessionsRef.current[sessionId]) {
+          void resumeActiveRun(sessionId)
+          if (selectedSessionIdRef.current === sessionId) {
+            await loadSessionDetail(sessionId, { preserveScroll: true })
+          }
+        }
+      } catch {
+        // A transient connection failure must not erase known task state.
+      } finally {
+        refreshing = false
+      }
+    }
+    const timer = window.setInterval(() => void refreshCollaboration(), 1000)
+    return () => { disposed = true; window.clearInterval(timer) }
+  }, [])
 
   useEffect(() => {
     const refreshVisibleSession = async () => {
@@ -1461,6 +1535,12 @@ export default function App() {
       submissionNotified = true
       onSubmitted?.()
     }
+    const startingRuns = {
+      ...runningSessionsRef.current,
+      [sessionId]: { requestId: '', status: 'starting', startedAfterSeq, operation: 'chat' } as RunningSession,
+    }
+    runningSessionsRef.current = startingRuns
+    setRunningSessions(startingRuns)
     try {
       const data = await api.getSessionEvents(sessionId)
       startedAfterSeq = latestEventSeq(data.events)
@@ -1469,12 +1549,6 @@ export default function App() {
       // Events are an optional live enhancement; chat should still start if this snapshot is unavailable.
     }
     setLiveEventsBySession((current) => ({ ...current, [sessionId]: [] }))
-    const startingRuns = {
-      ...runningSessionsRef.current,
-      [sessionId]: { requestId: '', status: 'starting', startedAfterSeq, operation: 'chat' } as RunningSession,
-    }
-    runningSessionsRef.current = startingRuns
-    setRunningSessions(startingRuns)
     setNotice(null)
     try {
       const run = await api.sendMessage(sessionId, content)
@@ -1494,12 +1568,12 @@ export default function App() {
       while (true) {
         const status = await api.getChatStatus(run.request_id)
         updatePendingPermission(sessionId, status.pending_permission || null)
-        if (status.status === 'running') {
+        if (status.status === 'running' || status.status === 'stopping') {
           await refreshLiveEvents(sessionId, { preserveActiveRunEvents: true })
           await new Promise((resolve) => window.setTimeout(resolve, 1000))
           continue
         }
-        if (status.status === 'failed') {
+        if (status.status === 'failed' || status.status === 'stop_failed') {
           await refreshLiveEvents(sessionId, { preserveActiveRunEvents: true })
           throw new Error(status.error || '运行失败')
         }
@@ -1713,6 +1787,12 @@ export default function App() {
     clearFailedRun(sessionId)
     let startedAfterSeq = latestEventSeq(liveEventsBySession[sessionId] || [])
     let requestId = ''
+    const startingRuns = {
+      ...runningSessionsRef.current,
+      [sessionId]: { requestId: '', status: 'starting', startedAfterSeq, operation: 'compact' },
+    } as Record<string, RunningSession>
+    runningSessionsRef.current = startingRuns
+    setRunningSessions(startingRuns)
     try {
       const data = await api.getSessionEvents(sessionId)
       startedAfterSeq = latestEventSeq(data.events)
@@ -1720,12 +1800,6 @@ export default function App() {
     } catch {
       // Events are optional; compact status polling still works without the initial snapshot.
     }
-    const startingRuns = {
-      ...runningSessionsRef.current,
-      [sessionId]: { requestId: '', status: 'starting', startedAfterSeq, operation: 'compact' },
-    } as Record<string, RunningSession>
-    runningSessionsRef.current = startingRuns
-    setRunningSessions(startingRuns)
     setNotice(null)
     try {
       const run = await api.compactSession(sessionId)
@@ -1739,11 +1813,11 @@ export default function App() {
       while (true) {
         const status = await api.getChatStatus(run.request_id)
         await refreshLiveEvents(sessionId)
-        if (status.status === 'running') {
+        if (status.status === 'running' || status.status === 'stopping') {
           await new Promise((resolve) => window.setTimeout(resolve, 1000))
           continue
         }
-        if (status.status === 'failed') {
+        if (status.status === 'failed' || status.status === 'stop_failed') {
           throw new Error(status.error || '上下文压缩失败')
         }
         if (status.status === 'interrupted') {
@@ -1827,7 +1901,34 @@ export default function App() {
     }
   }
 
+  const steerMessage = async () => {
+    const sessionId = selectedSessionId
+    const submittedDraft = draftRef.current
+    const content = submittedDraft.trim()
+    const submittedDraftKey = draftKeyRef.current
+    const nextDraft = draftAfterSend(alignmentEnabledRef.current)
+    if (!sessionId || !content || steeringMessageRef.current) return
+    steeringMessageRef.current = true
+    setSteeringMessage(true)
+    try {
+      await api.steerMessage(sessionId, content)
+      if (draftKeyRef.current === submittedDraftKey && draftRef.current === submittedDraft) {
+        updateDraft(nextDraft)
+      } else if (submittedDraftKey && draftKeyRef.current !== submittedDraftKey
+                 && readLocalValue(submittedDraftKey) === submittedDraft) {
+        writeLocalValue(submittedDraftKey, nextDraft || null)
+      }
+      setNotice('已发送直接引导，正在执行的任务会在下一次接收消息时处理。')
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : String(err))
+    } finally {
+      steeringMessageRef.current = false
+      setSteeringMessage(false)
+    }
+  }
+
   const sendMessage = async () => {
+    if (steeringMessageRef.current) return
     const content = draft.trim()
     if (!content) return
     if (!selectedSessionId && !selectedProjectId) {
@@ -2202,8 +2303,19 @@ export default function App() {
                   turn.steps,
                   hasAttachedLiveRun ? visibleLiveEvents : [],
                 )
-                const visibleProcessItems = hasAttachedLiveRun ? processItems.slice(-8) : processItems
-                const keepProcessTextVisible = !hasAttachedLiveRun && hasAssistantProcessText(processItems)
+                const processPresentation = buildToolPresentation(
+                  processItems,
+                  {
+                    isLive: hasAttachedLiveRun && !isShowingFailedRun,
+                    runFinished: !hasAttachedLiveRun || isShowingFailedRun,
+                  },
+                )
+                const hasProcessContent = processPresentation.toolCalls.length > 0
+                  || processPresentation.unpairedResults.length > 0
+                  || processPresentation.otherItems.length > 0
+                const keepProcessTextVisible = processPresentation.toolCalls.some(
+                  (toolCall) => Boolean(toolCall.assistantText),
+                )
                 const assistantText = hasAttachedLiveRun
                   ? displayedAssistantText(currentStreamText, turn.assistant ? messageText(turn.assistant) : '')
                   : turn.assistant ? messageText(turn.assistant) : ''
@@ -2212,12 +2324,12 @@ export default function App() {
                   <article key={turn.key} className="chat-turn">
                     {turn.user && (
                       <div className="message user">
-                        <div className="message-role">USER</div>
+                        <div className="message-role">{turn.user.source_agent_id || turn.user._sender_id ? 'AGENT' : 'USER'}</div>
                         <pre>{messageText(turn.user)}</pre>
                       </div>
                     )}
                     <div className="assistant-stack">
-                      {processItems.length > 0 && (
+                      {hasProcessContent && (
                         <details
                           className={`process-group ${hasAttachedLiveRun ? 'live' : ''} ${hasAttachedLiveRun && isShowingFailedRun ? 'failed' : ''}`}
                           open={keepProcessTextVisible ? true : undefined}
@@ -2230,26 +2342,10 @@ export default function App() {
                               </span>
                             ) : summarizeStepList(turn.steps)}
                           </summary>
-                          <div className="process-list">
-                            {visibleProcessItems.map((item) => (
-                              <div key={item.key} className="process-item">
-                                {item.kind === 'message' ? (
-                                  <>
-                                    <div className="process-item-title">{processSummary(item.message)}</div>
-                                    <pre>{renderProcessContent(item.message)}</pre>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div className="process-item-title">{eventSummary(item.event)}</div>
-                                    <pre>{eventDetails(item.event)}</pre>
-                                  </>
-                                )}
-                              </div>
-                            ))}
-                          </div>
+                          <ToolProcessList presentation={processPresentation} />
                         </details>
                       )}
-                      {hasAttachedLiveRun && processItems.length === 0 && (
+                      {hasAttachedLiveRun && !hasProcessContent && (
                         <div className={`thinking-line ${isShowingFailedRun && !isShowingRecoverableRun ? 'failed' : ''}`}>
                           {!isShowingFailedRun && <span className="spinner" />}
                           <span>{summarizeLiveStatus(currentRunEvents)}</span>
@@ -2285,22 +2381,24 @@ export default function App() {
                       />
                     </div>
                   )}
-                  {visibleLiveEvents.length ? (
-                    <details className={`process-group live ${isShowingFailedRun ? 'failed' : ''}`}>
+                  {(
+                    detachedLiveProcessPresentation.toolCalls.length > 0
+                    || detachedLiveProcessPresentation.unpairedResults.length > 0
+                    || detachedLiveProcessPresentation.otherItems.length > 0
+                  ) ? (
+                    <details
+                      className={`process-group live ${isShowingFailedRun ? 'failed' : ''}`}
+                      open={detachedLiveProcessPresentation.toolCalls.some(
+                        (toolCall) => Boolean(toolCall.assistantText),
+                      ) ? true : undefined}
+                    >
                       <summary>
                         <span className="live-summary-content">
                           {!isShowingFailedRun && <span className="spinner" />}
                           <span>{summarizeLiveStatus(visibleLiveEvents)}</span>
                         </span>
                       </summary>
-                      <div className="process-list">
-                        {visibleLiveEvents.slice(-8).map((event) => (
-                          <div key={`${event.session_id}-${event.seq}`} className="process-item">
-                            <div className="process-item-title">{eventSummary(event)}</div>
-                            <pre>{eventDetails(event)}</pre>
-                          </div>
-                        ))}
-                      </div>
+                      <ToolProcessList presentation={detachedLiveProcessPresentation} />
                     </details>
                   ) : (
                     <div className={`thinking-line ${isShowingFailedRun && !isShowingRecoverableRun ? 'failed' : ''}`}>
@@ -2321,12 +2419,18 @@ export default function App() {
               )}
             </div>
             <form className="composer composer-command" onSubmit={send}>
+              {activeSubagents.length > 0 && (
+                <div className="subagent-status" role="status">
+                  <strong>{selectedRun ? '子任务' : '等待子任务'}</strong>
+                  {activeSubagents.map((agent) => <span key={agent.agent_id}>{agent.task_name} · {({ running: '运行中', waiting: '等待消息', queued: '等待名额', stopping: '正在停止', stop_failed: '停止失败' } as Record<string, string>)[agent.status]}</span>)}
+                </div>
+              )}
               {currentPendingPermission && (
                 <section className="permission-card" aria-live="polite">
                   <div className="permission-card-heading">
                     <span className="permission-card-icon"><ShieldCheck size={18} /></span>
                     <div>
-                      <strong>需要你的权限确认</strong>
+                      <strong>{permissionSubagent ? `子任务“${permissionSubagent.task_name}”需要你的权限确认` : '需要你的权限确认'}</strong>
                       <span>{currentPendingPermission.tool} · {permissionRiskLabel(currentPendingPermission.risk_level)}</span>
                     </div>
                     <time>剩余 {formatPermissionCountdown(currentPermissionSeconds)}</time>
@@ -2537,6 +2641,11 @@ export default function App() {
                   </div>
                   <span className="composer-status">{composerUploading ? '上传中...' : selectedRun?.operation === 'compact' ? '正在压缩上下文' : ''}</span>
                   <div className="composer-run-actions">
+                    {selectedRun && selectedRun.operation !== 'compact' && (
+                      <button type="button" className="steer-button" disabled={!draft.trim() || steeringMessage} onClick={() => void steerMessage()}>
+                        直接引导
+                      </button>
+                    )}
                     <button
                       className="stop-button"
                       type="button"
@@ -2549,7 +2658,7 @@ export default function App() {
                     <button
                       type="submit"
                       title={selectedRun ? '排队发送' : '发送'}
-                      disabled={(!selectedProjectId && !selectedSessionId) || !draft.trim() || selectedRun?.operation === 'compact'}
+                      disabled={(!selectedProjectId && !selectedSessionId) || !draft.trim() || steeringMessage || selectedRun?.operation === 'compact'}
                     >
                       <Play size={18} />
                     </button>

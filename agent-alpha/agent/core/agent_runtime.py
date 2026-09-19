@@ -60,6 +60,8 @@ class AgentRuntime:
         self.llm_profile_name = llm_profile_name
         self.llm_settings = dict(llm_settings or {})
         self.role_config = role_config or RoleConfig()
+        self.input_provider = None
+        self.checkpoint = None
 
         apply_runtime_env(PROJECT_ROOT)
         self.workspace_root.mkdir(parents=True, exist_ok=True)
@@ -119,7 +121,7 @@ class AgentRuntime:
 
         event_writer = self._create_event_writer(runtime_request.session_id)
         log_writer = self._create_log_writer(runtime_request.session_id)
-        self._interrupted.clear()
+        self.clear_interrupt()
         request_id = str(runtime_request.metadata.get("request_id") or runtime_request.session_id or "runtime")
         try:
             if log_writer is not None:
@@ -182,8 +184,12 @@ class AgentRuntime:
                 interrupt_event=self._interrupted,
                 start_interrupt_listener=self._start_esc_listener,
                 request_id=request_id,
+                input_provider=getattr(self, "input_provider", None),
+                checkpoint=getattr(self, "checkpoint", None),
             )
-            result = loop.run(runtime_request.content)
+            initial_entry = runtime_request.metadata.get("input_entry")
+            result = (loop.run(runtime_request.content, input_entry=initial_entry)
+                      if initial_entry else loop.run(runtime_request.content))
             if log_writer is not None:
                 log_writer.write_event(
                     "run_finished",
@@ -221,7 +227,10 @@ class AgentRuntime:
             cancel()
 
     def clear_interrupt(self) -> None:
-        self._interrupted.clear()
+        # Old tools retain their cancelled signal; never clear a previous run.
+        self._interrupted = threading.Event()
+        self.llm.set_interrupt_event(self._interrupted)
+        self.tool_loader.set_interrupt_event(self._interrupted)
 
     def is_interrupted(self) -> bool:
         return self._interrupted.is_set()
@@ -230,17 +239,17 @@ class AgentRuntime:
         if not HAS_MSVCRT:
             return None
 
-        self._interrupted.clear()
+        interrupted = self._interrupted
         last_esc = [0.0]
 
         def listener():
-            while not self._interrupted.is_set():
+            while not interrupted.is_set():
                 if msvcrt.kbhit():
                     key = msvcrt.getch()
                     if key == b"\x1b":
                         now = time.time()
                         if now - last_esc[0] < 1.0:
-                            self._interrupted.set()
+                            interrupted.set()
                             print("\n\nInterrupted by ESC.")
                             return
                         last_esc[0] = now

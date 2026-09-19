@@ -12,6 +12,34 @@ export interface FailedRunSnapshot {
   recoverable?: boolean
 }
 
+export type ToolOutputState = 'running' | 'missing' | 'empty' | 'received'
+
+export interface ToolPresentation {
+  key: string
+  name: string
+  assistantText: string
+  arguments: string
+  output: string
+  outputState: ToolOutputState
+}
+
+export interface ToolResultPresentation {
+  key: string
+  output: string
+  outputState: 'empty' | 'received'
+}
+
+export interface ToolProcessPresentation {
+  toolCalls: ToolPresentation[]
+  unpairedResults: ToolResultPresentation[]
+  otherItems: ProcessPresentationItem[]
+}
+
+export interface BuildToolPresentationOptions {
+  isLive: boolean
+  runFinished: boolean
+}
+
 function stableHash(value: string) {
   let hash = 2166136261
   for (let index = 0; index < value.length; index += 1) {
@@ -23,6 +51,14 @@ function stableHash(value: string) {
 
 function toolCallId(call: Record<string, unknown>) {
   return String(call.id || '')
+}
+
+export function toolCallName(call: Record<string, unknown>) {
+  const fn = call.function
+  if (fn && typeof fn === 'object' && 'name' in fn) {
+    return String((fn as { name?: unknown }).name || 'tool')
+  }
+  return String(call.name || call.type || 'tool')
 }
 
 export function processMessageKey(message: Message) {
@@ -90,6 +126,123 @@ export function displayedProcessContent(message: Message, fallback: string) {
   if (typeof content === 'string') return content.trim() ? content : fallback
   if (content == null) return fallback
   return JSON.stringify(content, null, 2)
+}
+
+function messageContentText(message: Message) {
+  const content = message.content
+  if (typeof content === 'string') return content
+  if (content == null) return ''
+  return JSON.stringify(content, null, 2) || String(content)
+}
+
+function formatToolArguments(call: Record<string, unknown>) {
+  const fn = call.function
+  const rawArguments = fn && typeof fn === 'object'
+    ? (fn as Record<string, unknown>).arguments
+    : call.arguments
+
+  if (typeof rawArguments === 'string') {
+    if (!rawArguments.trim()) return '{}'
+    try {
+      return JSON.stringify(JSON.parse(rawArguments), null, 2)
+    } catch {
+      return rawArguments
+    }
+  }
+  if (rawArguments == null) return '{}'
+  return JSON.stringify(rawArguments, null, 2) || '{}'
+}
+
+function outputPresentation(content: unknown): { output: string; outputState: 'empty' | 'received' } {
+  const output = typeof content === 'string'
+    ? content
+    : content == null
+      ? ''
+      : JSON.stringify(content, null, 2) || String(content)
+  if (!output.trim()) return { output: '无输出', outputState: 'empty' }
+  return { output, outputState: 'received' }
+}
+
+function isToolLifecycleEvent(item: ProcessPresentationItem) {
+  if (item.kind !== 'event') return false
+  const payload = item.event.event || item.event.entry || item.event
+  const type = String(item.event.type || (payload as Record<string, unknown>).type || '')
+  return type === 'tool_execution_started'
+    || type === 'tool_execution_completed'
+    || type === 'tool_execution_uncertain'
+}
+
+export function buildToolPresentation(
+  items: ProcessPresentationItem[],
+  options: BuildToolPresentationOptions,
+): ToolProcessPresentation {
+  const toolCalls: ToolPresentation[] = []
+  const callsById = new Map<string, ToolPresentation>()
+  const results: Array<{ key: string; callId: string; content: unknown }> = []
+  const otherItems: ProcessPresentationItem[] = []
+
+  for (const item of items) {
+    if (item.kind === 'event') {
+      if (!isToolLifecycleEvent(item)) otherItems.push(item)
+      continue
+    }
+
+    const message = item.message
+    if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+      const assistantText = messageContentText(message).trim() ? messageContentText(message) : ''
+      message.tool_calls.forEach((call, index) => {
+        const callId = toolCallId(call)
+        const toolCall: ToolPresentation = {
+          key: `tool:${callId || `${item.key}:${index}`}`,
+          name: toolCallName(call),
+          assistantText: index === 0 ? assistantText : '',
+          arguments: formatToolArguments(call),
+          output: '',
+          outputState: options.isLive && !options.runFinished ? 'running' : 'missing',
+        }
+        toolCalls.push(toolCall)
+        if (callId && !callsById.has(callId)) callsById.set(callId, toolCall)
+      })
+      continue
+    }
+
+    if (message.role === 'tool') {
+      results.push({
+        key: item.key,
+        callId: String(message.tool_call_id || ''),
+        content: message.content,
+      })
+      continue
+    }
+
+    otherItems.push(item)
+  }
+
+  const unpairedResults: ToolResultPresentation[] = []
+  for (const result of results) {
+    const toolCall = callsById.get(result.callId)
+    if (toolCall) {
+      const output = outputPresentation(result.content)
+      toolCall.output = output.output
+      toolCall.outputState = output.outputState
+      callsById.delete(result.callId)
+      continue
+    }
+
+    const output = outputPresentation(result.content)
+    unpairedResults.push({
+      key: `tool-output:${result.key}`,
+      output: output.output,
+      outputState: output.outputState,
+    })
+  }
+
+  for (const toolCall of toolCalls) {
+    if (toolCall.outputState === 'running') toolCall.output = '执行中…'
+    if (toolCall.outputState === 'missing') toolCall.output = '未收到输出'
+  }
+
+  return { toolCalls, unpairedResults, otherItems }
 }
 
 function sessionEventKey(event: SessionEvent) {

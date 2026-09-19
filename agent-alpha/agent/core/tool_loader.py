@@ -98,6 +98,9 @@ class ToolLoader:
     def set_interrupt_event(self, interrupt_event: threading.Event | None) -> None:
         """Share the current turn interrupt signal with interrupt-aware tools."""
         self.interrupt_event = interrupt_event
+        manager = self.tool_executors.get("_mcp_manager")
+        if manager is not None:
+            manager.set_interrupt_event(interrupt_event)
         for tool in self.tool_instances.values():
             if hasattr(tool, "set_interrupt_event"):
                 tool.set_interrupt_event(interrupt_event)
@@ -196,6 +199,7 @@ class ToolLoader:
 
             print("\n Loading MCP tools...")
             manager = MCPManager(servers_dir=str(self.project_root / "mcp-servers"))
+            manager.set_interrupt_event(self.interrupt_event)
             servers = manager.get_tools_by_server()
             if not servers:
                 print("   Warning: no MCP tools found")

@@ -95,6 +95,14 @@ def list_sessions(project_id: str | None = None):
     return SessionListResponse(sessions=sessions, total=len(sessions))
 
 
+@router.get("/{session_id}/subagents")
+def list_subagents(session_id: str, offset: int = 0, status: str | None = None):
+    try:
+        return agent_manager.collaboration.call(session_id, "", "list", {"offset": offset, "status": status})
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post("", response_model=SessionInfo)
 def create_session(body: SessionCreate):
     project = state_store.get_project(body.project_id)

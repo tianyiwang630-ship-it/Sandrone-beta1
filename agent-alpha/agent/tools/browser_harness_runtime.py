@@ -23,15 +23,15 @@ SHUTDOWN_TIMEOUT_SECONDS = 25
 
 
 class BrowserHarnessRuntime:
-    """One process-local browser channel shared by every Web agent."""
+    """One process-local browser channel, scoped to the owning agent."""
 
     def __init__(self, project_root: str | Path) -> None:
         self.project_root = Path(project_root).resolve()
-        self.state_dir = self.project_root / "state" / "browser-harness"
+        self.state_dir, browser_temp = browser_scope_paths(self.project_root, os.environ)
         self.runtime_dir = self.state_dir / "runtime"
         self.profile_dir = self.state_dir / "browser-profile"
         self.workspace_dir = self.state_dir / "agent-workspace"
-        self.temp_dir = self.project_root / "temp" / "browser-harness"
+        self.temp_dir = browser_temp
         self._lock = threading.Lock()
         self._cli_path: Path | None = None
         self._used = False
@@ -532,6 +532,17 @@ class BrowserHarnessRuntime:
         return {"success": False, "stage": stage, "error": message, **extra}
 
 
+def browser_scope_paths(root: Path, env: Mapping[str, str]) -> tuple[Path, Path]:
+    state = root / "state" / "browser-harness"
+    temp = root / "temp" / "browser-harness"
+    scope = env.get("AGENT_ALPHA_BROWSER_SCOPE", "")
+    if scope:
+        if not all(char.isalnum() or char in "_-" for char in scope):
+            raise ValueError("Invalid browser execution scope")
+        state, temp = state / "agents" / scope, temp / scope
+    return state, temp
+
+
 def build_browser_harness_env(
     project_root: str | Path,
     *,
@@ -540,19 +551,19 @@ def build_browser_harness_env(
 ) -> dict[str, str]:
     root = Path(project_root).resolve()
     env = build_runtime_env(root, base_env=base_env or os.environ)
-    state = root / "state" / "browser-harness"
+    state, temp = browser_scope_paths(root, env)
     env.update(
         {
             "BH_HOME": str(state),
             "BH_CONFIG_DIR": str(state),
             "BH_RUNTIME_DIR": str(state / "runtime"),
-            "BH_TMP_DIR": str(root / "temp" / "browser-harness"),
+            "BH_TMP_DIR": str(temp),
             "BH_AGENT_WORKSPACE": str(state / "agent-workspace"),
             "BH_UPDATE_CHECK": "0",
             "BH_TELEMETRY": "0",
             "BH_RECORD": "0",
             "BH_DOMAIN_SKILLS": "0",
-            "BU_NAME": "alpha-shared",
+            "BU_NAME": env.get("AGENT_ALPHA_BROWSER_SCOPE") or "alpha-shared",
             "BU_AUTOSPAWN": "",
             "BU_BROWSER_ID": "",
             "BU_CDP_WS": "",

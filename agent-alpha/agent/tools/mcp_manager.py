@@ -11,6 +11,8 @@ MCP Manager - 使用 FastMCP 管理 MCP servers（持久连接版）
 import asyncio
 import json
 import threading
+import time
+from concurrent.futures import TimeoutError as FutureTimeout
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -34,6 +36,7 @@ class MCPManager:
         self.servers_dir = servers_dir
         self.scanner = MCPScanner(servers_dir)
         self.servers = {}  # server 状态信息
+        self.interrupt_event = None
 
         # 后台事件循环（保持连接持久化）
         self._loop = asyncio.new_event_loop()
@@ -50,7 +53,25 @@ class MCPManager:
     def _run_coro(self, coro, timeout=60):
         """在后台事件循环中运行协程"""
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return future.result(timeout=timeout)
+        deadline = time.monotonic() + timeout
+        try:
+            while True:
+                if self.interrupt_event is not None and self.interrupt_event.is_set():
+                    raise RuntimeError("MCP request interrupted; remote effects may be unconfirmed")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise FutureTimeout("MCP request timed out; remote effects may be unconfirmed")
+                try:
+                    return future.result(timeout=min(0.1, remaining))
+                except FutureTimeout:
+                    if future.done():
+                        raise
+        except BaseException:
+            future.cancel()
+            raise
+
+    def set_interrupt_event(self, event):
+        self.interrupt_event = event
 
     # ==========================================
     # 发现与连接

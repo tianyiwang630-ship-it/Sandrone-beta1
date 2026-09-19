@@ -15,12 +15,14 @@ from fastapi.staticfiles import StaticFiles
 
 from agent.core.agent_runtime import PROJECT_ROOT
 from agent.server.routes import chat, files, meta, projects, runtime, sessions, settings, users
+from agent.server.deps import agent_manager
 from agent.tools.browser_harness_runtime import shutdown_browser_harness_runtime
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     yield
+    await asyncio.to_thread(agent_manager.release_all)
     await asyncio.to_thread(shutdown_browser_harness_runtime, PROJECT_ROOT)
 
 

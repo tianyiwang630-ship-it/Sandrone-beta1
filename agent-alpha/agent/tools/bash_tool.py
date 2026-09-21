@@ -15,6 +15,7 @@ from typing import Dict, Any, List
 from agent.core.command_path_extractor import classify_python_launcher_scope, command_uses_python_launcher
 from agent.core.path_policy import resolve_bash_command_context, resolve_working_directory
 from agent.core.runtime_paths import build_runtime_env, ensure_runtime_directories
+from agent.core.runtime_layout import current_layout, runtime_python
 from agent.tools.base_tool import BaseTool
 from agent.tools.process_utils import subprocess_group_kwargs, terminate_process_tree
 
@@ -736,11 +737,19 @@ class BashTool(BaseTool):
 
         scope = classify_python_launcher_scope(command, project_root=self.project_root)
         if scope == "deny":
-            return "Python commands must use agent-alpha .venv Python."
+            return (
+                "Python commands must use agent-alpha runtime Python."
+                if self._uses_packaged_runtime()
+                else "Python commands must use agent-alpha .venv Python."
+            )
 
         launcher = self._resolve_alpha_python_launcher(command)
         if launcher is None or not launcher.exists():
-            return "Missing agent-alpha .venv Python; Python commands will not fall back to host Python."
+            return (
+                "Missing agent-alpha runtime Python; Python commands will not fall back to host Python."
+                if self._uses_packaged_runtime()
+                else "Missing agent-alpha .venv Python; Python commands will not fall back to host Python."
+            )
         return None
 
     def _resolve_alpha_python_launcher(self, command: str) -> Path | None:
@@ -760,7 +769,11 @@ class BashTool(BaseTool):
             return path.resolve()
 
         launcher = executable.lower()
-        scripts_dir = self.project_root / ".venv" / ("Scripts" if os.name == "nt" else "bin")
+        scripts_dir = (
+            runtime_python(self.project_root).parent
+            if self._uses_packaged_runtime()
+            else self.project_root / ".venv" / ("Scripts" if os.name == "nt" else "bin")
+        )
         if os.name == "nt":
             candidates = [scripts_dir / launcher, scripts_dir / f"{launcher}.exe"]
             if launcher == "python":
@@ -781,13 +794,24 @@ class BashTool(BaseTool):
         return value
 
     def _alpha_python_guidance(self) -> str:
-        windows_python = self.project_root / ".venv" / "Scripts" / "python.exe"
-        posix_python = self.project_root / ".venv" / "bin" / "python"
+        if not self._uses_packaged_runtime():
+            windows_python = self.project_root / ".venv" / "Scripts" / "python.exe"
+            posix_python = self.project_root / ".venv" / "bin" / "python"
+            return (
+                "Use agent-alpha .venv Python only. "
+                f"Windows: {windows_python}; macOS/Linux: {posix_python}. "
+                "Do not use py, conda run, external Python paths, or command-local PATH overrides."
+            )
+        selected_python = runtime_python(self.project_root)
         return (
-            "Use agent-alpha .venv Python only. "
-            f"Windows: {windows_python}; macOS/Linux: {posix_python}. "
+            "Use agent-alpha runtime Python only. "
+            f"Interpreter: {selected_python}. "
             "Do not use py, conda run, external Python paths, or command-local PATH overrides."
         )
+
+    def _uses_packaged_runtime(self) -> bool:
+        layout = current_layout()
+        return layout.packaged and layout.data_root == self.project_root.resolve()
 
     def _start_output_readers(
         self,

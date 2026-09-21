@@ -46,6 +46,7 @@ def build_system_prompt(
     agent_home_skills_dir: Path | None,
     mcp_servers_dir: Path,
     mcp_registry_path: Path,
+    data_root: Path | None = None,
     session_created_at: Optional[str] = None,
     task_id: Optional[str] = None,
     skill_summaries: Optional[List[Dict[str, str]]] = None,
@@ -60,12 +61,16 @@ def build_system_prompt(
     recommended_skills_dir = agent_home_skills_dir or skills_dir
     session_created_line = session_created_at or "(not provided)"
     workspace_root = Path(workspace_root).resolve()
-    alpha_root = Path(skills_dir).parent.resolve()
+    app_root = Path(skills_dir).parent.resolve()
+    alpha_root = Path(data_root).resolve() if data_root else app_root
     skills_dir = Path(skills_dir).resolve()
     recommended_skills_dir = Path(recommended_skills_dir).resolve()
     mcp_servers_dir = Path(mcp_servers_dir).resolve()
     mcp_registry_path = Path(mcp_registry_path).resolve()
-    python_interpreter = alpha_root / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    from agent.core.runtime_layout import runtime_python
+
+    python_interpreter = runtime_python(alpha_root)
+    app_root_line = f"AGENT_ALPHA_APP_ROOT: {app_root}\n" if app_root != alpha_root else ""
 
     return f"""You are an agent running inside agent-alpha.
 
@@ -77,7 +82,7 @@ This is the creation date of this session. It may differ from dates mentioned by
 
 ## System Resource Paths
 AGENT_ALPHA_ROOT: {alpha_root}
-Built-in skills directory: {skills_dir}
+{app_root_line}Built-in skills directory: {skills_dir}
 Third-party skill install directory: {recommended_skills_dir}
 Temporary directory: {alpha_root / "temp"}
 Cache directory: {alpha_root / "cache"}

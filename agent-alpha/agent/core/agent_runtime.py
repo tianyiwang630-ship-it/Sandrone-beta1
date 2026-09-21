@@ -27,14 +27,12 @@ from agent.core.realtime_log import RealtimeLogWriter
 from agent.core.prompt_docs_loader import load_workspace_prompt_documents
 from agent.core.role_config import RoleConfig
 from agent.core.runtime_paths import apply_runtime_env
+from agent.core.runtime_layout import APP_ROOT, PROJECT_ROOT
 from agent.core.session_events import SessionEventWriter
 from agent.core.runtime_types import RuntimeRequest, RuntimeResponse
 from agent.core.skill_loader import SkillLoader
 from agent.core.system_prompt_builder import build_system_prompt
 from agent.core.tool_loader import ToolLoader
-
-
-PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
 class AgentRuntime:
@@ -67,7 +65,7 @@ class AgentRuntime:
         self.workspace_root.mkdir(parents=True, exist_ok=True)
 
         self.llm = LLMClient.from_settings(self.llm_settings, llm_profile_name)
-        self.skills_dir = PROJECT_ROOT / "skills"
+        self.skills_dir = APP_ROOT / "skills"
         self.agent_home_skills_dir = PROJECT_ROOT / "home" / ".agents" / "skills"
         self.skill_loader = SkillLoader(
             self.skills_dir,
@@ -75,6 +73,7 @@ class AgentRuntime:
         )
         self.tool_loader = ToolLoader(
             project_root=PROJECT_ROOT,
+            app_root=APP_ROOT,
             skill_loader=self.skill_loader,
             workspace_root=self.workspace_root,
         )
@@ -108,8 +107,9 @@ class AgentRuntime:
             events_dir=self.runtime_events_dir,
             skills_dir=self.skills_dir,
             agent_home_skills_dir=self.agent_home_skills_dir,
-            mcp_servers_dir=PROJECT_ROOT / "mcp-servers",
-            mcp_registry_path=PROJECT_ROOT / "mcp-servers" / "registry.json",
+            mcp_servers_dir=APP_ROOT / "mcp-servers",
+            mcp_registry_path=APP_ROOT / "mcp-servers" / "registry.json",
+            data_root=PROJECT_ROOT,
             session_created_at=self.session_created_at,
             task_id=self.task_id,
             skill_summaries=self.skill_loader.get_summaries(),

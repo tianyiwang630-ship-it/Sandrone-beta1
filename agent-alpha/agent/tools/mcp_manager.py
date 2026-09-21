@@ -10,6 +10,7 @@ MCP Manager - 使用 FastMCP 管理 MCP servers（持久连接版）
 
 import asyncio
 import json
+import os
 import threading
 import time
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -29,12 +30,17 @@ from agent.discovery.mcp_scanner import MCPScanner
 class MCPManager:
     """MCP 工具管理器 - 持久连接，自动发现"""
 
-    def __init__(self, servers_dir: str = "mcp-servers", auto_discover: bool = True):
+    def __init__(
+        self,
+        servers_dir: str = "mcp-servers",
+        auto_discover: bool = True,
+        state_dir: str | None = None,
+    ):
         if not FASTMCP_AVAILABLE:
             raise ImportError("fastmcp 库未安装")
 
         self.servers_dir = servers_dir
-        self.scanner = MCPScanner(servers_dir)
+        self.scanner = MCPScanner(servers_dir, state_dir=state_dir)
         self.servers = {}  # server 状态信息
         self.interrupt_event = None
 
@@ -82,6 +88,7 @@ class MCPManager:
         print("\n🔍 扫描 MCP servers...")
 
         discovered = self.scanner.scan()
+        self._apply_packaged_overrides(discovered)
         if not discovered:
             print("⚠️  未发现任何 MCP servers")
             print(f"💡 提示：将 MCP server 项目克隆到 {self.servers_dir}/ 目录")
@@ -100,6 +107,21 @@ class MCPManager:
         connected = len(self._connected)
         total = len(self._clients)
         print(f"\n✅ 成功连接 {connected}/{total} 个 servers")
+
+    @staticmethod
+    def _apply_packaged_overrides(discovered: Dict[str, Dict[str, Any]]) -> None:
+        node = os.environ.get("AGENT_ALPHA_NODE_EXECUTABLE", "").strip()
+        entry = os.environ.get("AGENT_ALPHA_OPEN_WEBSEARCH_ENTRY", "").strip()
+        config = discovered.get("open-websearch")
+        if not (config and node and entry):
+            return
+        config["command"] = node
+        config["args"] = [entry]
+        config["cwd"] = str(Path(entry).resolve().parent)
+        config["env"] = {
+            **dict(config.get("env") or {}),
+            "ELECTRON_RUN_AS_NODE": "1",
+        }
 
     def _get_wrapper_path(self) -> str:
         """获取 stdio_wrapper.py 的绝对路径"""

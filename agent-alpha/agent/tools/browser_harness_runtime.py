@@ -579,7 +579,8 @@ def build_browser_harness_env(
 
 def find_browser_executable(project_root: str | Path, env: Mapping[str, str]) -> Path | None:
     root = Path(project_root).resolve()
-    bundled = root / "tools" / "chrome-for-testing" / "chrome-win64" / "chrome.exe"
+    app_root = Path(env.get("AGENT_ALPHA_APP_ROOT") or root).resolve()
+    bundled = app_root / "tools" / "chrome-for-testing" / "chrome-win64" / "chrome.exe"
     if bundled.is_file():
         return bundled
 

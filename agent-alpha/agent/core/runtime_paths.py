@@ -8,7 +8,11 @@ from typing import Any, Mapping, MutableMapping
 
 
 RESERVED_RUNTIME_ENV_KEYS = {
+    "AGENT_ALPHA_APP_ROOT",
     "AGENT_ALPHA_ROOT",
+    "AGENT_ALPHA_PYTHON",
+    "AGENT_ALPHA_BROWSER_PYTHON",
+    "AGENT_ALPHA_NODE_EXECUTABLE",
     "AGENT_ALPHA_HOST_LOCALAPPDATA",
     "AGENT_ALPHA_HOST_PROGRAMFILES",
     "AGENT_ALPHA_HOST_PROGRAMFILES_X86",
@@ -143,9 +147,15 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
     """Return environment variables that redirect normal user dirs into agent-alpha."""
     root = Path(project_root).resolve()
     home = root / "home"
-    venv = root / ".venv"
+    from agent.core.runtime_layout import RuntimeLayout
+
     os_name = _runtime_os_name()
-    scripts_dir = venv / ("Scripts" if os_name == "nt" else "bin")
+    layout = RuntimeLayout.from_env(base_env)
+    packaged_layout = layout.packaged and layout.data_root == root
+    app_root = layout.app_root if packaged_layout else root
+    python_executable = layout.python_executable if packaged_layout else _default_python(root, os_name)
+    venv = python_executable.parent.parent if python_executable.parent.name.lower() in {"scripts", "bin"} else python_executable.parent
+    scripts_dir = python_executable.parent
     agent_bin_dir = root / "bin"
     npm_prefix = root / "config" / "appdata" / "npm"
     npm_bin_dir = npm_prefix if os_name == "nt" else npm_prefix / "bin"
@@ -192,6 +202,15 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
         "VIRTUAL_ENV": venv,
         "PYTHONNOUSERSITE": "1",
     }
+    if packaged_layout:
+        runtime_values.update(
+            {
+                "AGENT_ALPHA_APP_ROOT": app_root,
+                "AGENT_ALPHA_PYTHON": python_executable,
+                "AGENT_ALPHA_BROWSER_PYTHON": layout.browser_python_executable,
+                "AGENT_ALPHA_NODE_EXECUTABLE": layout.node_executable,
+            }
+        )
     env.update({key: str(value) for key, value in runtime_values.items() if value})
 
     if os_name == "nt":
@@ -214,6 +233,10 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
     ]
     env["PATH"] = _merge_path_entries(path_prefix_entries, env.get("PATH", ""), os_name=os_name)
     return env
+
+
+def _default_python(root: Path, os_name: str) -> Path:
+    return root / ".venv" / ("Scripts/python.exe" if os_name == "nt" else "bin/python")
 
 
 def _merge_path_entries(prefix_entries: list[Path], old_path: str, *, os_name: str) -> str:

@@ -58,6 +58,7 @@ ENV/
 /input files/
 /output files/
 /temp/
+/release/
 
 # MCP 子模块
 /frontend/node_modules/

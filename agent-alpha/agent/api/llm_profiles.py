@@ -3,12 +3,11 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
+from agent.core.runtime_layout import APP_ROOT
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-LLM_PROFILES_PATH = PROJECT_ROOT / "config" / "llm_profiles.json"
+LLM_PROFILES_PATH = APP_ROOT / "config" / "llm_profiles.json"
 
 
 @dataclass(frozen=True)

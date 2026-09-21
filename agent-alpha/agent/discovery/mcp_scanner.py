@@ -10,9 +10,13 @@ from typing import Dict, Any
 class MCPScanner:
     """自动扫描 mcp-servers 目录，识别各种类型的 MCP server"""
 
-    def __init__(self, servers_dir: str = "mcp-servers"):
+    def __init__(self, servers_dir: str = "mcp-servers", state_dir: str | Path | None = None):
         self.servers_dir = Path(servers_dir)
-        self.servers_dir.mkdir(exist_ok=True)
+        if state_dir is None:
+            self.servers_dir.mkdir(exist_ok=True)
+            self.state_dir = self.servers_dir
+        else:
+            self.state_dir = Path(state_dir)
 
     def scan(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -227,7 +231,7 @@ class MCPScanner:
             }
 
             # 保存到 server 目录
-            server_dir = self.servers_dir / server_name
+            server_dir = self.state_dir / server_name
             server_dir.mkdir(parents=True, exist_ok=True)
 
             config_path = server_dir / "auto-config.json"

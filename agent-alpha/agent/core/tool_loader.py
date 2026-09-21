@@ -56,6 +56,7 @@ class ToolLoader:
     def __init__(
         self,
         project_root: Path | None = None,
+        app_root: Path | None = None,
         enable_permissions: bool = True,
         skill_loader: SkillLoader | None = None,
         workspace_root: Path | None = None,
@@ -66,7 +67,8 @@ class ToolLoader:
         else:
             self.project_root = Path(project_root)
 
-        self.skills_dir = self.project_root / "skills"
+        self.app_root = Path(app_root).resolve() if app_root else self.project_root.resolve()
+        self.skills_dir = self.app_root / "skills"
         self.agent_home_skills_dir = self.project_root / "home" / ".agents" / "skills"
         self.skill_loader = skill_loader or SkillLoader(
             self.skills_dir,
@@ -198,7 +200,12 @@ class ToolLoader:
             from agent.tools.mcp_manager import MCPManager
 
             print("\n Loading MCP tools...")
-            manager = MCPManager(servers_dir=str(self.project_root / "mcp-servers"))
+            manager_kwargs: Dict[str, Any] = {
+                "servers_dir": str(self.app_root / "mcp-servers"),
+            }
+            if self.app_root != self.project_root.resolve():
+                manager_kwargs["state_dir"] = str(self.project_root / "state" / "mcp")
+            manager = MCPManager(**manager_kwargs)
             manager.set_interrupt_event(self.interrupt_event)
             servers = manager.get_tools_by_server()
             if not servers:
@@ -244,7 +251,7 @@ class ToolLoader:
 
     def _load_registry(self) -> Dict[str, Dict[str, Any]]:
         """Read mcp-servers/registry.json if it exists."""
-        registry_path = self.project_root / "mcp-servers" / "registry.json"
+        registry_path = self.app_root / "mcp-servers" / "registry.json"
         if not registry_path.exists():
             return {}
 

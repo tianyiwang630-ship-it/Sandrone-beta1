@@ -115,6 +115,12 @@ powershell -ExecutionPolicy Bypass -File .\frontend\scripts\prepare-desktop.ps1
 
 桌面准备脚本会安装前端依赖、构建页面并创建本地启动快捷方式。Web 和 Electron 共用后端能力；正式打包时，前端容器不依赖浏览器作为产品界面。
 
+### Windows 安装包与开发版
+
+同一套代码支持开发运行和 Windows x64 安装发布。日常开发继续使用上面的启动方式、项目 `.venv` 和现有数据目录；需要分发时，在 `agent-alpha/frontend` 执行 `npm run package:win`，产物位于 `agent-alpha/release/Agent-Alpha-Setup-0.1.0-win-x64.exe`。构建需要联网，下载缓存保留在 `temp/package-stage/cache`。
+
+安装包采用当前用户安装，内置 Electron、Python、依赖、Chrome 和 uv。首次启动通过随包离线材料生成 Browser Harness 0.1.13 的 EXE，后续启动复用。无需用户预装开发工具。程序资源与 `%LOCALAPPDATA%/AgentAlpha` 中的用户数据分开；安装包不携带开发版的密钥、会话或浏览器登录状态，卸载保留用户数据。安装包暂未签名。模型调用和在线搜索仍需要网络及相应服务配置。
+
 ## 核心设计
 
 ### 多智能体协作
@@ -349,6 +355,12 @@ powershell -ExecutionPolicy Bypass -File .\frontend\scripts\prepare-desktop.ps1
 ```
 
 The desktop preparation script installs frontend dependencies, builds the UI, and creates a local launcher. Web and Electron share the same backend; the packaged desktop direction does not depend on a browser as the product UI.
+
+### Windows Installer and Development Mode
+
+One codebase supports direct development and Windows x64 distribution. Development keeps the existing launchers, project `.venv`, and data directories. Run `npm run package:win` from `agent-alpha/frontend` to produce `agent-alpha/release/Agent-Alpha-Setup-0.1.0-win-x64.exe`. Building requires network access; downloads are cached under `temp/package-stage/cache`.
+
+The per-user installer bundles Electron, Python, dependencies, Chrome, and uv. On first launch, bundled offline materials generate the Browser Harness 0.1.13 executable; later launches reuse it. No preinstalled development tools are required. Application resources are separate from user data in `%LOCALAPPDATA%/AgentAlpha`. Developer credentials, sessions, and browser profiles are excluded; uninstall preserves user data. The installer is unsigned. Model calls and online search still require network access and service configuration.
 
 ## Core Designs
 

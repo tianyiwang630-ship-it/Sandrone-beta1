@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter
 import yaml
 
-from agent.core.agent_runtime import PROJECT_ROOT
+from agent.core.runtime_layout import APP_ROOT, PROJECT_ROOT
 from agent.server.models import CapabilityItem, CapabilityResponse
 
 router = APIRouter(prefix="/api/meta", tags=["meta"])
@@ -53,7 +53,7 @@ def _skill_items(root: Path) -> list[CapabilityItem]:
 
 
 def _mcp_items() -> list[CapabilityItem]:
-    registry = PROJECT_ROOT / "mcp-servers" / "registry.json"
+    registry = APP_ROOT / "mcp-servers" / "registry.json"
     if not registry.exists():
         return []
     try:
@@ -75,7 +75,7 @@ def _mcp_items() -> list[CapabilityItem]:
 @router.get("/capabilities", response_model=CapabilityResponse)
 def list_capabilities():
     items = []
-    items.extend(_skill_items(PROJECT_ROOT / "skills"))
+    items.extend(_skill_items(APP_ROOT / "skills"))
     items.extend(_skill_items(PROJECT_ROOT / "home" / ".agents" / "skills"))
     items.extend(_mcp_items())
     return CapabilityResponse(items=items)

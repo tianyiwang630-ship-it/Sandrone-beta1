@@ -77,6 +77,40 @@ def test_runtime_env_preserves_host_browser_install_locations(tmp_path: Path):
     assert env["AGENT_ALPHA_HOST_PROGRAMFILES_X86"] == r"C:\Program Files (x86)"
 
 
+def test_development_runtime_does_not_enable_packaged_overrides(tmp_path: Path):
+    root = tmp_path / "agent-alpha"
+
+    env = build_runtime_env(root, base_env={"PATH": "host-path"})
+
+    assert env["AGENT_ALPHA_ROOT"] == str(root.resolve())
+    assert "AGENT_ALPHA_APP_ROOT" not in env
+    assert "AGENT_ALPHA_PYTHON" not in env
+    assert "AGENT_ALPHA_BROWSER_PYTHON" not in env
+    assert "AGENT_ALPHA_NODE_EXECUTABLE" not in env
+
+
+def test_packaged_runtime_env_keeps_resources_read_only_and_data_writable(tmp_path: Path):
+    app_root = tmp_path / "resources" / "agent-alpha"
+    data_root = tmp_path / "data" / "AgentAlpha"
+    backend_python = app_root / "runtime" / "backend-python" / "python.exe"
+    env = build_runtime_env(
+        data_root,
+        base_env={
+            "PATH": "",
+            "AGENT_ALPHA_APP_ROOT": str(app_root),
+            "AGENT_ALPHA_ROOT": str(data_root),
+            "AGENT_ALPHA_PYTHON": str(backend_python),
+            "AGENT_ALPHA_BROWSER_PYTHON": str(app_root / "runtime" / "browser-python" / "python.exe"),
+        },
+    )
+
+    assert Path(env["AGENT_ALPHA_APP_ROOT"]) == app_root.resolve()
+    assert Path(env["AGENT_ALPHA_ROOT"]) == data_root.resolve()
+    assert Path(env["AGENT_ALPHA_PYTHON"]) == backend_python.resolve()
+    assert Path(env["HOME"]) == (data_root / "home").resolve()
+    assert Path(env["TEMP"]) == (data_root / "temp").resolve()
+
+
 def test_browser_harness_runtime_directories_are_created(tmp_path: Path):
     ensure_runtime_directories(tmp_path)
 

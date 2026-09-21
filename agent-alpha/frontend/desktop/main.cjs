@@ -3,12 +3,15 @@ const { spawn } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
 const { inspectBackend, shutdownDesktop, stopOwnedBackend } = require('./backend.cjs')
+const { ensureBrowserHarness } = require('./browser-harness-initializer.cjs')
+const { buildBackendEnv, resolveRuntimeLayout } = require('./runtime-layout.cjs')
 
 const frontendRoot = path.resolve(__dirname, '..')
-const projectRoot = path.resolve(frontendRoot, '..')
-const python = path.join(projectRoot, '.venv', 'Scripts', 'python.exe')
-const index = path.join(frontendRoot, 'dist', 'index.html')
-const icon = path.join(__dirname, 'app.ico')
+const layout = resolveRuntimeLayout({
+  isPackaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+  frontendRoot,
+})
 const url = 'http://127.0.0.1:8787'
 let ownedBackend = null
 let mainWindow = null
@@ -34,15 +37,31 @@ if (!app.requestSingleInstanceLock()) {
 
 function showStartupError(error) {
   stopOwnedBackend(ownedBackend)
+  if (layout.isPackaged) {
+    try {
+      const logDir = path.join(layout.dataRoot, 'temp')
+      fs.mkdirSync(logDir, { recursive: true })
+      fs.appendFileSync(path.join(logDir, 'desktop-startup.log'), `${new Date().toISOString()} ${String(error.stack || error)}\n`, 'utf8')
+    } catch { /* Preserve the original startup error if logging is unavailable. */ }
+  }
   dialog.showErrorBox('agent-alpha 启动失败', String(error.message || error))
   app.quit()
 }
 
 async function start() {
-  if (!fs.existsSync(index)) throw new Error('缺少前端构建文件，请运行 npm run desktop:prepare。')
-  if (!fs.existsSync(python)) throw new Error('缺少项目 Python 环境，请先运行 setup-agent-alpha.ps1。')
+  if (!fs.existsSync(layout.frontendIndex)) {
+    throw new Error(layout.isPackaged ? '缺少前端构建文件，请重新安装 Agent Alpha。' : '缺少前端构建文件，请运行 npm run desktop:prepare。')
+  }
+  if (!fs.existsSync(layout.python)) {
+    throw new Error(layout.isPackaged ? '缺少 Agent Alpha Python 运行时，请重新安装 Agent Alpha。' : '缺少项目 Python 环境，请先运行 setup-agent-alpha.ps1。')
+  }
+  if (layout.isPackaged) {
+    fs.mkdirSync(layout.dataRoot, { recursive: true })
+    layout.dataRoot = fs.realpathSync.native(layout.dataRoot)
+    await ensureBrowserHarness(layout)
+  }
 
-  const current = await inspectBackend(url, projectRoot)
+  const current = await inspectBackend(url, layout.dataRoot)
   if (current !== 'missing') throw new Error('8787 端口已有服务。桌面版需要启动自己管理的后端，请先关闭已有服务后重试。')
   await startBackend()
 
@@ -53,7 +72,7 @@ async function start() {
     minWidth: 800,
     minHeight: 600,
     autoHideMenuBar: true,
-    icon,
+    icon: layout.icon,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   })
   mainWindow.webContents.on('will-navigate', (event, nextUrl) => {
@@ -67,8 +86,9 @@ async function start() {
 async function startBackend() {
   let startupOutput = ''
   let exited = false
-  ownedBackend = spawn(python, ['-m', 'agent.server.desktop_host', '--owner-pid', String(process.pid)], {
-    cwd: projectRoot,
+  ownedBackend = spawn(layout.python, ['-m', 'agent.server.desktop_host', '--owner-pid', String(process.pid)], {
+    cwd: layout.dataRoot,
+    env: buildBackendEnv(layout),
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -80,7 +100,7 @@ async function startBackend() {
 
   const deadline = Date.now() + 15000
   while (Date.now() < deadline) {
-    const state = await inspectBackend(url, projectRoot)
+    const state = await inspectBackend(url, layout.dataRoot)
     if (state === 'same') return
     if (state === 'foreign') throw new Error('8787 端口被其他服务占用。')
     if (exited) break

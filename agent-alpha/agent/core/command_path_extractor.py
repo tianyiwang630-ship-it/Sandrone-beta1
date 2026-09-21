@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterable
 
 from agent.core.sandbox_types import AccessAction, BashCategory
+from agent.core.runtime_layout import current_layout, runtime_python
 
 
 READ_ONLY_SINGLE_COMMANDS = {"pwd"}
@@ -268,14 +269,23 @@ def classify_alpha_venv_command_scope(command: str, *, project_root: Path) -> st
 
 
 def explain_alpha_venv_command_guidance(project_root: Path) -> str:
-    venv = Path(project_root).resolve() / ".venv"
-    windows_python = venv / "Scripts" / "python.exe"
-    posix_python = venv / "bin" / "python"
+    if not _uses_packaged_runtime(project_root):
+        venv = Path(project_root).resolve() / ".venv"
+        windows_python = venv / "Scripts" / "python.exe"
+        posix_python = venv / "bin" / "python"
+        return (
+            "Run Python tools through agent-alpha's virtual environment. "
+            f"Use {windows_python} -m <module> ... on Windows or {posix_python} -m <module> ... on Linux/macOS. "
+            f"For package installs, use {windows_python} -m pip install ... on Windows, "
+            f"{posix_python} -m pip install ... on Linux/macOS, or uv pip install --python <that interpreter> ... . "
+            "Do not use bare pip or pip3 because they can resolve to a host Python."
+        )
+    selected_python = runtime_python(Path(project_root)).resolve()
     return (
         "Run Python tools through agent-alpha's virtual environment. "
-        f"Use {windows_python} -m <module> ... on Windows or {posix_python} -m <module> ... on Linux/macOS. "
-        f"For package installs, use {windows_python} -m pip install ... on Windows, "
-        f"{posix_python} -m pip install ... on Linux/macOS, or uv pip install --python <that interpreter> ... . "
+        f"Use {selected_python} -m <module> ... . "
+        f"For package installs, use {selected_python} -m pip install ... or "
+        f"uv pip install --python {selected_python} ... . "
         "Do not use bare pip or pip3 because they can resolve to a host Python."
     )
 
@@ -568,8 +578,9 @@ def _is_venv_python(token: str, *, project_root: Path) -> bool:
         python_path = _resolve_executable_path(token, project_root=project_root)
         if not _is_python_executable_path(python_path):
             return False
-        venv_path = Path(project_root).resolve() / ".venv"
-        python_path.relative_to(venv_path)
+        if _uses_packaged_runtime(project_root):
+            return python_path == runtime_python(Path(project_root)).resolve()
+        python_path.relative_to(Path(project_root).resolve() / ".venv")
         return True
     except Exception:
         return False
@@ -578,11 +589,18 @@ def _is_venv_python(token: str, *, project_root: Path) -> bool:
 def _is_venv_python_or_cli(token: str, *, project_root: Path) -> bool:
     try:
         executable_path = _resolve_executable_path(token, project_root=project_root)
-        venv_path = Path(project_root).resolve() / ".venv"
-        executable_path.relative_to(venv_path)
+        if _uses_packaged_runtime(project_root):
+            executable_path.relative_to(runtime_python(Path(project_root)).resolve().parent)
+        else:
+            executable_path.relative_to(Path(project_root).resolve() / ".venv")
         return True
     except Exception:
         return False
+
+
+def _uses_packaged_runtime(project_root: Path) -> bool:
+    layout = current_layout()
+    return layout.packaged and layout.data_root == Path(project_root).resolve()
 
 
 def _is_path_like_executable(token: str) -> bool:

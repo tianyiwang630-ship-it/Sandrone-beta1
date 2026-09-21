@@ -1,0 +1,37 @@
+appId: com.agentalpha.desktop
+productName: Agent Alpha
+asar: true
+npmRebuild: false
+
+directories:
+  output: ../release
+
+files:
+  - desktop/**/*.cjs
+  - package.json
+  - "!node_modules/**/*"
+
+extraResources:
+  - from: ../temp/package-stage/agent-alpha
+    to: agent-alpha
+  - from: desktop/app.ico
+    to: app.ico
+
+win:
+  icon: desktop/app.ico
+  executableName: Agent Alpha
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: Agent-Alpha-Setup-${version}-win-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Agent Alpha
+  deleteAppDataOnUninstall: false

@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from agent.core.agent_runtime import PROJECT_ROOT
+from agent.core.runtime_layout import APP_ROOT, PROJECT_ROOT
 from agent.server.routes import chat, files, meta, projects, runtime, sessions, settings, users
 from agent.server.deps import agent_manager
 from agent.tools.browser_harness_runtime import shutdown_browser_harness_runtime
@@ -49,7 +49,7 @@ def create_app() -> FastAPI:
     def health():
         return {"ok": True, "project_root": str(PROJECT_ROOT)}
 
-    dist = PROJECT_ROOT / "frontend" / "dist"
+    dist = APP_ROOT / "frontend" / "dist"
     if dist.exists():
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
     return app

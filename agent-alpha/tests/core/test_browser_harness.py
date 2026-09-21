@@ -89,6 +89,19 @@ def test_bundled_chrome_for_testing_has_priority(tmp_path: Path):
     assert found == bundled
 
 
+def test_bundled_chrome_can_live_in_packaged_app_root(tmp_path: Path):
+    data_root = tmp_path / "data"
+    app_root = tmp_path / "resources" / "agent-alpha"
+    bundled = app_root / "tools" / "chrome-for-testing" / "chrome-win64" / "chrome.exe"
+    bundled.parent.mkdir(parents=True)
+    bundled.touch()
+
+    assert find_browser_executable(
+        data_root,
+        {"AGENT_ALPHA_APP_ROOT": str(app_root)},
+    ) == bundled
+
+
 def test_local_chrome_then_edge_are_development_fallbacks(tmp_path: Path):
     root = tmp_path / "alpha"
     program_files = tmp_path / "program-files"
@@ -107,6 +120,35 @@ def test_local_chrome_then_edge_are_development_fallbacks(tmp_path: Path):
 
 def test_missing_browser_does_not_trigger_download(tmp_path: Path):
     assert find_browser_executable(tmp_path / "alpha", {}) is None
+
+
+def test_cli_lookup_keeps_using_project_executable_when_browser_python_is_set(tmp_path: Path, monkeypatch):
+    runtime = make_runtime(tmp_path)
+    cli = runtime.project_root / "bin" / "browser-harness.exe"
+    browser_python = runtime.project_root / "tools" / "uv" / "browser-harness" / "Scripts" / "python.exe"
+    cli.parent.mkdir(parents=True, exist_ok=True)
+    browser_python.parent.mkdir(parents=True, exist_ok=True)
+    cli.touch()
+    browser_python.touch()
+    monkeypatch.setenv("AGENT_ALPHA_BROWSER_PYTHON", str(browser_python))
+
+    assert runtime._find_cli() == cli
+
+
+def test_execute_passes_browser_harness_executable_as_one_command(tmp_path: Path, monkeypatch):
+    runtime = make_runtime(tmp_path)
+    cli = runtime.project_root / "bin" / "browser-harness.exe"
+    calls = []
+    monkeypatch.setattr(runtime, "_verify_cli", lambda: cli)
+    monkeypatch.setattr(runtime, "_ensure_browser", lambda *_args, **_kwargs: "http://127.0.0.1:43210")
+    monkeypatch.setattr(
+        runtime,
+        "_run_cli",
+        lambda command, **_kwargs: calls.append(command) or {"success": True},
+    )
+
+    assert runtime.execute(code="print(1)", timeout_seconds=5)["success"] is True
+    assert calls == [[str(cli)]]
 
 
 def test_runtime_env_is_local_private_and_offline(tmp_path: Path):

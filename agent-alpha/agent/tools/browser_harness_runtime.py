@@ -12,6 +12,7 @@ from typing import Any, Mapping
 
 from agent.core.runtime_paths import build_runtime_env, ensure_runtime_directories
 from agent.tools.browser_harness_browser import BrowserProcessDiscoveryError, DedicatedBrowser
+from agent.tools.browser_harness_lock import BrowserFileLock
 
 
 BROWSER_HARNESS_VERSION = "0.1.13"
@@ -33,6 +34,7 @@ class BrowserHarnessRuntime:
         self.workspace_dir = self.state_dir / "agent-workspace"
         self.temp_dir = browser_temp
         self._lock = threading.Lock()
+        self._process_lock = BrowserFileLock(self.state_dir / "browser-use.lock")
         self._cli_path: Path | None = None
         self._used = False
         self._manual_waiting = False
@@ -106,12 +108,26 @@ class BrowserHarnessRuntime:
             except Exception as exc:
                 return self._error("runtime", f"Unexpected Browser Harness failure: {exc}")
         finally:
+            if self._process_lock.handle is not None:
+                try:
+                    (self.state_dir / "last-browser-use").touch()
+                except OSError:
+                    pass
+            self._process_lock.release()
             self._lock.release()
 
     def shutdown(self) -> dict[str, Any]:
         """Best-effort normal Web shutdown; never discovers or kills other browsers."""
         deadline = time.monotonic() + SHUTDOWN_TIMEOUT_SECONDS
         if not self._lock.acquire(timeout=min(5, SHUTDOWN_TIMEOUT_SECONDS)):
+            return self._error("shutdown", "browser channel is still busy")
+        try:
+            acquired = self._process_lock.acquire(5)
+        except OSError as exc:
+            self._lock.release()
+            return self._error("shutdown", f"Could not lock browser channel: {exc}")
+        if not acquired:
+            self._lock.release()
             return self._error("shutdown", "browser channel is still busy")
         try:
             try:
@@ -169,6 +185,7 @@ class BrowserHarnessRuntime:
                 "process_close": process_close,
             }
         finally:
+            self._process_lock.release()
             self._lock.release()
 
     def _validate_timeout(self, value: Any) -> int | None:
@@ -186,7 +203,14 @@ class BrowserHarnessRuntime:
             if interrupt_event is not None and interrupt_event.is_set():
                 return self._error("lock", "Browser Harness call interrupted while waiting", interrupted=True)
             if self._lock.acquire(timeout=min(0.05, max(0.0, deadline - time.monotonic()))):
-                return None
+                try:
+                    if self._process_lock.acquire(max(0.0, deadline - time.monotonic())):
+                        return None
+                except OSError as exc:
+                    self._lock.release()
+                    return self._error("lock", f"Could not lock browser channel: {exc}")
+                self._lock.release()
+                break
         return self._error(
             "lock",
             "The shared browser is busy with another task. Retry after that task finishes.",
@@ -296,11 +320,7 @@ class BrowserHarnessRuntime:
             return self._manual_login_required()
         endpoint = self._healthy_endpoint()
         if mode == "cdp" and endpoint is not None:
-            if self._last_endpoint != endpoint:
-                reload_result = self._reload_daemon(cli, deadline, interrupt_event)
-                if not reload_result.get("success"):
-                    return reload_result
-                self._last_endpoint = endpoint
+            self._last_endpoint = endpoint
             self._manual_waiting = False
             return endpoint
 
@@ -535,11 +555,6 @@ class BrowserHarnessRuntime:
 def browser_scope_paths(root: Path, env: Mapping[str, str]) -> tuple[Path, Path]:
     state = root / "state" / "browser-harness"
     temp = root / "temp" / "browser-harness"
-    scope = env.get("AGENT_ALPHA_BROWSER_SCOPE", "")
-    if scope:
-        if not all(char.isalnum() or char in "_-" for char in scope):
-            raise ValueError("Invalid browser execution scope")
-        state, temp = state / "agents" / scope, temp / scope
     return state, temp
 
 
@@ -563,7 +578,7 @@ def build_browser_harness_env(
             "BH_TELEMETRY": "0",
             "BH_RECORD": "0",
             "BH_DOMAIN_SKILLS": "0",
-            "BU_NAME": env.get("AGENT_ALPHA_BROWSER_SCOPE") or "alpha-shared",
+            "BU_NAME": "alpha-shared",
             "BU_AUTOSPAWN": "",
             "BU_BROWSER_ID": "",
             "BU_CDP_WS": "",

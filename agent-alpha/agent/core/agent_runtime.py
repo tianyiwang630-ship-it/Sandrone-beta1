@@ -49,6 +49,7 @@ class AgentRuntime:
         llm_profile_name: str | None = None,
         llm_settings: dict[str, Any] | None = None,
         role_config: RoleConfig | None = None,
+        memory_role: dict[str, Any] | None = None,
     ):
         self.workspace_root = Path(workspace_root).resolve() if workspace_root else PROJECT_ROOT.resolve()
         self.runtime_logs_dir = Path(logs_dir).resolve() if logs_dir else None
@@ -58,6 +59,7 @@ class AgentRuntime:
         self.llm_profile_name = llm_profile_name
         self.llm_settings = dict(llm_settings or {})
         self.role_config = role_config or RoleConfig()
+        self.memory_role = memory_role
         self.input_provider = None
         self.checkpoint = None
 
@@ -76,6 +78,7 @@ class AgentRuntime:
             app_root=APP_ROOT,
             skill_loader=self.skill_loader,
             workspace_root=self.workspace_root,
+            enable_permissions=not bool(memory_role),
         )
         self.max_turns = max_turns
         self.history: List[Dict[str, Any]] = []
@@ -85,12 +88,28 @@ class AgentRuntime:
         self.tool_loader.set_interrupt_event(self._interrupted)
 
         print("Loading Agent Runtime...")
-        self.tool_loader.load_all()
-        self.tools = self.tool_loader.resolve_tools(self.role_config)
+        if memory_role:
+            self.tools = []  # The worker installs only the task-specific RPC tools.
+        else:
+            self.tool_loader.load_all()
+            self.tools = self.tool_loader.resolve_tools(self.role_config)
         self.tool_loader.configure_runtime(self.workspace_root)
 
-        self.prompt_documents = load_workspace_prompt_documents(self.workspace_root)
-        self.system_prompt = self._build_system_prompt()
+        self.prompt_documents = [] if memory_role else load_workspace_prompt_documents(self.workspace_root)
+        if memory_role:
+            from agent.core.memory.roles import ORGANIZER, REVIEWER
+            self.system_prompt = ORGANIZER if memory_role["role"] == "organizer" else REVIEWER
+        else:
+            from agent.core.memory.store import MemoryStore
+            memory_store = MemoryStore(PROJECT_ROOT)
+            if memory_store.config()["enabled"]:
+                memory_store.initialize()
+                for target in ("user", "memory"):
+                    document = memory_store.read_document(target)
+                    self.prompt_documents.append({"name": f"{target}.md (global memory)",
+                                                  "path": str(memory_store.document_path(target)),
+                                                  "content": document["content"]})
+            self.system_prompt = self._build_system_prompt()
 
         self.context_manager = ContextManager(
             llm=self.llm,
@@ -199,6 +218,7 @@ class AgentRuntime:
                     },
                     request_id=request_id,
                 )
+                log_writer.commit_cycle()
             return RuntimeResponse(
                 content=result,
                 session_id=runtime_request.session_id,
@@ -218,6 +238,7 @@ class AgentRuntime:
                     {"error_type": type(exc).__name__, "error_message": str(exc)},
                     request_id=request_id,
                 )
+                log_writer.commit_cycle()
             raise
 
     def interrupt(self) -> None:
@@ -300,7 +321,11 @@ class AgentRuntime:
         logs_dir = getattr(self, "runtime_logs_dir", None)
         if logs_dir is None or not session_id:
             return None
-        return RealtimeLogWriter(logs_dir, session_id)
+        cached = getattr(self, "_log_writer", None)
+        if cached is None or cached.path != Path(logs_dir).resolve() / f"{session_id}.jsonl":
+            cached = RealtimeLogWriter(logs_dir, session_id)
+            self._log_writer = cached
+        return cached
 
     def _record_compression_event(
         self,

@@ -168,18 +168,28 @@ def test_scope_and_rename_do_not_change_task(manager):
         manager.collaboration.deliver(child["agent_id"], "other", "no")
 
 
-def test_sibling_reply_reaches_sender_and_parent_with_correlation(manager):
+def test_subagent_result_only_reaches_parent_with_delegation_and_run_correlation(manager):
     sender, receiver = create(manager, "sender"), create(manager, "receiver")
     receipt = manager.collaboration.deliver(sender["agent_id"], receiver["agent_id"], "请确认接口")
     entries = manager.collaboration.take_inputs(receiver["agent_id"], receiver["request_id"])
     manager._save_live_checkpoint(receiver["agent_id"], receiver["request_id"], entries)
     manager._runs[receiver["request_id"]].update(status="success", response="接口已确认")
     manager.collaboration.finish(receiver["agent_id"], receiver["request_id"])
-    for target_id in ("root", sender["agent_id"]):
-        inbox = manager.store.load(target_id).metadata["mailbox"]
-        answer = next(item for item in inbox if item["sender_id"] == receiver["agent_id"])
-        assert "接口已确认" in answer["content"]
-        assert receipt["message_id"] in answer["reply_to"]
+    inbox = manager.store.load("root").metadata["mailbox"]
+    answer = next(item for item in inbox if item["sender_id"] == receiver["agent_id"])
+    assert "接口已确认" in answer["content"]
+    assert receipt["message_id"] in answer["reply_to"]
+    assert answer["message_kind"] == "subagent_result"
+    assert answer["result_agent_id"] == receiver["agent_id"]
+    assert answer["result_run_id"] == receiver["request_id"]
+    entry = manager.collaboration.entry(answer)
+    assert entry["_source"] == "subagent_result"
+    assert entry["_result_agent_id"] == receiver["agent_id"]
+    assert entry["_result_run_id"] == receiver["request_id"]
+    assert receipt["message_id"] in entry["_reply_to"]
+    assert receiver["request_id"] in entry["content"]
+    sibling_inbox = manager.store.load(sender["agent_id"]).metadata["mailbox"]
+    assert not any(item.get("message_kind") == "subagent_result" for item in sibling_inbox)
 
 
 def test_wait_returns_on_one_completion_and_timeout_never_stops_others(manager):
@@ -295,11 +305,51 @@ def test_successful_stop_retry_releases_failed_slot_and_keeps_identity(manager):
     manager._agents[target_id] = SimpleNamespace(interrupt=lambda: None, close=lambda: None,
                                                 clear_interrupt=lambda: None)
     result = manager.collaboration.stop("root", target_id)
-    assert result["status"] == "interrupted"
+    assert result["status"] == "stopped"
     assert manager.get_active_run_for_session(target_id) is None
     next_message = manager.collaboration.deliver("root", target_id, "继续")
     assert next_message["request_id"] != request_id
     assert manager._runs[next_message["request_id"]]["status"] == "running"
+
+
+def test_stopped_child_rejects_siblings_and_only_parent_can_wake_it(manager):
+    stopped, sibling = create(manager, "stopped"), create(manager, "sibling")
+    stopped_id = stopped["agent_id"]
+    manager._runs[stopped["request_id"]]["status"] = "interrupted"
+    manager._agents[stopped_id] = SimpleNamespace(
+        interrupt=lambda: None, close=lambda: None, clear_interrupt=lambda: None,
+    )
+    result = manager.collaboration.stop("root", stopped_id)
+    assert result["status"] == "stopped"
+
+    with pytest.raises(RuntimeError, match="只有主 agent 可以唤醒"):
+        manager.collaboration.deliver(sibling["agent_id"], stopped_id, "请继续")
+    assert manager.get_active_run_for_session(stopped_id) is None
+
+    resumed = manager.collaboration.deliver("root", stopped_id, "主 agent 重新派活")
+    assert resumed["request_id"] is not None
+    assert manager.get_active_run_for_session(stopped_id)["request_id"] == resumed["request_id"]
+
+
+def test_sibling_message_during_stop_is_recorded_but_cannot_restart_child(manager):
+    stopped, sibling = create(manager, "stopped"), create(manager, "sibling")
+    stopped_id = stopped["agent_id"]
+
+    def close():
+        receipt = manager.collaboration.deliver(sibling["agent_id"], stopped_id, "停止收尾期间送达")
+        assert receipt["accepted"] is True
+        assert receipt["request_id"] is None
+        manager._runs[stopped["request_id"]]["status"] = "interrupted"
+        manager.collaboration.finish(stopped_id, stopped["request_id"])
+
+    manager._agents[stopped_id] = SimpleNamespace(interrupt=lambda: None, close=close)
+    result = manager.collaboration.stop("root", stopped_id)
+
+    assert result["status"] == "stopped"
+    assert manager.get_active_run_for_session(stopped_id) is None
+    mailbox = manager.store.load(stopped_id).metadata["mailbox"]
+    late = next(item for item in mailbox if item["content"] == "停止收尾期间送达")
+    assert late["state"] == "interrupted"
 
 
 def test_stop_retry_freed_slot_starts_an_older_queued_child(manager):
@@ -327,6 +377,9 @@ def test_retire_root_stops_children_and_drains_late_writes(manager, delete):
     child_id, run_id = child["agent_id"], child["request_id"]
     stale = manager.store.load(child_id)
     release_writer = threading.Event()
+    manager.logs_dir.mkdir(parents=True, exist_ok=True)
+    child_log = manager.logs_dir / f"{child_id}.jsonl"
+    child_tmp = manager.logs_dir / f"{child_id}.jsonl.tmp"
 
     def late_write():
         assert release_writer.wait(3)
@@ -337,6 +390,8 @@ def test_retire_root_stops_children_and_drains_late_writes(manager, delete):
         manager.collaboration.finish(child_id, run_id)
         manager.events_dir.mkdir(parents=True, exist_ok=True)
         (manager.events_dir / f"{child_id}.jsonl").write_text("late log", encoding="utf-8")
+        child_log.write_text("late debug log", encoding="utf-8")
+        child_tmp.write_text("partial debug log", encoding="utf-8")
 
     manager._agents[child_id] = SimpleNamespace(interrupt=lambda: None, close=release_writer.set)
     with ThreadPoolExecutor(max_workers=1) as executor:
@@ -355,5 +410,7 @@ def test_retire_root_stops_children_and_drains_late_writes(manager, delete):
         assert manager.store.load("root") is None
         assert manager.store.load(child_id) is None
         assert not (manager.events_dir / f"{child_id}.jsonl").exists()
+        assert not child_log.exists()
+        assert not child_tmp.exists()
     else:
         assert manager.store.load(child_id).metadata["is_archived"]

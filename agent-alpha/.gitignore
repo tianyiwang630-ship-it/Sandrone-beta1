@@ -47,6 +47,9 @@ ENV/
 /tools/
 /data/
 /state/
+/memory-state/
+/user.md
+/memory.md
 /config/appdata/
 # home 只忽略运行态内容，但保留 skills
 /home/*

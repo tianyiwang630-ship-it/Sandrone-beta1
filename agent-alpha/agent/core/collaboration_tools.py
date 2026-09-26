@@ -6,7 +6,7 @@ def install_collaboration_tools(runtime, identity, rpc):
     child = bool(identity["parent_id"])
     string = {"type": "string", "minLength": 1}
     definitions = {
-        "message": ("向指定 ID 的 agent 发消息，运行中直接引导，空闲时启动新一轮。立即返回收件凭据，真实回复稍后送达。", {"target_id": string, "message": string}, ["target_id", "message"]),
+        "message": ("向指定 ID 的 agent 发消息，运行中直接引导，空闲时启动新一轮。立即返回收件凭据；子 agent 的执行结果只异步返回主 agent。已被主 agent 停止的目标只能由主 agent 唤醒。", {"target_id": string, "message": string}, ["target_id", "message"]),
         "list": ("查询本会话子 agent：活跃优先、最近交互排序，默认十条；offset 可翻页。查不到 ID 时也可阅读协作笔记。", {"status": string, "offset": {"type": "integer", "minimum": 0}}, []),
         "status": ("按稳定 ID 查询 agent 当前状态。", {"target_id": string}, ["target_id"]),
         "wait": ("按需等待任一目标的新消息或结束；用户新输入也会唤醒。超时不停止任务。避免重复短轮询。消息仍从正常输入接收，不重复交付。", {"target_ids": {"type": "array", "items": string, "minItems": 1, "maxItems": 10}, "timeout_seconds": {"type": "number", "minimum": 0, "maximum": 60, "default": 30}}, ["target_ids"]),
@@ -15,7 +15,7 @@ def install_collaboration_tools(runtime, identity, rpc):
         definitions.update({
             "create": ("只有用户、适用项目指令或 skill 明确要求使用子 agent 时才调用，不得仅为提效自行创建。共享工作目录，可编辑文件；独立上下文，只收到 message，不继承对话。最多十个同时执行。task_name 是显示名称；message 要交接目标、背景、文件、边界和期望结果。立即返回唯一 ID，最终结果稍后到达。", {"task_name": string, "message": string}, ["task_name", "message"]),
             "rename": ("仅修改子 agent 显示名称，不改变任务或 ID；改变任务需发消息。", {"target_id": string, "task_name": string}, ["target_id", "task_name"]),
-            "stop": ("停止指定子 agent 当前执行，保留 ID 和历史；之后发送消息可继续。不回滚已发生的修改。", {"target_id": string}, ["target_id"]),
+            "stop": ("停止指定子 agent 当前执行，保留 ID 和历史；停止后只有主 agent 发送消息可以继续，其他子 agent 会收到拒绝。不回滚已发生的修改。", {"target_id": string}, ["target_id"]),
         })
     for action, (description, properties, required) in definitions.items():
         name = ("agent_" if child else "subagent_") + action

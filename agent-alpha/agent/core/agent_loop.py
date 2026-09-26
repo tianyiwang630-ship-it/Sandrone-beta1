@@ -28,6 +28,7 @@ class AgentLoop:
     INTERRUPTED_TOOL_RESULT = "[用户中断] 此工具调用未执行"
     INTERRUPTED_RESPONSE = "[用户中断] 已停止当前任务。"
     RECOVERABLE_RESPONSE = "当前模型请求未能完成，已保护本轮消息和工具现场。网络或配置恢复后可直接继续。"
+    OUTPUT_TRUNCATED_RESPONSE = "本轮连续两次恢复仍因输出长度超限而失败，当前执行已停止。你可以继续发送消息。"
     TOOL_WAIT_INTERRUPTED = object()
     SLOW_CONNECTION_RECOVERY_SECONDS = 120.0
     SLOW_CONNECTION_ERROR_TYPES = {"APIConnectionError", "APITimeoutError"}
@@ -39,6 +40,18 @@ class AgentLoop:
     INVALID_RESPONSE_RECOVERY_PROMPT = (
         "[临时恢复提示] 上一次模型返回的 assistant 消息结构无效。"
         "请重新生成本轮回复：必须返回非空正文，或返回字段完整且参数为有效 JSON 对象的 tool_calls。"
+    )
+    OUTPUT_TRUNCATED_RECOVERY_PROMPTS = (
+        (
+            "[输出超限恢复提示] 上一次回复因输出长度达到上限而被截断。"
+            "请缩短输出，把任务拆成多个较小步骤，本轮只完成下一小段；"
+            "如果需要调用工具，只生成一个完整、简短的工具调用。"
+        ),
+        (
+            "[输出超限再次恢复提示] 上一次恢复仍因输出过长而失败。"
+            "不要重复之前的长内容，不要长篇解释；"
+            "本轮只完成一个最小步骤，或只生成一个完整且简短的工具调用，然后停止。"
+        ),
     )
 
     def __init__(
@@ -112,6 +125,8 @@ class AgentLoop:
                             "error_message": self.recovery_error,
                         },
                     )
+                    if self._is_output_truncation_error(exc):
+                        return self.OUTPUT_TRUNCATED_RESPONSE
                     return self.RECOVERABLE_RESPONSE
                 if choice is None:
                     break
@@ -142,7 +157,7 @@ class AgentLoop:
         if self.log_writer is not None:
             self.log_writer.write_event(
                 "llm_input",
-                {"messages": messages, "tool_count": len(self.tools)},
+                {"messages": messages, "tool_count": len(self.tools), "tools": self.tools},
                 request_id=self.request_id,
             )
         previous_callback = getattr(self.llm, "event_callback", None)
@@ -162,6 +177,19 @@ class AgentLoop:
             finish_reason=getattr(choice, "finish_reason", None),
         )
         if not validation.valid:
+            if self.log_writer is not None:
+                self.log_writer.write_event(
+                    "llm_rejected_response",
+                    {"content": getattr(message, "content", None),
+                     "reasoning_content": getattr(message, "reasoning_content", None),
+                     "tool_calls": [
+                         {"id": getattr(call, "id", None), "function": {
+                             "name": getattr(getattr(call, "function", None), "name", None),
+                             "arguments": getattr(getattr(call, "function", None), "arguments", None),
+                         }} for call in (getattr(message, "tool_calls", None) or [])
+                     ], "finish_reason": getattr(choice, "finish_reason", None)},
+                    request_id=self.request_id,
+                )
             self._write_event(
                 "assistant_message_rejected",
                 {
@@ -226,40 +254,76 @@ class AgentLoop:
         return choice
 
     def _call_llm_with_recovery(self, messages: List[Dict[str, Any]]) -> Any:
-        attempts = [
-            ("normal", messages),
+        try:
+            return self._call_llm_interruptible(messages)
+        except (OpenAIError, LLMInvalidResponse) as exc:
+            self._write_recovery_failure("normal", exc)
+            if type(exc).__name__ in {"AuthenticationError", "PermissionDeniedError"}:
+                raise
+            if self._is_output_truncation_error(exc):
+                return self._recover_output_truncation(messages)
+            last_error: Exception = exc
+
+        for stage, attempt_messages in (
             ("corrected", self._with_recovery_instruction(messages)),
             ("degraded", self._build_degraded_messages()),
-        ]
-        last_error: Exception | None = None
-        for stage, attempt_messages in attempts:
-            if stage != "normal":
-                refresh = getattr(self.llm, "refresh_client", None)
-                if refresh is not None:
-                    refresh()
-                self._write_event("agent_recovery_started", {"recovery_stage": stage})
+        ):
+            self._start_recovery(stage)
             try:
                 return self._call_llm_interruptible(attempt_messages)
             except (OpenAIError, LLMInvalidResponse) as exc:
                 last_error = exc
-                self._write_event(
-                    "agent_recovery_attempt_failed",
-                    {
-                        "recovery_stage": stage,
-                        "error_type": type(exc).__name__,
-                        "error_message": str(exc) or type(exc).__name__,
-                    },
-                )
+                self._write_recovery_failure(stage, exc)
                 if type(exc).__name__ in {"AuthenticationError", "PermissionDeniedError"}:
                     break
-        if last_error is None:
-            raise LLMInvalidResponse("LLM recovery exited without a response")
         raise last_error
 
-    def _with_recovery_instruction(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _recover_output_truncation(self, messages: List[Dict[str, Any]]) -> Any:
+        for index, prompt in enumerate(self.OUTPUT_TRUNCATED_RECOVERY_PROMPTS, start=1):
+            stage = f"output_truncated_{index}"
+            self._start_recovery(stage)
+            try:
+                return self._call_llm_interruptible(self._with_recovery_instruction(messages, prompt=prompt))
+            except (OpenAIError, LLMInvalidResponse) as exc:
+                self._write_recovery_failure(stage, exc)
+                if type(exc).__name__ in {"AuthenticationError", "PermissionDeniedError"}:
+                    raise
+        raise LLMInvalidResponse(
+            "output length limit recovery exhausted",
+            finish_reason="length",
+            recovery_attempts=len(self.OUTPUT_TRUNCATED_RECOVERY_PROMPTS),
+        )
+
+    def _start_recovery(self, stage: str) -> None:
+        refresh = getattr(self.llm, "refresh_client", None)
+        if refresh is not None:
+            refresh()
+        self._write_event("agent_recovery_started", {"recovery_stage": stage})
+
+    def _write_recovery_failure(self, stage: str, exc: Exception) -> None:
+        self._write_event(
+            "agent_recovery_attempt_failed",
+            {
+                "recovery_stage": stage,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc) or type(exc).__name__,
+            },
+        )
+
+    @staticmethod
+    def _is_output_truncation_error(exc: Exception) -> bool:
+        return isinstance(exc, LLMInvalidResponse) and exc.diagnostics.get("finish_reason") == "length"
+
+    def _with_recovery_instruction(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        prompt: str | None = None,
+    ) -> List[Dict[str, Any]]:
+        recovery_prompt = prompt or self.INVALID_RESPONSE_RECOVERY_PROMPT
         if not messages:
-            return [{"role": "system", "content": self.INVALID_RESPONSE_RECOVERY_PROMPT}]
-        return [messages[0], {"role": "system", "content": self.INVALID_RESPONSE_RECOVERY_PROMPT}, *messages[1:]]
+            return [{"role": "system", "content": recovery_prompt}]
+        return [messages[0], {"role": "system", "content": recovery_prompt}, *messages[1:]]
 
     def _build_degraded_messages(self) -> List[Dict[str, Any]]:
         recent = collect_recent_complete_groups(self.history, max_groups=6)
@@ -288,8 +352,14 @@ class AgentLoop:
             {"role": "user", "content": self.SLOW_CONNECTION_RECOVERY_PROMPT},
             llm_recovery_prompt=True,
         )
+        retry_messages = self._build_messages()
+        if self.log_writer is not None:
+            self.log_writer.write_event(
+                "llm_input", {"messages": retry_messages, "tool_count": len(self.tools), "tools": self.tools},
+                request_id=self.request_id,
+            )
         return {
-            "retry_messages": self._build_messages(),
+            "retry_messages": retry_messages,
             "slow_connection_recovery_injected": True,
         }
 
@@ -425,16 +495,6 @@ class AgentLoop:
 
             result_str = json.dumps(result, ensure_ascii=False) if isinstance(result, dict) else str(result)
             result_str = re.sub(r"\x1b\[[0-9;]*m", "", result_str)
-            if self.log_writer is not None:
-                self.log_writer.write_entry(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": result_str,
-                    },
-                    request_id=self.request_id,
-                    raw_tool_result=True,
-                )
             result_str, event_metadata = truncate_tool_result(
                 result_str,
                 max_chars=self.max_tool_result_chars,
@@ -448,7 +508,6 @@ class AgentLoop:
                     "content": result_str,
                 },
                 **event_metadata,
-                write_log=False,
             )
             self._write_event(
                 "tool_execution_completed",
@@ -544,7 +603,7 @@ class AgentLoop:
     def _append_history_entry(self, entry: dict[str, Any], *, write_log: bool = True, **event_metadata: Any) -> None:
         self.history.append(entry)
         if write_log and self.log_writer is not None:
-            self.log_writer.write_entry(entry, request_id=self.request_id)
+            self.log_writer.write_entry(entry, request_id=self.request_id, **event_metadata)
         if self.event_writer is not None:
             event_metadata.setdefault("request_id", self.request_id)
             self.event_writer.write(entry, **event_metadata)

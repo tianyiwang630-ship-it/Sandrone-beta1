@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime
@@ -13,7 +14,8 @@ from agent.core.collaboration import Collaboration
 from agent.core.execution_threads import ExecutionThreads
 from agent.core.message_pipeline import prepare_runtime_history
 from agent.core.runtime_types import RuntimeRequest
-from agent.core.realtime_log import RealtimeLogWriter
+from agent.core.realtime_log import RealtimeLogWriter, cleanup_expired_logs
+from agent.core.memory.service import MemoryService
 from agent.core.session_events import SessionEventWriter, migrate_event_file, read_session_events
 from agent.core.session_paths import create_cli_session_paths
 from agent.core.session_store import SessionKind, SessionRecord, SessionStore
@@ -22,21 +24,53 @@ from agent.server.web_permissions import WebPermissionBroker
 
 
 class AgentManager:
+    LOG_CLEANUP_INTERVAL_SECONDS = 6 * 60 * 60
+
     def __init__(self):
         self.sessions_dir, self.logs_dir = create_cli_session_paths(project_root=PROJECT_ROOT)
         self.events_dir = PROJECT_ROOT / "session-log" / "events"
         self.events_dir.mkdir(parents=True, exist_ok=True)
         self.store = SessionStore(self.sessions_dir)
+        self.memory = MemoryService(PROJECT_ROOT)
         self._agents: dict[str, AgentRuntime] = {}
         self._runs: dict[str, dict[str, Any]] = {}
         self._futures = {}
         self._lock = threading.RLock()
         self._executor = ExecutionThreads()
         self._closing = False
+        self._log_cleanup_stop = threading.Event()
         self._web_permission_broker = WebPermissionBroker(timeout_seconds=600)
         self.cleanup_legacy_sessions()
         self.migrate_historical_events()
         self.collaboration = Collaboration(self)
+        self._log_cleanup_thread = threading.Thread(target=self._log_cleanup_loop, daemon=True)
+        self._log_cleanup_thread.start()
+
+    def _log_cleanup_loop(self) -> None:
+        next_log_cleanup = 0.0
+        while not self._log_cleanup_stop.is_set():
+            if time.monotonic() >= next_log_cleanup:
+                try:
+                    memory = getattr(self, "memory", None)
+                    active = memory.current_task() if memory is not None else None
+                    if active and active["status"] in {"organizing", "reviewing"}:
+                        protected = {turn["session_id"] for turn in active["turns"]}
+                        cleanup_expired_logs(self.logs_dir, protected_sessions=protected)
+                    else:
+                        cleanup_expired_logs(self.logs_dir)
+                except OSError:
+                    pass  # A transient directory/filesystem failure is retried next sweep.
+                next_log_cleanup = time.monotonic() + self.LOG_CLEANUP_INTERVAL_SECONDS
+            memory = getattr(self, "memory", None)
+            if memory is not None:
+                try:
+                    from agent.server.stores.app_state import AppStateStore
+                    settings = AppStateStore().get_settings()
+                    memory.resume(settings)
+                    memory.maybe_start_auto(settings)
+                except (OSError, ValueError, RuntimeError):
+                    pass
+            self._log_cleanup_stop.wait(min(60, max(0.01, next_log_cleanup - time.monotonic())))
 
     def create_session(self, *, project_id: str, workspace: Path, title: str | None = None) -> SessionRecord:
         session_id = new_id("sess")
@@ -125,19 +159,19 @@ class AgentManager:
         return removed
 
     def _delete_session_files(self, session_id: str) -> bool:
-        removed = self.store.delete(session_id)
-        event_path = self.events_dir / f"{session_id}.jsonl"
-        if event_path.exists():
-            event_path.unlink()
-            removed = True
-        for log_path in self.logs_dir.glob(f"*_session_{session_id}.json"):
-            log_path.unlink()
-            removed = True
-        realtime_log_path = self.logs_dir / f"{session_id}.jsonl"
-        if realtime_log_path.exists():
-            realtime_log_path.unlink()
-            removed = True
-        return removed
+        # Keep the snapshot until cleanup succeeds so a failed deletion can retry.
+        paths = [self.store.sessions_dir / f"{session_id}.json.tmp"]
+        paths.extend(self.store.sessions_dir.glob(f".{session_id}.json.*.tmp"))
+        for directory in (self.events_dir, self.logs_dir):
+            paths.extend(directory / f"{session_id}{suffix}" for suffix in (".jsonl", ".jsonl.tmp"))
+        for suffix in (".json", ".json.tmp"):
+            paths.extend(self.logs_dir.glob(f"*_session_{session_id}{suffix}"))
+        removed = False
+        for path in paths:
+            if path.exists():
+                path.unlink()
+                removed = True
+        return self.store.delete(session_id) or removed
 
     def delete_project_sessions(self, project_id: str) -> None:
         for record in self.list_sessions(project_id=project_id, include_archived=True):
@@ -335,9 +369,17 @@ class AgentManager:
                     self._agents.pop(session_id)
 
     def release_all(self) -> None:
+        stop = getattr(self, "_log_cleanup_stop", None)
+        if stop is not None:
+            stop.set()
+        cleanup_thread = getattr(self, "_log_cleanup_thread", None)
+        if cleanup_thread is not None and cleanup_thread is not threading.current_thread():
+            cleanup_thread.join(timeout=1)
         with self._lock:
             self._closing = True
             agents = list(self._agents.values())
+        if getattr(self, "memory", None) is not None:
+            self.memory.close()
         self._permission_broker().cancel_all()
         # Send all cancellations before waiting for any individual process group.
         for agent in agents:
@@ -500,6 +542,12 @@ class AgentManager:
                 can_resume=bool(response.metadata.get("recoverable")),
                 error=response.metadata.get("recovery_error"),
             )
+            if (record.kind == SessionKind.INTERACTIVE and not response.metadata.get("interrupted")
+                    and not response.metadata.get("recoverable") and getattr(self, "memory", None) is not None):
+                try:
+                    self.memory.note_completed_turn(record.session_id, request_id)
+                except (OSError, ValueError, RuntimeError):
+                    pass
         except Exception as exc:
             tool_calls_count = self._count_tool_calls(agent.history) if agent is not None else 0
             self._save_failed_run_snapshot(
@@ -683,6 +731,8 @@ class AgentManager:
                 )
             self._set_run(request_id, status="failed", error=str(exc), tool_calls_count=0)
         finally:
+            if log_writer is not None:
+                log_writer.commit_cycle()
             if hasattr(self, "collaboration"):
                 self.collaboration.finish(record.session_id, request_id)
 

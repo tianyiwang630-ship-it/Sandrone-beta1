@@ -14,16 +14,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from agent.core.runtime_layout import APP_ROOT, PROJECT_ROOT
-from agent.server.routes import chat, files, meta, projects, runtime, sessions, settings, users
+from agent.server.routes import chat, files, memory, meta, projects, runtime, sessions, settings, users
 from agent.server.deps import agent_manager
 from agent.tools.browser_harness_runtime import shutdown_browser_harness_runtime
+from agent.tools.browser_harness_maintenance import BrowserMaintenance
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    yield
-    await asyncio.to_thread(agent_manager.release_all)
-    await asyncio.to_thread(shutdown_browser_harness_runtime, PROJECT_ROOT)
+    maintenance = BrowserMaintenance(PROJECT_ROOT)
+    _app.state.browser_maintenance = maintenance
+    try:
+        yield
+    finally:
+        maintenance.stop()
+        await asyncio.to_thread(agent_manager.release_all)
+        await asyncio.to_thread(shutdown_browser_harness_runtime, PROJECT_ROOT)
 
 
 def create_app() -> FastAPI:
@@ -41,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(settings.router)
     app.include_router(users.router)
+    app.include_router(memory.router)
     app.include_router(files.router)
     app.include_router(meta.router)
     app.include_router(runtime.router)

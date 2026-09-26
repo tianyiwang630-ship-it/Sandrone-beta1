@@ -12,8 +12,6 @@ def run_worker(connection):
     config = connection.recv()
     identity = config.pop("collaboration", None)
     os.chdir(config["workspace_root"])
-    if identity:
-        os.environ["AGENT_ALPHA_BROWSER_SCOPE"] = identity["agent_id"]
     from agent.core.agent_runtime import AgentRuntime
     from agent.core.runtime_types import RuntimeRequest
 
@@ -85,6 +83,19 @@ def run_worker(connection):
     threading.Thread(target=receive, daemon=True).start()
     try:
         runtime = AgentRuntime(**config)
+        if config.get("memory_role"):
+            from agent.core.memory.roles import tool_definitions
+            role = config["memory_role"]["role"]
+            definitions = tool_definitions(role)
+            runtime.tools = definitions
+            runtime.context_manager.tools = definitions
+            runtime.tool_loader.tools = definitions
+            runtime.tool_loader._restricted_tool_names = {item["function"]["name"] for item in definitions}
+            for definition in definitions:
+                name = definition["function"]["name"]
+                runtime.tool_loader.tool_executors[name] = (
+                    lambda _name=name, **kwargs: rpc("memory_tool", {"name": _name, "arguments": kwargs})
+                )
         # Interactive keyboard handling belongs to the entry process.
         runtime._start_esc_listener = lambda: None
         runtime.llm.stream_responses = True

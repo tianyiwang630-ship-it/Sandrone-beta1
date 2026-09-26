@@ -26,7 +26,7 @@ class ScriptedLLM:
         is_parent = "subagent_create" in names
         last_user = max(index for index, item in enumerate(messages) if item["role"] == "user")
         following = messages[last_user + 1:]
-        if "协作消息" in messages[last_user]["content"] and is_parent:
+        if "异步子 agent 结果" in messages[last_user]["content"] and is_parent:
             content, calls = "子任务结果已收到", []
         elif any(item.get("tool_calls") for item in following):
             content, calls = ("已派发子任务" if is_parent else "文件写入完成"), []

@@ -1,6 +1,9 @@
 ﻿from pathlib import Path
 import json
+import threading
 from types import SimpleNamespace
+
+import pytest
 
 from agent.core.runtime_types import RuntimeResponse
 from agent.core.session_store import SessionKind, SessionRecord, SessionStore
@@ -22,6 +25,21 @@ def read_event_objects(path: Path) -> list[dict]:
         event, index = decoder.raw_decode(text, index)
         events.append(event)
     return events
+
+
+def test_periodic_log_cleanup_runs_until_manager_shutdown(monkeypatch, tmp_path):
+    manager = AgentManager.__new__(AgentManager)
+    manager.logs_dir = tmp_path
+    manager.LOG_CLEANUP_INTERVAL_SECONDS = 0.01
+    manager._log_cleanup_stop = threading.Event()
+    called = threading.Event()
+    monkeypatch.setattr(agent_manager_module, "cleanup_expired_logs", lambda path: called.set())
+    thread = threading.Thread(target=manager._log_cleanup_loop)
+    thread.start()
+    assert called.wait(1)
+    manager._log_cleanup_stop.set()
+    thread.join(timeout=1)
+    assert not thread.is_alive()
 
 
 def test_cleanup_legacy_sessions_removes_non_project_snapshots(tmp_path):
@@ -77,6 +95,13 @@ def test_delete_session_removes_snapshot_events_and_logs(tmp_path):
     (events_dir / "sess1.jsonl").write_text("{}", encoding="utf-8")
     (logs_dir / "2026_session_sess1.json").write_text("{}", encoding="utf-8")
     (logs_dir / "sess1.jsonl").write_text("{}", encoding="utf-8")
+    leftovers = [sessions_dir / "sess1.json.tmp", sessions_dir / ".sess1.json.abcd.tmp",
+                 events_dir / "sess1.jsonl.tmp",
+                 logs_dir / "sess1.jsonl.tmp", logs_dir / "2026_session_sess1.json.tmp"]
+    for path in leftovers:
+        path.write_text("partial", encoding="utf-8")
+    unrelated = logs_dir / "sess10.jsonl"
+    unrelated.write_text("keep", encoding="utf-8")
 
     manager = AgentManager.__new__(AgentManager)
     manager.store = store
@@ -95,6 +120,35 @@ def test_delete_session_removes_snapshot_events_and_logs(tmp_path):
     assert not (logs_dir / "2026_session_sess1.json").exists()
     assert not (logs_dir / "sess1.jsonl").exists()
     assert "sess1" not in manager._agents
+    assert all(not path.exists() for path in leftovers)
+    assert unrelated.read_text(encoding="utf-8") == "keep"
+
+
+def test_failed_log_deletion_keeps_snapshot_for_retry(tmp_path, monkeypatch):
+    manager = AgentManager.__new__(AgentManager)
+    manager.store = SessionStore(tmp_path / "sessions")
+    manager.logs_dir = tmp_path / "logs"
+    manager.events_dir = tmp_path / "events"
+    manager.logs_dir.mkdir()
+    manager.events_dir.mkdir()
+    manager.store.save(SessionRecord(session_id="sess", metadata={"is_archived": True}))
+    log = manager.logs_dir / "sess.jsonl"
+    log.write_text("log", encoding="utf-8")
+    unlink = Path.unlink
+
+    def fail(path, *args, **kwargs):
+        if path == log:
+            raise PermissionError("file still open")
+        return unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", fail)
+    with pytest.raises(PermissionError):
+        manager._delete_session_files("sess")
+    assert manager.store.load("sess") is not None
+    monkeypatch.setattr(Path, "unlink", unlink)
+    assert manager._delete_session_files("sess")
+    assert manager.store.load("sess") is None
+    assert not log.exists()
 
 
 def test_list_sessions_keeps_pinned_sessions_first(tmp_path):

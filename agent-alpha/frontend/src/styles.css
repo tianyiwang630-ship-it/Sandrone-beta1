@@ -1627,6 +1627,95 @@ pre {
   cursor: default;
 }
 
+.memory-management {
+  display: grid;
+  gap: 12px;
+}
+
+.memory-content {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.memory-content h3 {
+  margin: 12px 0 0;
+  font-size: 16px;
+}
+
+.panel-content .memory-content label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.panel-content .memory-content label:has(textarea),
+.panel-content .memory-content label:has(input[type="datetime-local"]) {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.panel-content .memory-content input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.memory-content textarea,
+.memory-content input[type="datetime-local"] {
+  width: 100%;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.memory-content button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.memory-content button:disabled {
+  opacity: 0.5;
+}
+
+.memory-tabs,
+.memory-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.memory-tabs button[aria-pressed="true"] {
+  background: #e0ecef;
+}
+
+.memory-document {
+  min-height: 90px;
+  max-height: 280px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.memory-content details > button {
+  margin: 8px 8px 0 0;
+}
+
 .capability-row {
   grid-template-columns: 28px minmax(0, 1fr) 56px;
 }

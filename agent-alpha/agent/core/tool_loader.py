@@ -419,6 +419,9 @@ class ToolLoader:
 
     def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         """Execute a tool after optional permission checks."""
+        restricted = getattr(self, "_restricted_tool_names", None)
+        if restricted is not None and tool_name not in restricted:
+            return {"error": f"Tool not available for this role: {tool_name}"}
         arguments = self._normalize_search_arguments(tool_name, arguments)
         sandbox_result = self.sandbox_guard.check_tool_call(tool_name, arguments)
         if sandbox_result.decision == "deny":

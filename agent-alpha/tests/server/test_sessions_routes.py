@@ -22,6 +22,18 @@ def test_read_event_file_accepts_pretty_jsonl(tmp_path):
     assert _read_event_file(path) == events
 
 
+def test_delete_can_retry_a_session_archived_by_failed_cleanup(monkeypatch):
+    from agent.server.routes.sessions import delete_session
+
+    deleted = []
+    record = SessionRecord(session_id="sess", metadata={"is_archived": True})
+    manager = SimpleNamespace(store=SimpleNamespace(load=lambda session_id: record),
+                              delete_session=lambda session_id: deleted.append(session_id) or True)
+    monkeypatch.setattr("agent.server.routes.sessions.agent_manager", manager)
+    assert delete_session("sess") == {"ok": True}
+    assert deleted == ["sess"]
+
+
 def test_display_history_uses_event_entries_when_snapshot_was_truncated(monkeypatch, tmp_path):
     events_dir = tmp_path / "events"
     events_dir.mkdir()

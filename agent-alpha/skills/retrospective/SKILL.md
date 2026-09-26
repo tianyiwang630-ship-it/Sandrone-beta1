@@ -16,6 +16,10 @@ description: "仅在用户显式要求时复盘会话或项目日志，生成工
 5. 来源会话仍在运行时，只总结已经落盘的事实，并明确标注可能遗漏尚未完成的动作。
 6. 只写任务指定的两份正式报告，不自行改变文件名。
 
+## 增量 Log 的读取
+
+`log_version: 3` 的 Log 只保存一次正文，用 `$log_ref` 引用；`llm_input.event.messages_delta` 记录历史变化，不能把它误认为完整模型输入。需要完整内容时，使用项目 Python 执行 `AGENT_ALPHA_ROOT/scripts/compact_realtime_logs.py <日志绝对路径> --read --event-type llm_input --limit 1`；可用 `--request-id` 定位一次执行。`--read` 只读取并展开记录，兼容旧日志；复盘时不要使用 `--replace` 或省略 `--read`。流式生成片段以 Event 为准，Log 保留完整回复和已捕获的失败片段。
+
 ## 工作复盘
 
 给人看的报告必须包含：

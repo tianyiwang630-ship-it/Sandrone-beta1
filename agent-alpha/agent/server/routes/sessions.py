@@ -236,7 +236,8 @@ def update_session(session_id: str, body: SessionPatch):
 
 @router.delete("/{session_id}")
 def delete_session(session_id: str):
-    record = agent_manager.get_session(session_id)
+    # Retirement archives first; a failed cleanup must remain retryable.
+    record = agent_manager.store.load(session_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Session not found")
     agent_manager.delete_session(session_id)

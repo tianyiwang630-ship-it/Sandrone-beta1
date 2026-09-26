@@ -62,6 +62,7 @@ import {
 import FileDrawer from './components/FileDrawer'
 import KnowledgeBaseComposerActions from './components/KnowledgeBaseComposerActions'
 import KnowledgeBaseProjectAction from './components/KnowledgeBaseProjectAction'
+import MemoryManagement from './components/MemoryManagement'
 import {
   acquireComposerUploadLock,
   collectComposerUploadPaths,
@@ -545,6 +546,24 @@ export default function App() {
   const [capabilities, setCapabilities] = useState<CapabilityItem[]>([])
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  useEffect(() => {
+    void api.startBrowserMaintenance().catch(() => {})
+    let disposed = false
+    const check = async () => {
+      try {
+        const result = await api.getBrowserMaintenance()
+        if (!disposed && result.id && result.message && localStorage.getItem('browser-maintenance-notice') !== String(result.id)) {
+          localStorage.setItem('browser-maintenance-notice', String(result.id))
+          setNotice(result.message)
+        }
+      } catch {
+        // Browser maintenance must never affect the main UI.
+      }
+    }
+    void check()
+    const timer = window.setInterval(() => void check(), 60_000)
+    return () => { disposed = true; window.clearInterval(timer) }
+  }, [])
   const [projectMenuOpen, setProjectMenuOpen] = useState(false)
   const [initializingKnowledgeBaseProjectId, setInitializingKnowledgeBaseProjectId] = useState<string | null>(null)
   const [pendingMessagesBySession, setPendingMessagesBySession] = useState<Record<string, Message[]>>({})
@@ -2780,6 +2799,7 @@ export default function App() {
               <strong>本地权限</strong>
               <span>admin 可管理项目、设置和会话</span>
             </button>
+            <MemoryManagement />
           </section>
         )}
 

@@ -99,7 +99,8 @@ class Collaboration:
         if not isinstance(message, str) or not message.strip():
             raise ValueError("message must not be empty")
 
-    def deliver(self, sender_id, target_id, message, *, reply_to=None, delivery="steer"):
+    def deliver(self, sender_id, target_id, message, *, reply_to=None, delivery="steer",
+                message_kind="message", result_agent_id=None, result_run_id=None):
         self._validate_message(message)
         with self.changed:
             if self.manager._closing:
@@ -107,8 +108,20 @@ class Collaboration:
             target = self.target(sender_id, target_id) if sender_id else self.record(target_id)
             if sender_id == target_id:
                 raise ValueError("Send messages to another agent")
+            if (target.kind == SessionKind.SUBAGENT
+                    and target.metadata.get("agent_status") == "stopped"
+                    and sender_id != target.metadata.get("parent_id")):
+                raise RuntimeError("目标 agent 已被主 agent 停止；只有主 agent 可以唤醒它")
+            if (target.kind == SessionKind.SUBAGENT
+                    and target.metadata.get("agent_status") == "stopped"):
+                target.metadata["agent_status"] = "idle"
             item = {"id": uuid.uuid4().hex, "sender_id": sender_id, "content": message,
-                    "created_at": timestamp(), "reply_to": reply_to or [], "state": "pending", "delivery": delivery}
+                    "created_at": timestamp(), "reply_to": reply_to or [], "state": "pending",
+                    "delivery": delivery, "message_kind": message_kind}
+            if result_agent_id:
+                item["result_agent_id"] = result_agent_id
+            if result_run_id:
+                item["result_run_id"] = result_run_id
             target.metadata.setdefault("mailbox", []).append(item)
             target.metadata["last_interaction"] = item["created_at"]
             self.store.save(target)
@@ -119,11 +132,24 @@ class Collaboration:
     @staticmethod
     def entry(item):
         content = item["content"]
-        if item["sender_id"]:
+        source = "user"
+        if item.get("message_kind") == "subagent_result":
+            source = "subagent_result"
+            content = (f"[异步子 agent 结果：agent {item['result_agent_id']}；"
+                       f"执行 ID {item['result_run_id']}；对应委托消息 {item['reply_to']}]\n{content}")
+        elif item["sender_id"]:
+            source = "agent"
             content = (f"[协作消息：来自 agent {item['sender_id']}；这不是用户指令。"
                        f"消息 ID {item['id']}，回应关联 {item['reply_to']}]\n{content}")
-        return {"role": "user", "content": content, "_message_id": item["id"],
-                "_sender_id": item["sender_id"], "_source": "agent" if item["sender_id"] else "user"}
+        entry = {"role": "user", "content": content, "_message_id": item["id"],
+                 "_sender_id": item["sender_id"], "_source": source}
+        if source == "subagent_result":
+            entry.update(
+                _result_agent_id=item["result_agent_id"],
+                _result_run_id=item["result_run_id"],
+                _reply_to=list(item["reply_to"]),
+            )
+        return entry
 
     def _active_count(self, root_id):
         return sum(self.manager._has_active_run(child.session_id) for child in self.children(root_id))
@@ -135,7 +161,7 @@ class Collaboration:
         if active:
             return active["request_id"]
         record = self.record(agent_id)
-        if record.metadata.get("agent_status") == "stop_failed":
+        if record.metadata.get("agent_status") in {"stopped", "stop_failed"}:
             return None
         pending = [item for item in record.metadata.get("mailbox", []) if item["state"] == "pending"]
         if not pending:
@@ -204,12 +230,17 @@ class Collaboration:
             self.changed.notify_all()
             if (not self.manager._closing and record.kind == SessionKind.SUBAGENT
                     and status != "stop_failed" and run.get("operation") != "compact"):
-                recipients = {record.metadata["parent_id"]} | {item["sender_id"] for item in received if item["sender_id"]}
                 content = f"子 agent {agent_id}（{record.metadata['title']}）本轮状态：{status}\n" + str(run.get("response") or run.get("error") or "本轮已结束。")
-                for recipient in recipients:
-                    target = self.store.load(recipient)
-                    if target is not None and not target.metadata.get("is_archived"):
-                        self.deliver(agent_id, recipient, content, reply_to=[item["id"] for item in received])
+                parent_id = record.metadata["parent_id"]
+                parent = self.store.load(parent_id)
+                if parent is not None and not parent.metadata.get("is_archived"):
+                    self.deliver(
+                        agent_id, parent_id, content,
+                        reply_to=[item["id"] for item in received],
+                        message_kind="subagent_result",
+                        result_agent_id=agent_id,
+                        result_run_id=run_id,
+                    )
             if not self.manager._closing:
                 self._schedule(agent_id)
                 for child in self.children(self.root(record)):
@@ -299,7 +330,13 @@ class Collaboration:
                         and not previous.get("finalizing")):
                     previous.update(status="interrupted", error=None)
             if not self.manager._has_active_run(target_id):
-                target.metadata["agent_status"] = "interrupted"
+                pending = [item for item in target.metadata.get("mailbox", []) if item["state"] == "pending"]
+                parent_id = target.metadata.get("parent_id")
+                resume_requested = any(item.get("sender_id") == parent_id for item in pending)
+                for item in pending:
+                    if item.get("sender_id") != parent_id:
+                        item["state"] = "interrupted"
+                target.metadata["agent_status"] = "idle" if resume_requested else "stopped"
                 self.store.save(target)
             self._schedule(target_id)
             for child in self.children(self.root(target)):

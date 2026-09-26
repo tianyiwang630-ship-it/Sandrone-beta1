@@ -78,7 +78,8 @@ def prepare_runtime_history(
 
         content = _normalize_content(raw.get("content"))
         item: dict[str, Any] = {"role": role, "content": content}
-        for key in ("_message_id", "_sender_id", "_source"):
+        for key in ("_message_id", "_sender_id", "_source", "_result_agent_id",
+                    "_result_run_id", "_reply_to"):
             if key in raw:
                 item[key] = raw[key]
         runtime_kind = raw.get("_runtime_kind")
@@ -144,6 +145,8 @@ def validate_assistant_message(
     repairs: list[str] = []
     content = _normalize_content(_get(raw_message, "content"))
     raw_tool_calls = _get(raw_message, "tool_calls") or []
+    if finish_reason == "length":
+        return AssistantValidationResult(None, error="assistant output was truncated")
     if not isinstance(raw_tool_calls, (list, tuple)):
         return AssistantValidationResult(None, error="tool_calls must be a list")
 
@@ -168,8 +171,6 @@ def validate_assistant_message(
             return AssistantValidationResult(None, repairs=_dedupe(repairs), error=schema_error)
         tool_calls.append(repaired)
 
-    if finish_reason == "length" and tool_calls:
-        return AssistantValidationResult(None, repairs=_dedupe(repairs), error="tool call output was truncated")
     if content is None and not tool_calls:
         return AssistantValidationResult(None, repairs=_dedupe(repairs), error="assistant response is empty")
 

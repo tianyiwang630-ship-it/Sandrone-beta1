@@ -42,3 +42,19 @@ def test_runtime_browser_delete_reuses_shared_shutdown(monkeypatch):
     assert response.status_code == 200
     assert response.json()["success"] is True
     assert calls == [runtime_route.PROJECT_ROOT]
+
+
+def test_browser_maintenance_starts_after_ui_requests_it(monkeypatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(app_module.agent_manager, "release_all", lambda: None)
+    monkeypatch.setattr(app_module, "shutdown_browser_harness_runtime", lambda _root: {"success": True})
+    test_app = FastAPI(lifespan=app_module.lifespan)
+    test_app.include_router(runtime_route.router)
+    with TestClient(test_app) as client:
+        maintenance = test_app.state.browser_maintenance
+        assert maintenance._thread is None
+        assert client.post("/api/runtime/browser/maintenance/start").json() == {"ok": True}
+        first_thread = maintenance._thread
+        assert first_thread is not None
+        assert client.post("/api/runtime/browser/maintenance/start").status_code == 200
+        assert maintenance._thread is first_thread

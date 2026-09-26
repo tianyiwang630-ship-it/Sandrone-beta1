@@ -55,7 +55,7 @@ from agent.core.runtime_paths import build_runtime_env, ensure_runtime_directori
 
 root = Path(os.environ['AGENT_ALPHA_ROOT'])
 ensure_runtime_directories(root)
-print(json.dumps(build_runtime_env(root), ensure_ascii=False))
+print(json.dumps(build_runtime_env(root), ensure_ascii=True))
 '@
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE

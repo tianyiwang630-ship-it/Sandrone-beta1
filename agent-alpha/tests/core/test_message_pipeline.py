@@ -130,5 +130,37 @@ def test_post_message_rejects_truncated_tool_call_without_executing_it():
     )
 
     assert result.valid is False
-    assert result.error == "tool call output was truncated"
+    assert result.error == "assistant output was truncated"
 
+
+def test_post_message_rejects_truncated_plain_text_response():
+    result = validate_assistant_message(
+        SimpleNamespace(content="unfinished", tool_calls=[]),
+        tools=TOOLS,
+        request_id="req",
+        finish_reason="length",
+    )
+
+    assert result.valid is False
+    assert result.error == "assistant output was truncated"
+
+
+def test_post_message_reports_truncation_before_malformed_tool_arguments():
+    result = validate_assistant_message(
+        SimpleNamespace(
+            content="starting",
+            tool_calls=[
+                SimpleNamespace(
+                    id="call_1",
+                    type="function",
+                    function=SimpleNamespace(name="write", arguments='{"file_path":"a"'),
+                )
+            ],
+        ),
+        tools=TOOLS,
+        request_id="req",
+        finish_reason="length",
+    )
+
+    assert result.valid is False
+    assert result.error == "assistant output was truncated"

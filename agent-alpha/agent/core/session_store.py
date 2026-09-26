@@ -6,6 +6,9 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -72,23 +75,31 @@ class SessionStore:
     def __init__(self, sessions_dir: Path):
         self.sessions_dir = Path(sessions_dir).resolve()
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.RLock()
 
     def _session_path(self, session_id: str) -> Path:
         return self.sessions_dir / f"{session_id}.json"
 
     def save(self, record: SessionRecord) -> SessionRecord:
-        path = self._session_path(record.session_id)
-        tmp_path = path.with_name(f"{path.name}.tmp")
-        payload = json.dumps(record.to_dict(), ensure_ascii=False, indent=2)
-        tmp_path.write_text(payload, encoding="utf-8")
-        try:
-            os.replace(tmp_path, path)
-        except Exception:
+        with self._lock:
+            path = self._session_path(record.session_id)
+            tmp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+            payload = json.dumps(record.to_dict(), ensure_ascii=False, indent=2)
+            tmp_path.write_text(payload, encoding="utf-8")
             try:
-                tmp_path.unlink()
-            except OSError:
-                pass
-            raise
+                for attempt in range(5):
+                    try:
+                        os.replace(tmp_path, path)
+                        break
+                    except PermissionError:
+                        if attempt == 4:
+                            raise
+                        time.sleep(0.02 * (attempt + 1))
+            finally:
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
         return record
 
     def load(self, session_id: str) -> SessionRecord | None:

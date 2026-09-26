@@ -163,7 +163,7 @@ class SessionEventWriter:
             payload["entry_truncation"] = truncation
 
         with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n\n")
+            handle.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
 
         self._next_seq += 1
 
@@ -187,7 +187,7 @@ class SessionEventWriter:
         payload.update({key: value for key, value in metadata.items() if value is not None})
 
         with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n\n")
+            handle.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
 
         self._next_seq += 1
 
@@ -309,6 +309,6 @@ def _is_cleanup_event(record: dict[str, Any], request_id: str) -> bool:
 
 def _write_event_records_atomic(path: Path, records: list[dict[str, Any]]) -> None:
     tmp_path = path.with_name(f"{path.name}.tmp")
-    payload = "".join(json.dumps(record, ensure_ascii=False, indent=2) + "\n\n" for record in records)
+    payload = "".join(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n" for record in records)
     tmp_path.write_text(payload, encoding="utf-8")
     os.replace(tmp_path, path)

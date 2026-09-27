@@ -88,6 +88,7 @@ try {
         & npm.cmd test
         Assert-LastExitCode "Frontend tests"
     }
+    Reset-SafeDirectory (Join-Path $FrontendRoot "dist") $FrontendRoot
     & npm.cmd run build
     Assert-LastExitCode "Frontend build"
 }

@@ -16,6 +16,15 @@ export function clampScrollTop(scrollTop: unknown, scrollHeight: number, clientH
   return Math.min(normalizeScrollTop(scrollTop), maxTop)
 }
 
+export function scrollContainerToElement(container: HTMLElement, target: HTMLElement) {
+  const containerTop = container.getBoundingClientRect().top + container.clientTop
+  const targetTop = target.getBoundingClientRect().top
+  container.scrollTo({
+    top: Math.max(0, container.scrollTop + targetTop - containerTop),
+    behavior: 'auto',
+  })
+}
+
 function storageKey(sessionId: string) {
   return `${CHAT_SCROLL_STORAGE_PREFIX}${sessionId}`
 }

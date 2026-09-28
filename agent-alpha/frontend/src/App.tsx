@@ -44,6 +44,7 @@ import {
   isCurrentSessionRequest,
   readSessionScrollTop,
   removeSessionScrollTop,
+  scrollContainerToElement,
   withoutSession,
   writeSessionScrollTop,
 } from './chatScroll'
@@ -834,8 +835,6 @@ export default function App() {
         ? scrollPositionsRef.current[sessionId]
         : readSessionScrollTop(localStorageOrNull(), sessionId)
       scrollPositionsRef.current[sessionId] = scrollTop
-    } else if (options.preserveScroll) {
-      scrollTop = captureSessionScroll(sessionId)
     }
     if (options.finishLiveRun) finalizingRunsRef.current.add(sessionId)
     let nextDetail: SessionDetail
@@ -852,6 +851,9 @@ export default function App() {
       requestSequence,
     )) {
       return null
+    }
+    if (options.preserveScroll && !options.restoreStoredScroll) {
+      scrollTop = captureSessionScroll(sessionId)
     }
     if (scrollTop != null) pendingScrollRestoreRef.current = { sessionId, scrollTop }
     setSessionDetail(nextDetail)
@@ -1502,8 +1504,8 @@ export default function App() {
         }
       }
       const nextMessages = [...messages]
-      if (pendingIndex >= 0) nextMessages[pendingIndex] = { ...nextMessages[pendingIndex], local_id: localId }
-      else nextMessages.push({ role: 'user', content, local_id: localId })
+      if (pendingIndex >= 0) nextMessages[pendingIndex] = { ...nextMessages[pendingIndex], local_id: localId, delivery_status: 'sending' }
+      else nextMessages.push({ role: 'user', content, local_id: localId, delivery_status: 'sending' })
       return {
         ...current,
         [sessionId]: nextMessages,
@@ -1745,6 +1747,8 @@ export default function App() {
           ...current,
           [sessionId]: { requestId, startedAfterSeq, error: message },
         }))
+      } else {
+        updateSteeringMessage(sessionId, pendingLocalId, { delivery_status: 'failed' })
       }
       setNotice(message === 'Not Found' ? '会话或接口不存在，请刷新后重新选择会话。' : message)
     } finally {
@@ -2490,7 +2494,9 @@ export default function App() {
                         onBlur={() => setHoveredTurnPreview((current) => current?.index === index ? null : current)}
                         onClick={() => {
                           setActiveTurnIndex(index)
-                          document.getElementById(`chat-turn-${index}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                          const stream = messageStreamRef.current
+                          const turnElement = document.getElementById(`chat-turn-${index}`)
+                          if (stream && turnElement) scrollContainerToElement(stream, turnElement)
                         }}
                       >
                         <span className="chat-turn-marker-line" />

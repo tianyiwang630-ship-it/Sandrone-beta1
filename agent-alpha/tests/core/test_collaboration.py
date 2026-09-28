@@ -31,6 +31,21 @@ def create(manager, name="work"):
     return manager.collaboration.create("root", name, "独立执行任务")
 
 
+@pytest.mark.parametrize("route_defaults", [False, True])
+def test_idle_chat_submission_accepts_route_control_fields(manager, route_defaults):
+    arguments = {"session_id": "root", "message": "你好"}
+    if route_defaults:
+        from agent.server.models import ChatRequest
+        arguments = ChatRequest(**arguments).model_dump()
+
+    request_id = manager.submit_chat(**arguments)
+
+    assert manager.get_run(request_id)["status"] == "running"
+    assert len(manager._runs) == 1
+    assert [entry["content"] for entry in manager.store.load("root").history
+            if entry.get("content") == "你好"] == ["你好"]
+
+
 @pytest.mark.parametrize("fails", [False, True])
 def test_input_during_compaction_runs_after_compaction(manager, fails):
     child = create(manager)

@@ -592,10 +592,13 @@ button {
 .chat-turn-navigation-shell {
   position: absolute;
   z-index: 3;
-  top: 12px;
-  bottom: 12px;
+  grid-row: 1;
+  grid-column: 1;
+  top: 50%;
   left: 4px;
-  width: 38px;
+  width: 40px;
+  height: min(68%, 520px);
+  transform: translateY(-50%);
   overflow: visible;
   pointer-events: none;
 }
@@ -604,20 +607,26 @@ button {
   position: absolute;
   inset: 0;
   display: flex;
-  width: 38px;
+  width: 40px;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: safe center;
   gap: 3px;
   overflow-x: visible;
   overflow-y: auto;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: #c4c8ce transparent;
   padding-block: 4px;
   pointer-events: auto;
 }
 
 .chat-turn-navigation::-webkit-scrollbar {
-  display: none;
+  width: 4px;
+}
+
+.chat-turn-navigation::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: #c4c8ce;
 }
 
 .chat-turn-marker {
@@ -627,16 +636,17 @@ button {
   min-height: 8px;
   flex: 0 0 8px;
   align-items: center;
-  padding: 0 3px;
+  justify-content: center;
+  padding: 0;
   border: 0;
   border-radius: 3px;
   background: transparent;
-  color: #8a8a8a;
+  color: #9b9b9b;
   cursor: pointer;
 }
 
 .chat-turn-marker-line {
-  width: 12px;
+  width: 8px;
   height: 2px;
   border-radius: 2px;
   background: currentColor;
@@ -644,15 +654,15 @@ button {
   transition: width 120ms ease, opacity 120ms ease, background-color 120ms ease;
 }
 
-.chat-turn-marker:hover .chat-turn-marker-line,
-.chat-turn-marker:focus-visible .chat-turn-marker-line {
-  width: 26px;
-  opacity: 0.85;
+.chat-turn-marker[aria-current="true"] .chat-turn-marker-line {
+  background: #555;
+  opacity: 0.9;
 }
 
-.chat-turn-marker[aria-current="true"] .chat-turn-marker-line {
-  width: 26px;
-  background: #1a1c1f;
+.chat-turn-marker:hover .chat-turn-marker-line,
+.chat-turn-marker:focus-visible .chat-turn-marker-line {
+  width: 24px;
+  background: #4b4b4b;
   opacity: 1;
 }
 

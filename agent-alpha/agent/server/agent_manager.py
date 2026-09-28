@@ -195,9 +195,9 @@ class AgentManager:
     def submit_chat(self, *, mode="queue", **arguments):
         with self._lock:
             session_id = arguments["session_id"]
+            expected_request_id = arguments.pop("expected_request_id", None)
+            client_message_id = arguments.pop("client_message_id", None)
             if mode == "steer" or self._has_active_run(session_id):
-                expected_request_id = arguments.pop("expected_request_id", None)
-                client_message_id = arguments.pop("client_message_id", None)
                 receipt = self.collaboration.delivery_receipt(
                     session_id, None, arguments["message"], client_message_id,
                 )

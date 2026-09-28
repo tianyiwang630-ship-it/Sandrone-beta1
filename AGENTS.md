@@ -21,7 +21,7 @@
 这些部分，做设计改造的时候要明确是在哪个层做改变。
 3 关于agent实例化，至少能够满足以下场景：单agent；平等的多agent；领导agent，去给多个下属agent分配任务，下属agent之间可以对话；有专门的整理记忆/替代用户给AI对话的agent实例。设计agent的时候，要能兼容这些场景，也要能满足当下单agent场景。
 4 做任何改动前，都必须先摸清楚对应的代码和实现链路。
-
+5 实施情况不要写入prd。
 # 遵守的规范
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.

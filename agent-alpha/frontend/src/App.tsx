@@ -47,11 +47,14 @@ import {
   withoutSession,
   writeSessionScrollTop,
 } from './chatScroll'
+import { buildChatTurns, type ChatTurn } from './chatTurns'
 import {
   attachesLiveRunToTurn,
   buildToolPresentation,
+  collaborationMessageText,
   displayedAssistantText,
   formatRunFailureMessage,
+  isCollaborationMessage,
   mergeVisibleChatMessages,
   mergeActiveRunEvents,
   mergeProcessPresentation,
@@ -137,13 +140,6 @@ import {
 
 type CenterView = 'chat' | 'settings' | 'users' | 'capabilities' | 'api'
 
-interface ChatTurn {
-  key: string
-  user?: Message
-  assistants: Message[]
-  steps: Message[]
-}
-
 interface RunningSession {
   requestId: string
   status: 'starting' | 'running' | 'stopping'
@@ -194,42 +190,6 @@ function firstLine(value: string, fallback: string) {
 
 function hasToolCalls(message: Message) {
   return Array.isArray(message.tool_calls) && message.tool_calls.length > 0
-}
-
-function buildChatTurns(messages: Message[]): ChatTurn[] {
-  const turns: ChatTurn[] = []
-  let current: ChatTurn | null = null
-
-  messages.forEach((message, index) => {
-    if (message.role === 'user') {
-      current = { key: `turn-${index}`, user: message, assistants: [], steps: [] }
-      turns.push(current)
-      return
-    }
-
-    if (!current) {
-      current = { key: `turn-${index}`, assistants: [], steps: [] }
-      turns.push(current)
-    }
-
-    if (message.role === 'tool' || hasToolCalls(message)) {
-      current.steps.push(message)
-      return
-    }
-
-    if (message.role === 'assistant') {
-      if (messageText(message).trim()) {
-        current.assistants.push(message)
-      } else {
-        current.steps.push(message)
-      }
-      return
-    }
-
-    current.steps.push(message)
-  })
-
-  return turns
 }
 
 function collectToolNames(steps: Message[]) {
@@ -340,7 +300,7 @@ function isVisibleLiveEvent(event: SessionEvent) {
 
   if (type === 'assistant_delta') return false
   if (type === 'llm_request_started' || type === 'llm_request_succeeded') return false
-  if (entry.role === 'user') return false
+  if (entry.role === 'user' && !isCollaborationMessage(entry as Partial<Message>)) return false
   if (entry.role === 'assistant' && !Array.isArray(entry.tool_calls)) return false
   if (entry.role === 'assistant' && Array.isArray(entry.tool_calls) && entry.tool_calls.length > 0) return true
   if (entry.role === 'tool') return true
@@ -452,6 +412,14 @@ function ToolCallCard({ toolCall }: { toolCall: ToolPresentation }) {
             <div className="tool-call-section-label">输出</div>
             <pre className="tool-call-output">{toolCall.output}</pre>
           </section>
+          {toolCall.collaborationMessages.map((message, index) => (
+            <section className="tool-call-section" key={message.message_id || `${toolCall.key}-agent-${index}`}>
+              <div className="tool-call-section-label">
+                {message.source === 'subagent_result' ? '子 Agent 结果' : '子 Agent 消息'}
+              </div>
+              <div className="tool-collaboration-message">{collaborationMessageText(message)}</div>
+            </section>
+          ))}
         </div>
       </details>
     </div>
@@ -477,11 +445,22 @@ function ToolProcessList({ presentation }: { presentation: ToolProcessPresentati
         <ToolOutputCard key={result.key} result={result} />
       ))}
       {presentation.otherItems.map((item) => (
-        <div key={item.key} className="process-item">
-          <div className="process-item-title">
-            {item.kind === 'event' ? eventSummary(item.event) : firstLine(messageText(item.message), '正在思考')}
-          </div>
-        </div>
+        item.kind === 'message' && isCollaborationMessage(item.message)
+          ? (
+            <section key={item.key} className="tool-output-orphan">
+              <div className="tool-call-section-label">
+                {item.message.source === 'subagent_result' ? '子 Agent 结果' : '子 Agent 消息'}
+              </div>
+              <div className="tool-collaboration-message">{collaborationMessageText(item.message)}</div>
+            </section>
+          )
+          : (
+            <div key={item.key} className="process-item">
+              <div className="process-item-title">
+                {item.kind === 'event' ? eventSummary(item.event) : firstLine(messageText(item.message), '正在思考')}
+              </div>
+            </div>
+          )
       ))}
     </div>
   )
@@ -2570,8 +2549,8 @@ export default function App() {
                   <article key={turn.key} id={`chat-turn-${turnIndex}`} className="chat-turn">
                     {turn.user && (
                       <div className="message user">
-                        <div className="message-role">{turn.user.source_agent_id || turn.user._sender_id ? 'AGENT' : 'USER'}</div>
-                        <pre>{messageText(turn.user)}</pre>
+                        <div className="message-role">USER</div>
+                        <div className="user-message-content">{messageText(turn.user)}</div>
                         {turn.user.delivery_status && (
                           <div className={`message-delivery-status ${turn.user.delivery_status}`}>
                             {turn.user.delivery_status === 'sending' ? '发送中'

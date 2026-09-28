@@ -15,6 +15,20 @@ export function mergeVisibleChatMessages(history: Message[], pending: Message[],
   return [...history, ...visiblePending]
 }
 
+export function isCollaborationMessage(message: Partial<Message>) {
+  const source = message.source || message._source
+  return message.role === 'user'
+    && (source === 'agent' || source === 'subagent_result' || Boolean(message.source_agent_id || message._sender_id))
+}
+
+export function collaborationMessageText(message: Message) {
+  const content = messageContentText(message)
+  const lines = content.split('\n')
+  if (message.source === 'agent' && lines[0].startsWith('[协作消息：')) return lines.slice(1).join('\n')
+  if (message.source === 'subagent_result' && lines[0].startsWith('[异步子 agent 结果：')) return lines.slice(1).join('\n')
+  return content
+}
+
 export type ProcessPresentationItem =
   | { key: string; kind: 'message'; message: Message }
   | { key: string; kind: 'event'; event: SessionEvent }
@@ -36,6 +50,7 @@ export interface ToolPresentation {
   arguments: string
   output: string
   outputState: ToolOutputState
+  collaborationMessages: Message[]
 }
 
 export interface ToolResultPresentation {
@@ -98,6 +113,14 @@ function eventMessage(event: SessionEvent): Message | null {
   const message = entry as unknown as Message
   if (message.role === 'tool') return message
   if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) return message
+  if (isCollaborationMessage(message)) {
+    return {
+      ...message,
+      source: message.source || String(message._source || ''),
+      source_agent_id: message.source_agent_id || String(message._sender_id || '') || null,
+      reply_to: Array.isArray(message.reply_to) ? message.reply_to : Array.isArray(message._reply_to) ? message._reply_to : [],
+    }
+  }
   return null
 }
 
@@ -178,6 +201,27 @@ function outputPresentation(content: unknown): { output: string; outputState: 'e
   return { output, outputState: 'received' }
 }
 
+function objectValue(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>
+  if (typeof value !== 'string') return null
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null
+  } catch {
+    return null
+  }
+}
+
+function toolCallTargetId(call: Record<string, unknown>) {
+  const fn = call.function
+  const args = fn && typeof fn === 'object' && 'arguments' in fn
+    ? objectValue(fn.arguments)
+    : objectValue(call.arguments)
+  return typeof args?.target_id === 'string' ? args.target_id : null
+}
+
 function isToolLifecycleEvent(item: ProcessPresentationItem) {
   if (item.kind !== 'event') return false
   const payload = item.event.event || item.event.entry || item.event
@@ -193,7 +237,11 @@ export function buildToolPresentation(
 ): ToolProcessPresentation {
   const toolCalls: ToolPresentation[] = []
   const callsById = new Map<string, ToolPresentation>()
+  const allCallsById = new Map<string, ToolPresentation>()
+  const callsByMessageId = new Map<string, ToolPresentation>()
+  const callsByAgentId = new Map<string, ToolPresentation>()
   const results: Array<{ key: string; callId: string; content: unknown }> = []
+  const collaborationMessages: Array<{ key: string; message: Message }> = []
   const otherItems: ProcessPresentationItem[] = []
 
   for (const item of items) {
@@ -203,6 +251,10 @@ export function buildToolPresentation(
     }
 
     const message = item.message
+    if (isCollaborationMessage(message)) {
+      collaborationMessages.push({ key: item.key, message })
+      continue
+    }
     if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
       const assistantText = messageContentText(message).trim() ? messageContentText(message) : ''
       message.tool_calls.forEach((call, index) => {
@@ -214,9 +266,17 @@ export function buildToolPresentation(
           arguments: formatToolArguments(call),
           output: '',
           outputState: options.isLive && !options.runFinished ? 'running' : 'missing',
+          collaborationMessages: [],
         }
         toolCalls.push(toolCall)
-        if (callId && !callsById.has(callId)) callsById.set(callId, toolCall)
+        if (callId && !callsById.has(callId)) {
+          callsById.set(callId, toolCall)
+          allCallsById.set(callId, toolCall)
+        }
+        const targetId = toolCallTargetId(call)
+        if (targetId && (toolCall.name.startsWith('subagent_') || toolCall.name.startsWith('agent_'))) {
+          callsByAgentId.set(targetId, toolCall)
+        }
       })
       continue
     }
@@ -240,6 +300,11 @@ export function buildToolPresentation(
       const output = outputPresentation(result.content)
       toolCall.output = output.output
       toolCall.outputState = output.outputState
+      if (toolCall.name.startsWith('subagent_') || toolCall.name.startsWith('agent_')) {
+        const receipt = objectValue(result.content)
+        if (typeof receipt?.message_id === 'string') callsByMessageId.set(receipt.message_id, toolCall)
+        if (typeof receipt?.target_id === 'string') callsByAgentId.set(receipt.target_id, toolCall)
+      }
       callsById.delete(result.callId)
       continue
     }
@@ -250,6 +315,14 @@ export function buildToolPresentation(
       output: output.output,
       outputState: output.outputState,
     })
+  }
+
+  for (const { key, message } of collaborationMessages) {
+    const linkedCall = (message.related_tool_call_id && allCallsById.get(message.related_tool_call_id))
+      || (message.reply_to || []).slice().reverse().map((id) => callsByMessageId.get(id)).find(Boolean)
+      || (message.source_agent_id ? callsByAgentId.get(message.source_agent_id) : undefined)
+    if (linkedCall) linkedCall.collaborationMessages.push(message)
+    else otherItems.push({ key, kind: 'message', message })
   }
 
   for (const toolCall of toolCalls) {

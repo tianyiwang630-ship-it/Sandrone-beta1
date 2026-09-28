@@ -14,3 +14,8 @@ test('expanded tool details keep vertical rows at their content height', () => {
   assert.match(styles, /\.tool-call-details\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s)
   assert.match(styles, /\.tool-call-section,\s*\.tool-output-orphan\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s)
 })
+
+test('user messages use Codex neutral colors and the system chat font', () => {
+  assert.match(styles, /\.message\.user\s*{[^}]*background:\s*#f0f0f0;[^}]*border-color:\s*#e2e2e2;/s)
+  assert.match(styles, /\.user-message-content\s*{[^}]*font-family:\s*inherit;[^}]*font-size:\s*var\(--chat-font-size\);/s)
+})

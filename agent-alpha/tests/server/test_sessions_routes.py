@@ -181,6 +181,39 @@ def test_session_detail_restores_unprocessed_user_steer_once(monkeypatch, tmp_pa
     assert detail.messages[1].partial
 
 
+def test_session_detail_exposes_subagent_message_origin_and_reply_link(monkeypatch, tmp_path):
+    events_dir = tmp_path / "events"
+    events_dir.mkdir()
+    record = SessionRecord(
+        session_id="sess_subagent_display",
+        workspace=str(tmp_path),
+        history=[
+            {"role": "user", "content": "检查项目"},
+            {
+                "role": "user",
+                "content": "[异步子 agent 结果：内部上下文]\n检查完成。",
+                "_message_id": "result-1",
+                "_sender_id": "agent-a",
+                "_source": "subagent_result",
+                "_reply_to": ["mail-1"],
+                "_result_agent_id": "agent-a",
+                "_result_run_id": "run-a",
+            },
+        ],
+    )
+    manager = SimpleNamespace(events_dir=events_dir, get_session=lambda _session_id: record)
+    monkeypatch.setattr("agent.server.routes.sessions.agent_manager", manager)
+
+    detail = get_session(record.session_id)
+
+    result = detail.messages[1]
+    assert result.source == "subagent_result"
+    assert result.source_agent_id == "agent-a"
+    assert result.reply_to == ["mail-1"]
+    assert result.result_agent_id == "agent-a"
+    assert result.result_run_id == "run-a"
+
+
 def test_folder_picker_default_dir_exists():
     assert _default_picker_dir().exists()
 

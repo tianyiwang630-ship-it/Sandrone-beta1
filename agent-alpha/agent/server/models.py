@@ -59,6 +59,10 @@ class MessageItem(BaseModel):
     tool_calls: list[dict[str, Any]] | None = None
     tool_call_id: str | None = None
     source_agent_id: str | None = Field(default=None, validation_alias="_sender_id")
+    source: str | None = Field(default=None, validation_alias="_source")
+    reply_to: list[str] = Field(default_factory=list, validation_alias="_reply_to")
+    result_agent_id: str | None = Field(default=None, validation_alias="_result_agent_id")
+    result_run_id: str | None = Field(default=None, validation_alias="_result_run_id")
     message_id: str | None = Field(default=None, validation_alias="_message_id")
     partial: bool = Field(default=False, validation_alias="_partial")
     delivery_status: Literal["waiting", "received"] | None = None

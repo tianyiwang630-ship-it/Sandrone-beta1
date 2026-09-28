@@ -33,7 +33,14 @@ export interface Message {
   delivery_status?: 'sending' | 'waiting' | 'confirming' | 'received' | 'failed'
   partial?: boolean
   source_agent_id?: string | null
+  source?: string | null
+  reply_to?: string[]
+  result_agent_id?: string | null
+  result_run_id?: string | null
+  related_tool_call_id?: string | null
   _sender_id?: string | null
+  _source?: string | null
+  _reply_to?: string[]
 }
 
 export interface SubagentInfo {

@@ -740,8 +740,18 @@ button {
 .message.user {
   width: fit-content;
   margin-left: auto;
-  background: #f3f3f3;
-  border-color: #e8e8e8;
+  background: #f0f0f0;
+  border-color: #e2e2e2;
+}
+
+.user-message-content {
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--chat-font-size);
+  line-height: 1.625;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .message-delivery-status {
@@ -1031,6 +1041,20 @@ button {
   background: #eef2f4;
   color: #53616a;
   font-size: 12px;
+}
+
+.tool-collaboration-message {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e8e8e8;
+  border-radius: 7px;
+  background: #f7f7f7;
+  color: var(--text);
+  font-size: var(--chat-font-size);
+  line-height: 1.625;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .tool-output-orphan {

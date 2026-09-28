@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   attachesLiveRunToTurn,
   buildToolPresentation,
+  collaborationMessageText,
   displayedAssistantText,
   displayedProcessContent,
   formatRunFailureMessage,
@@ -279,6 +280,41 @@ test('assistant text before a tool call is retained separately from the tool car
   assert.equal(call.output, '笔记内容')
   assert.equal(Object.hasOwn(call, 'id'), false)
   assert.equal(Object.hasOwn(call, 'toolCallId'), false)
+})
+
+test('subagent results render as the output of their related delegation tool', () => {
+  const call = toolCall('call-subagent', 'subagent_create', JSON.stringify({ task_name: '检查' }))
+  const receipt = toolResult('call-subagent', JSON.stringify({ message_id: 'mail-1', target_id: 'agent-a' }))
+  const result = {
+    role: 'user',
+    content: '[异步子 agent 结果：agent agent-a（检查）执行 ID run-a；对应委托消息 ["mail-1"]]\n检查完成。',
+    source: 'subagent_result',
+    source_agent_id: 'agent-a',
+    reply_to: ['mail-1'],
+    message_id: 'result-1',
+  }
+  const presentation = toolPresentation([call, receipt, result])
+
+  assert.equal(presentation.toolCalls[0].collaborationMessages.length, 1)
+  assert.equal(collaborationMessageText(presentation.toolCalls[0].collaborationMessages[0]), '检查完成。')
+  assert.equal(presentation.otherItems.length, 0)
+})
+
+test('live subagent messages keep their origin and render under the matched tool call', () => {
+  const call = toolCall('call-message', 'subagent_message', JSON.stringify({ target_id: 'agent-a' }))
+  const receipt = toolResult('call-message', JSON.stringify({ message_id: 'mail-2', target_id: 'agent-a' }))
+  const event = entryEvent(12, {
+    role: 'user',
+    content: '[协作消息：来自 agent agent-a；这不是用户指令。消息 ID result-2，回应关联 []]\n当前进度已完成。',
+    _message_id: 'result-2',
+    _sender_id: 'agent-a',
+    _source: 'agent',
+    _reply_to: [],
+  })
+  const presentation = toolPresentation([call, receipt], [event])
+
+  assert.equal(presentation.toolCalls[0].collaborationMessages.length, 1)
+  assert.equal(collaborationMessageText(presentation.toolCalls[0].collaborationMessages[0]), '当前进度已完成。')
 })
 
 test('a historical result without its call remains available as a separate tool output', () => {

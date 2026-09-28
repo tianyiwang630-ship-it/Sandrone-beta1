@@ -45,6 +45,13 @@ export interface MemoryTask {
   allowed_at_start: string[]
 }
 
+export class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message)
+    this.name = 'ApiRequestError'
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`/api${path}`, {
     cache: 'no-store',
@@ -62,7 +69,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } catch {
       // Keep HTTP status text.
     }
-    throw new Error(detail)
+    throw new ApiRequestError(detail, response.status)
   }
   return response.json() as Promise<T>
 }
@@ -114,8 +121,17 @@ export const api = {
     request<RetrospectiveStart>('/sessions/retrospective', { method: 'POST', body: JSON.stringify(body) }),
   sendMessage: (sessionId: string, message: string) =>
     request<ChatStart>('/chat', { method: 'POST', body: JSON.stringify({ session_id: sessionId, message }) }),
-  steerMessage: (sessionId: string, message: string) =>
-    request<ChatStart>('/chat', { method: 'POST', body: JSON.stringify({ session_id: sessionId, message, mode: 'steer' }) }),
+  steerMessage: (sessionId: string, message: string, expectedRequestId: string, clientMessageId: string) =>
+    request<ChatStart>('/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        session_id: sessionId,
+        message,
+        mode: 'steer',
+        expected_request_id: expectedRequestId,
+        client_message_id: clientMessageId,
+      }),
+    }),
   listSubagents: (sessionId: string) => request<{ agents: SubagentInfo[]; next_offset: number | null }>(`/sessions/${sessionId}/subagents`),
   compactSession: (sessionId: string) =>
     request<ChatStart>('/chat/compact', { method: 'POST', body: JSON.stringify({ session_id: sessionId }) }),

@@ -59,6 +59,9 @@ class MessageItem(BaseModel):
     tool_calls: list[dict[str, Any]] | None = None
     tool_call_id: str | None = None
     source_agent_id: str | None = Field(default=None, validation_alias="_sender_id")
+    message_id: str | None = Field(default=None, validation_alias="_message_id")
+    partial: bool = Field(default=False, validation_alias="_partial")
+    delivery_status: Literal["waiting", "received"] | None = None
 
 
 class SessionDetail(SessionInfo):
@@ -85,6 +88,8 @@ class ChatRequest(BaseModel):
     session_id: str
     message: str = Field(min_length=1)
     mode: Literal["queue", "steer"] = "queue"
+    expected_request_id: str | None = None
+    client_message_id: str | None = None
 
 
 class CompactRequest(BaseModel):
@@ -94,6 +99,7 @@ class CompactRequest(BaseModel):
 class ChatStartResponse(BaseModel):
     request_id: str
     session_id: str
+    message_id: str | None = None
 
 
 ChatRunStatus = Literal["running", "stopping", "stop_failed", "success", "failed", "interrupted", "recoverable"]

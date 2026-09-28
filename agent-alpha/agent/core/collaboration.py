@@ -99,8 +99,29 @@ class Collaboration:
         if not isinstance(message, str) or not message.strip():
             raise ValueError("message must not be empty")
 
+    def delivery_receipt(self, target_id, sender_id, message, message_id):
+        if not message_id:
+            return None
+        with self.changed:
+            target = self.record(target_id)
+            existing = next(
+                (item for item in target.metadata.get("mailbox", [])
+                 if item["id"] == message_id and item.get("sender_id") == sender_id),
+                None,
+            )
+            if existing is None:
+                return None
+            if existing["content"] != message:
+                raise RuntimeError("message ID is already used for different content")
+            active = self.manager.get_active_run_for_session(target_id)
+            request_id = active["request_id"] if active else existing.get("run_id")
+            if request_id is None and existing["state"] == "pending":
+                request_id = self._schedule(target_id)
+            return {"accepted": True, "message_id": existing["id"],
+                    "target_id": target_id, "request_id": request_id}
+
     def deliver(self, sender_id, target_id, message, *, reply_to=None, delivery="steer",
-                message_kind="message", result_agent_id=None, result_run_id=None):
+                message_kind="message", result_agent_id=None, result_run_id=None, message_id=None):
         self._validate_message(message)
         with self.changed:
             if self.manager._closing:
@@ -108,6 +129,22 @@ class Collaboration:
             target = self.target(sender_id, target_id) if sender_id else self.record(target_id)
             if sender_id == target_id:
                 raise ValueError("Send messages to another agent")
+            if message_id:
+                existing = next(
+                    (item for item in target.metadata.get("mailbox", [])
+                     if item["id"] == message_id and item.get("sender_id") == sender_id),
+                    None,
+                )
+                if existing:
+                    if existing["content"] != message:
+                        raise RuntimeError("message ID is already used for different content")
+                    active = self.manager.get_active_run_for_session(target_id)
+                    return {
+                        "accepted": True,
+                        "message_id": existing["id"],
+                        "target_id": target_id,
+                        "request_id": active["request_id"] if active else existing.get("run_id"),
+                    }
             if (target.kind == SessionKind.SUBAGENT
                     and target.metadata.get("agent_status") == "stopped"
                     and sender_id != target.metadata.get("parent_id")):
@@ -115,7 +152,7 @@ class Collaboration:
             if (target.kind == SessionKind.SUBAGENT
                     and target.metadata.get("agent_status") == "stopped"):
                 target.metadata["agent_status"] = "idle"
-            item = {"id": uuid.uuid4().hex, "sender_id": sender_id, "content": message,
+            item = {"id": message_id or uuid.uuid4().hex, "sender_id": sender_id, "content": message,
                     "created_at": timestamp(), "reply_to": reply_to or [], "state": "pending",
                     "delivery": delivery, "message_kind": message_kind}
             if result_agent_id:

@@ -196,14 +196,34 @@ class AgentManager:
         with self._lock:
             session_id = arguments["session_id"]
             if mode == "steer" or self._has_active_run(session_id):
+                expected_request_id = arguments.pop("expected_request_id", None)
+                client_message_id = arguments.pop("client_message_id", None)
+                receipt = self.collaboration.delivery_receipt(
+                    session_id, None, arguments["message"], client_message_id,
+                )
+                if receipt:
+                    return {"request_id": receipt["request_id"], "message_id": receipt["message_id"]}
+                active_run = self.get_active_run_for_session(session_id)
+                if expected_request_id is not None and (
+                    not active_run
+                    or active_run.get("request_id") != expected_request_id
+                    or active_run.get("status") != "running"
+                ):
+                    raise RuntimeError("当前任务已结束，消息仍保留在队列中")
                 record = self.collaboration.record(session_id)
                 record.metadata["runtime_config"] = {
                     "permission_mode": arguments.get("permission_mode", "ask"),
                     "llm_settings": dict(arguments.get("llm_settings") or {}),
                 }
                 self.store.save(record)
-                receipt = self.collaboration.deliver(None, session_id, arguments["message"], delivery=mode)
-                return receipt["request_id"]
+                receipt = self.collaboration.deliver(
+                    None,
+                    session_id,
+                    arguments["message"],
+                    delivery=mode,
+                    message_id=client_message_id,
+                )
+                return {"request_id": receipt["request_id"], "message_id": receipt["message_id"]}
             return self.start_chat(**arguments)
 
     def _start_chat_locked(

@@ -21,10 +21,12 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 def start_chat(body: ChatRequest):
     settings = normalize_settings(state_store.get_settings())
     try:
-        request_id = agent_manager.submit_chat(
+        result = agent_manager.submit_chat(
             mode=body.mode,
             session_id=body.session_id,
             message=body.message,
+            expected_request_id=body.expected_request_id,
+            client_message_id=body.client_message_id,
             permission_mode=str(settings.get("permission_mode") or "ask"),
             llm_settings=settings,
         )
@@ -32,7 +34,9 @@ def start_chat(body: ChatRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return ChatStartResponse(request_id=request_id, session_id=body.session_id)
+    if isinstance(result, str):
+        return ChatStartResponse(request_id=result, session_id=body.session_id)
+    return ChatStartResponse(session_id=body.session_id, **result)
 
 
 @router.post("/compact", response_model=ChatStartResponse)

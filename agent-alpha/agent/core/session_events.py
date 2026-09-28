@@ -222,14 +222,28 @@ def migrate_event_file(path: Path, *, cleanup_completed: bool) -> bool:
     if not path.exists():
         return False
     records = read_session_events(path.parent, path.stem)
+    interrupted_delta_indexes: set[int] = set()
+    pending_delta_indexes: list[int] = []
+    for index, record in enumerate(records):
+        event_type = _event_type(record)
+        if event_type == "llm_request_started":
+            pending_delta_indexes.clear()
+        elif event_type == "assistant_delta":
+            pending_delta_indexes.append(index)
+        elif event_type == "llm_request_succeeded":
+            pending_delta_indexes.clear()
+        elif event_type == "llm_request_interrupted":
+            interrupted_delta_indexes.update(pending_delta_indexes)
+            pending_delta_indexes.clear()
+
     migrated: list[dict[str, Any]] = []
     changed = False
-    for record in records:
-        if cleanup_completed and _event_type(record) in {
-            "assistant_delta",
-            "llm_request_started",
-            "llm_request_succeeded",
-        }:
+    for index, record in enumerate(records):
+        event_type = _event_type(record)
+        if cleanup_completed and (
+            event_type in {"llm_request_started", "llm_request_succeeded"}
+            or (event_type == "assistant_delta" and index not in interrupted_delta_indexes)
+        ):
             changed = True
             continue
         next_record = copy.deepcopy(record)

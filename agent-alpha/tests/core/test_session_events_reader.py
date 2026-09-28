@@ -86,3 +86,21 @@ def test_historical_migration_is_idempotent(tmp_path):
     first = writer.path.read_text(encoding="utf-8")
     assert migrate_event_file(writer.path, cleanup_completed=True) is False
     assert writer.path.read_text(encoding="utf-8") == first
+
+
+def test_historical_migration_preserves_only_interrupted_answer_deltas(tmp_path):
+    writer = SessionEventWriter(tmp_path, "sess")
+    writer.write_event("llm_request_started", {"request_id": "completed"})
+    writer.write_event("assistant_delta", {"request_id": "completed", "content": "done"})
+    writer.write_event("llm_request_succeeded", {"request_id": "completed"})
+    writer.write_event("llm_request_started", {"request_id": "stopped"})
+    writer.write_event("assistant_delta", {"request_id": "stopped", "content": "partial"})
+    writer.write_event("llm_request_interrupted", {"request_id": "stopped"})
+
+    assert migrate_event_file(writer.path, cleanup_completed=True) is True
+    records = read_session_events(tmp_path, "sess")
+
+    assert [(record["type"], record.get("event", {}).get("content")) for record in records] == [
+        ("assistant_delta", "partial"),
+        ("llm_request_interrupted", None),
+    ]

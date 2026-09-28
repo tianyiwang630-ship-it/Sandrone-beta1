@@ -73,6 +73,36 @@ def test_input_after_result_waits_for_previous_finalization(manager):
     assert manager.store.load("root").metadata["mailbox"][0]["state"] == "reserved"
 
 
+def test_direct_steer_retry_is_idempotent_after_run_ends(manager):
+    record = manager.store.load("root")
+    record.metadata["mailbox"] = [{
+        "id": "client-message-1", "sender_id": None, "content": "已送达的引导",
+        "created_at": "now", "reply_to": [], "state": "delivered", "delivery": "steer",
+        "message_kind": "message", "run_id": "finished-run",
+    }]
+    manager.store.save(record)
+    manager._runs["finished-run"] = {"request_id": "finished-run", "session_id": "root", "status": "success"}
+
+    receipt = manager.submit_chat(
+        mode="steer", session_id="root", message="已送达的引导",
+        expected_request_id="finished-run", client_message_id="client-message-1",
+    )
+
+    assert receipt == {"request_id": "finished-run", "message_id": "client-message-1"}
+    assert len(manager.store.load("root").metadata["mailbox"]) == 1
+    with pytest.raises(RuntimeError, match="different content"):
+        manager.submit_chat(
+            mode="steer", session_id="root", message="另一个内容",
+            expected_request_id="finished-run", client_message_id="client-message-1",
+        )
+    with pytest.raises(RuntimeError, match="当前任务已结束"):
+        manager.submit_chat(
+            mode="steer", session_id="root", message="新消息",
+            expected_request_id="finished-run", client_message_id="client-message-2",
+        )
+    assert len(manager.store.load("root").metadata["mailbox"]) == 1
+
+
 def test_ten_active_children_no_history_inheritance_and_list_pagination(manager):
     children = [create(manager) for _ in range(10)]
     with pytest.raises(ValueError, match="10"):

@@ -8,7 +8,12 @@ from fastapi import HTTPException
 from agent.server.routes.projects import _default_picker_dir, _host_user_profile, _temporary_host_profile_env
 from agent.core.session_store import SessionRecord
 from agent.server.models import RetrospectiveRequest
-from agent.server.routes.sessions import _display_history_for_record, _read_event_file, create_retrospective
+from agent.server.routes.sessions import (
+    _display_history_for_record,
+    _read_event_file,
+    create_retrospective,
+    get_session,
+)
 
 
 def test_read_event_file_accepts_pretty_jsonl(tmp_path):
@@ -84,6 +89,96 @@ def test_display_history_uses_event_entries_when_user_count_matches_but_messages
     monkeypatch.setattr("agent.server.routes.sessions.agent_manager", SimpleNamespace(events_dir=events_dir))
 
     assert _display_history_for_record(record) == full_history
+
+
+def test_display_history_keeps_partial_answer_when_stream_is_interrupted(monkeypatch, tmp_path):
+    events_dir = tmp_path / "events"
+    events_dir.mkdir()
+    session_id = "sess_interrupted_stream"
+    events = [
+        {"seq": 1, "request_id": "run1", "entry": {"role": "user", "content": "继续"}},
+        {"seq": 2, "type": "llm_request_started", "event": {"request_id": "run1"}},
+        {"seq": 3, "type": "assistant_delta", "event": {"content": "已经生成"}},
+        {"seq": 4, "type": "assistant_delta", "event": {"content": "一半"}},
+        {"seq": 5, "type": "llm_request_interrupted", "event": {"request_id": "run1"}},
+    ]
+    (events_dir / f"{session_id}.jsonl").write_text(
+        "\n".join(json.dumps(event, ensure_ascii=False) for event in events), encoding="utf-8",
+    )
+    record = SessionRecord(session_id=session_id, history=[events[0]["entry"]])
+    monkeypatch.setattr("agent.server.routes.sessions.agent_manager", SimpleNamespace(events_dir=events_dir))
+
+    assert _display_history_for_record(record) == [
+        events[0]["entry"],
+          {"role": "assistant", "content": "已经生成一半", "_partial": True},
+    ]
+
+
+def test_partial_answer_merges_into_complete_history_when_event_entries_are_missing(monkeypatch, tmp_path):
+    events_dir = tmp_path / "events"
+    events_dir.mkdir()
+    session_id = "sess_incomplete_events"
+    events = [
+        {"seq": 1, "request_id": "run1", "entry": {"role": "user", "content": "first"}},
+        {"seq": 2, "request_id": "run2", "entry": {"role": "user", "content": "second"}},
+        {"seq": 3, "type": "llm_request_started", "event": {"request_id": "run2"}},
+        {"seq": 4, "type": "assistant_delta", "event": {"content": "partial answer"}},
+        {"seq": 5, "type": "llm_request_interrupted", "event": {"request_id": "run2"}},
+    ]
+    (events_dir / f"{session_id}.jsonl").write_text(
+        "\n".join(json.dumps(event, ensure_ascii=False) for event in events), encoding="utf-8",
+    )
+    full_history = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "missing old answer"},
+        {"role": "tool", "content": "missing tool result"},
+        {"role": "user", "content": "second"},
+    ]
+    record = SessionRecord(session_id=session_id, history=full_history)
+    monkeypatch.setattr("agent.server.routes.sessions.agent_manager", SimpleNamespace(events_dir=events_dir))
+
+    assert _display_history_for_record(record) == [
+        *full_history,
+        {"role": "assistant", "content": "partial answer", "_partial": True},
+    ]
+
+
+def test_session_detail_restores_unprocessed_user_steer_once(monkeypatch, tmp_path):
+    events_dir = tmp_path / "events"
+    events_dir.mkdir()
+    events = [
+        {"seq": 1, "request_id": "run1", "entry": {"role": "user", "content": "已有消息", "_message_id": "old"}},
+        {"seq": 2, "type": "llm_request_started", "event": {"request_id": "run1"}},
+        {"seq": 3, "type": "assistant_delta", "event": {"content": "中断前的回答"}},
+        {"seq": 4, "type": "llm_request_interrupted", "event": {"request_id": "run1"}},
+    ]
+    (events_dir / "sess_mailbox.jsonl").write_text(
+        "\n".join(json.dumps(event, ensure_ascii=False) for event in events), encoding="utf-8",
+    )
+    record = SessionRecord(
+        session_id="sess_mailbox",
+        workspace=str(tmp_path),
+        history=[{"role": "user", "content": "已有消息", "_message_id": "old"}],
+        metadata={"project_id": "project", "title": "会话", "mailbox": [
+            {"id": "old", "sender_id": None, "content": "已有消息", "delivery": "steer", "state": "delivered"},
+            {"id": "pending", "sender_id": None, "content": "等待输入", "delivery": "steer", "state": "pending"},
+            {"id": "child", "sender_id": "agent_1", "content": "子 Agent 消息", "delivery": "steer", "state": "pending"},
+            {"id": "done", "sender_id": None, "content": "已处理", "delivery": "steer", "state": "delivered"},
+        ]},
+    )
+    monkeypatch.setattr(
+        "agent.server.routes.sessions.agent_manager",
+        SimpleNamespace(events_dir=events_dir, get_session=lambda session_id: record),
+    )
+
+    detail = get_session(record.session_id)
+
+    assert [(message.message_id, message.content, message.delivery_status) for message in detail.messages] == [
+        ("old", "已有消息", "received"),
+        (None, "中断前的回答", None),
+        ("pending", "等待输入", "waiting"),
+    ]
+    assert detail.messages[1].partial
 
 
 def test_folder_picker_default_dir_exists():

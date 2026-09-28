@@ -28,6 +28,10 @@ export interface Message {
   content?: unknown
   tool_calls?: Array<Record<string, unknown>> | null
   tool_call_id?: string | null
+  message_id?: string | null
+  local_id?: string
+  delivery_status?: 'sending' | 'waiting' | 'confirming' | 'received' | 'failed'
+  partial?: boolean
   source_agent_id?: string | null
   _sender_id?: string | null
 }
@@ -56,6 +60,7 @@ export interface SessionDetail extends Session {
 export interface ChatStart {
   request_id: string
   session_id: string
+  message_id?: string | null
 }
 
 export interface RetrospectiveStart {

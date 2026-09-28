@@ -5,6 +5,7 @@
   EyeOff,
   GripVertical,
   KeyRound,
+  LoaderCircle,
   MessageSquarePlus,
   PanelRightOpen,
   Pencil,
@@ -30,7 +31,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { api } from './api/client'
+import { ApiRequestError, api } from './api/client'
 import {
   ALIGNMENT_PROMPT_PREFIX,
   draftAfterSend,
@@ -51,6 +52,7 @@ import {
   buildToolPresentation,
   displayedAssistantText,
   formatRunFailureMessage,
+  mergeVisibleChatMessages,
   mergeActiveRunEvents,
   mergeProcessPresentation,
   toolCallName,
@@ -59,6 +61,12 @@ import {
   type ToolPresentation,
   type ToolResultPresentation,
 } from './chatPresentation'
+import {
+  clearSteeringDraftAttempt,
+  loadSteeringDraftAttempt,
+  saveSteeringDraftAttempt,
+  steeringDraftAttemptKey,
+} from './steeringAttempts'
 import FileDrawer from './components/FileDrawer'
 import KnowledgeBaseComposerActions from './components/KnowledgeBaseComposerActions'
 import KnowledgeBaseProjectAction from './components/KnowledgeBaseProjectAction'
@@ -132,7 +140,7 @@ type CenterView = 'chat' | 'settings' | 'users' | 'capabilities' | 'api'
 interface ChatTurn {
   key: string
   user?: Message
-  assistant?: Message
+  assistants: Message[]
   steps: Message[]
 }
 
@@ -194,13 +202,13 @@ function buildChatTurns(messages: Message[]): ChatTurn[] {
 
   messages.forEach((message, index) => {
     if (message.role === 'user') {
-      current = { key: `turn-${index}`, user: message, steps: [] }
+      current = { key: `turn-${index}`, user: message, assistants: [], steps: [] }
       turns.push(current)
       return
     }
 
     if (!current) {
-      current = { key: `turn-${index}`, steps: [] }
+      current = { key: `turn-${index}`, assistants: [], steps: [] }
       turns.push(current)
     }
 
@@ -211,7 +219,7 @@ function buildChatTurns(messages: Message[]): ChatTurn[] {
 
     if (message.role === 'assistant') {
       if (messageText(message).trim()) {
-        current.assistant = message
+        current.assistants.push(message)
       } else {
         current.steps.push(message)
       }
@@ -433,7 +441,6 @@ function shortPath(path: string) {
 function ToolCallCard({ toolCall }: { toolCall: ToolPresentation }) {
   return (
     <div className="tool-call-presentation">
-      {toolCall.assistantText && <div className="tool-call-note">{toolCall.assistantText}</div>}
       <details className="tool-call-card">
         <summary className="tool-call-name">{toolCall.name}</summary>
         <div className="tool-call-details">
@@ -567,11 +574,14 @@ export default function App() {
   const [projectMenuOpen, setProjectMenuOpen] = useState(false)
   const [initializingKnowledgeBaseProjectId, setInitializingKnowledgeBaseProjectId] = useState<string | null>(null)
   const [pendingMessagesBySession, setPendingMessagesBySession] = useState<Record<string, Message[]>>({})
+  const steeringDraftMessageIdsRef = useRef(new Map<string, string>())
   const [messageQueuesBySession, setMessageQueuesBySession] = useState<Record<string, SessionMessageQueue>>({})
   const [liveEventsBySession, setLiveEventsBySession] = useState<Record<string, SessionEvent[]>>({})
   const [subagentsBySession, setSubagentsBySession] = useState<Record<string, SubagentInfo[]>>({})
   const [steeringMessage, setSteeringMessage] = useState(false)
   const steeringMessageRef = useRef(false)
+  const [steeringQueuedMessageId, setSteeringQueuedMessageId] = useState<string | null>(null)
+  const steeringQueuedMessageIdRef = useRef<string | null>(null)
   const [runningSessions, setRunningSessions] = useState<Record<string, RunningSession>>({})
   const [failedRunsBySession, setFailedRunsBySession] = useState<Record<string, FailedRunSnapshot>>({})
   const [apiKeyVisible, setApiKeyVisible] = useState(false)
@@ -597,9 +607,12 @@ export default function App() {
   const [queueDropTarget, setQueueDropTarget] = useState<QueueDropTarget | null>(null)
   const [fileDrawerRefreshKey, setFileDrawerRefreshKey] = useState(0)
   const [sidebarWidth, setSidebarWidth] = useState(306)
+  const [activeTurnIndex, setActiveTurnIndex] = useState(0)
+  const [hoveredTurnPreview, setHoveredTurnPreview] = useState<{ index: number; top: number } | null>(null)
   const [drawerWidth, setDrawerWidth] = useState(760)
   const [draggingPane, setDraggingPane] = useState<'sidebar' | 'drawer' | null>(null)
   const messageStreamRef = useRef<HTMLDivElement | null>(null)
+  const chatTurnNavigationRef = useRef<HTMLElement | null>(null)
   const scrollPositionsRef = useRef<Record<string, number>>({})
   const pendingScrollRestoreRef = useRef<{ sessionId: string; scrollTop: number } | null>(null)
   const previousSelectedSessionIdRef = useRef<string | null>(null)
@@ -674,15 +687,44 @@ export default function App() {
     () => assistantDeltaText(currentRunEvents),
     [currentRunEvents],
   )
-  const displayMessages = useMemo(
-    () => [...(sessionDetail?.messages || []), ...currentPendingMessages],
-    [sessionDetail?.messages, currentPendingMessages],
-  )
-  const chatTurns = useMemo(() => buildChatTurns(displayMessages), [displayMessages])
   const visibleLiveEvents = useMemo(
     () => currentRunEvents.filter(isVisibleLiveEvent),
     [currentRunEvents],
   )
+  const displayMessages = useMemo(
+    () => mergeVisibleChatMessages(sessionDetail?.messages || [], currentPendingMessages, currentRunEvents),
+    [sessionDetail?.messages, currentPendingMessages, currentRunEvents],
+  )
+  const chatTurns = useMemo(() => buildChatTurns(displayMessages), [displayMessages])
+  const previewedTurn = hoveredTurnPreview ? chatTurns[hoveredTurnPreview.index] : null
+  const previewedAssistantText = hoveredTurnPreview
+    ? hoveredTurnPreview.index === chatTurns.length - 1 && currentStreamText
+      ? currentStreamText
+      : [
+        ...(previewedTurn?.assistants || []).map(messageText),
+        ...(previewedTurn?.steps || []).filter(hasToolCalls).map(messageText),
+      ].filter((text) => text.trim()).join('\n\n')
+    : ''
+  const updateTurnPreview = (index: number, marker: HTMLButtonElement) => {
+    const shell = chatTurnNavigationRef.current?.parentElement
+    if (!shell) return
+    const markerRect = marker.getBoundingClientRect()
+    const shellRect = shell.getBoundingClientRect()
+    const center = markerRect.top - shellRect.top + markerRect.height / 2
+    setHoveredTurnPreview({ index, top: Math.max(56, Math.min(center, shellRect.height - 56)) })
+  }
+  useEffect(() => {
+    const navigation = chatTurnNavigationRef.current
+    const marker = navigation?.querySelector<HTMLElement>(`[data-turn-index="${activeTurnIndex}"]`)
+    if (!navigation || !marker) return
+    const navigationRect = navigation.getBoundingClientRect()
+    const markerRect = marker.getBoundingClientRect()
+    if (markerRect.top < navigationRect.top) {
+      navigation.scrollTop -= navigationRect.top - markerRect.top
+    } else if (markerRect.bottom > navigationRect.bottom) {
+      navigation.scrollTop += markerRect.bottom - navigationRect.bottom
+    }
+  }, [activeTurnIndex, chatTurns.length])
   const detachedLiveProcessPresentation = useMemo(
     () => buildToolPresentation(
       mergeProcessPresentation([], visibleLiveEvents),
@@ -773,6 +815,16 @@ export default function App() {
   const handleMessageStreamScroll = () => {
     const sessionId = selectedSessionIdRef.current
     if (!sessionId) return
+    const stream = messageStreamRef.current
+    if (stream) {
+      const streamTop = stream.getBoundingClientRect().top
+      const turns = [...stream.querySelectorAll<HTMLElement>('.chat-turn')]
+      let nearestIndex = 0
+      turns.forEach((turn, index) => {
+        if (turn.getBoundingClientRect().top <= streamTop + 96) nearestIndex = index
+      })
+      setActiveTurnIndex(nearestIndex)
+    }
     captureSessionScroll(sessionId)
     if (scrollPersistTimerRef.current != null) window.clearTimeout(scrollPersistTimerRef.current)
     scrollPersistTimerRef.current = window.setTimeout(() => {
@@ -787,7 +839,7 @@ export default function App() {
     options: {
       preserveScroll?: boolean
       restoreStoredScroll?: boolean
-      removePendingContent?: string
+      removePendingLocalId?: string
       finishLiveRun?: boolean
     } = {},
   ) => {
@@ -824,17 +876,11 @@ export default function App() {
     }
     if (scrollTop != null) pendingScrollRestoreRef.current = { sessionId, scrollTop }
     setSessionDetail(nextDetail)
-    if (options.removePendingContent !== undefined) {
+    if (options.removePendingLocalId !== undefined) {
       setPendingMessagesBySession((current) => {
         const messages = current[sessionId] || []
-        let removed = false
-        const nextMessages = messages.filter((message) => {
-          if (!removed && message.role === 'user' && messageText(message) === options.removePendingContent) {
-            removed = true
-            return false
-          }
-          return true
-        })
+        const nextMessages = messages.filter((message) => message.local_id !== options.removePendingLocalId)
+        if (nextMessages.length === messages.length) return current
         if (nextMessages.length === messages.length) return current
         const next = { ...current }
         if (nextMessages.length) next[sessionId] = nextMessages
@@ -1447,42 +1493,110 @@ export default function App() {
     }
   }, [])
 
-  const appendPendingUserMessage = (sessionId: string, content: string) => {
+  const appendPendingUserMessage = (sessionId: string, content: string, metadata: Partial<Message> = {}) => {
     setPendingMessagesBySession((current) => ({
       ...current,
-      [sessionId]: [...(current[sessionId] || []), { role: 'user', content }],
+      [sessionId]: (() => {
+        const messages = current[sessionId] || []
+        const existingIndex = metadata.local_id
+          ? messages.findIndex((message) => message.local_id === metadata.local_id)
+          : -1
+        const pending = { ...(existingIndex >= 0 ? messages[existingIndex] : {}), role: 'user', content, ...metadata }
+        if (existingIndex < 0) return [...messages, pending]
+        const nextMessages = [...messages]
+        nextMessages[existingIndex] = pending
+        return nextMessages
+      })(),
     }))
   }
 
   const ensurePendingUserMessage = (sessionId: string, content: string) => {
+    const localId = window.crypto.randomUUID()
     setPendingMessagesBySession((current) => {
       const messages = current[sessionId] || []
-      if (messages.some((message) => message.role === 'user' && messageText(message) === content)) {
-        return current
+      let pendingIndex = -1
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index]
+        if (message.role === 'user' && messageText(message) === content && !message.delivery_status) {
+          pendingIndex = index
+          break
+        }
       }
+      const nextMessages = [...messages]
+      if (pendingIndex >= 0) nextMessages[pendingIndex] = { ...nextMessages[pendingIndex], local_id: localId }
+      else nextMessages.push({ role: 'user', content, local_id: localId })
       return {
         ...current,
-        [sessionId]: [...messages, { role: 'user', content }],
+        [sessionId]: nextMessages,
       }
     })
+    return localId
   }
 
-  const removePendingUserMessage = (sessionId: string, content: string) => {
+  const removePendingUserMessage = (sessionId: string, localId: string) => {
     setPendingMessagesBySession((current) => {
       const messages = current[sessionId] || []
-      let removed = false
-      const nextMessages = messages.filter((message) => {
-        if (!removed && message.role === 'user' && messageText(message) === content) {
-          removed = true
-          return false
-        }
-        return true
-      })
+      const nextMessages = messages.filter((message) => message.local_id !== localId)
+      if (nextMessages.length === messages.length) return current
       const next = { ...current }
       if (nextMessages.length) next[sessionId] = nextMessages
       else delete next[sessionId]
       return next
     })
+  }
+
+  const updateSteeringMessage = (
+    sessionId: string,
+    localId: string,
+    update: Partial<Message> | null,
+  ) => {
+    setPendingMessagesBySession((current) => {
+      const messages = current[sessionId] || []
+      const nextMessages = update
+        ? messages.map((message) => message.local_id === localId ? { ...message, ...update } : message)
+        : messages.filter((message) => message.local_id !== localId)
+      const next = { ...current }
+      if (nextMessages.length) next[sessionId] = nextMessages
+      else delete next[sessionId]
+      return next
+    })
+  }
+
+  const steerContent = async (sessionId: string, content: string, requestId: string, localId: string) => {
+    appendPendingUserMessage(sessionId, content, {
+      local_id: localId,
+      message_id: localId,
+      delivery_status: 'sending',
+    })
+    try {
+      const receipt = await api.steerMessage(sessionId, content, requestId, localId)
+      updateSteeringMessage(sessionId, localId, {
+        message_id: receipt.message_id,
+        delivery_status: 'waiting',
+      })
+      return true
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.status >= 400 && err.status < 500) {
+        updateSteeringMessage(sessionId, localId, null)
+      } else {
+        updateSteeringMessage(sessionId, localId, { delivery_status: 'confirming' })
+      }
+      throw err
+    }
+  }
+
+  const getSteeringDraftAttempt = (sessionId: string, content: string) => {
+    const key = steeringDraftAttemptKey(sessionId, content)
+    let messageId = steeringDraftMessageIdsRef.current.get(key)
+      || loadSteeringDraftAttempt(localStorageOrNull(), sessionId, content)
+    messageId ||= window.crypto.randomUUID()
+    steeringDraftMessageIdsRef.current.set(key, messageId)
+    saveSteeringDraftAttempt(localStorageOrNull(), sessionId, content, messageId)
+    if (steeringDraftMessageIdsRef.current.size > 32) {
+      const oldestKey = steeringDraftMessageIdsRef.current.keys().next().value
+      if (oldestKey) steeringDraftMessageIdsRef.current.delete(oldestKey)
+    }
+    return { key, messageId }
   }
 
   const updateSessionMessageQueue = (
@@ -1509,6 +1623,7 @@ export default function App() {
 
   const popQueuedSessionMessage = (sessionId: string) => {
     const currentQueue = messageQueuesRef.current[sessionId] || emptySessionMessageQueue()
+    if (currentQueue.items[0]?.id === steeringQueuedMessageIdRef.current) return null
     const result = takeNextQueuedMessage(currentQueue)
     const next = { ...messageQueuesRef.current }
     if (result.queue.items.length) next[sessionId] = result.queue
@@ -1561,7 +1676,7 @@ export default function App() {
     onSubmitted?: () => void,
   ) => {
     clearFailedRun(sessionId)
-    ensurePendingUserMessage(sessionId, content)
+    const pendingLocalId = ensurePendingUserMessage(sessionId, content)
     let startedAfterSeq = latestEventSeq(liveEventsBySession[sessionId] || [])
     let requestId = ''
     let submissionNotified = false
@@ -1590,9 +1705,9 @@ export default function App() {
       requestId = run.request_id
       notifySubmitted()
       if (selectedSessionIdRef.current === sessionId) {
-        await loadSessionDetail(sessionId, { preserveScroll: true, removePendingContent: content })
+        await loadSessionDetail(sessionId, { preserveScroll: true, removePendingLocalId: pendingLocalId })
       }
-      removePendingUserMessage(sessionId, content)
+      removePendingUserMessage(sessionId, pendingLocalId)
       const runStatus = runningSessionsRef.current[sessionId]?.status === 'stopping' ? 'stopping' : 'running'
       const activeRuns = {
         ...runningSessionsRef.current,
@@ -1630,13 +1745,13 @@ export default function App() {
       if (selectedSessionIdRef.current === sessionId) {
         await loadSessionDetail(sessionId, {
           preserveScroll: true,
-          removePendingContent: content,
+          removePendingLocalId: pendingLocalId,
           finishLiveRun: true,
         })
       }
       await loadSessions(projectIdForList)
       await refreshLiveEvents(sessionId)
-      removePendingUserMessage(sessionId, content)
+      removePendingUserMessage(sessionId, pendingLocalId)
       setNotice(null)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -1646,7 +1761,7 @@ export default function App() {
           await loadSessionDetail(sessionId, { preserveScroll: true })
         }
         await loadSessions(projectIdForList)
-        removePendingUserMessage(sessionId, content)
+        removePendingUserMessage(sessionId, pendingLocalId)
         setFailedRunsBySession((current) => ({
           ...current,
           [sessionId]: { requestId, startedAfterSeq, error: message },
@@ -1942,11 +2057,15 @@ export default function App() {
     const content = submittedDraft.trim()
     const submittedDraftKey = draftKeyRef.current
     const nextDraft = draftAfterSend(alignmentEnabledRef.current)
-    if (!sessionId || !content || steeringMessageRef.current) return
+    const activeRun = sessionId ? runningSessionsRef.current[sessionId] : null
+    if (!sessionId || !content || !activeRun || activeRun.operation === 'compact' || steeringMessageRef.current) return
     steeringMessageRef.current = true
     setSteeringMessage(true)
+    const attempt = getSteeringDraftAttempt(sessionId, content)
     try {
-      await api.steerMessage(sessionId, content)
+      await steerContent(sessionId, content, activeRun.requestId, attempt.messageId)
+      steeringDraftMessageIdsRef.current.delete(attempt.key)
+      clearSteeringDraftAttempt(localStorageOrNull(), sessionId, content, attempt.messageId)
       if (draftKeyRef.current === submittedDraftKey && draftRef.current === submittedDraft) {
         updateDraft(nextDraft)
       } else if (submittedDraftKey && draftKeyRef.current !== submittedDraftKey
@@ -1955,10 +2074,56 @@ export default function App() {
       }
       setNotice('已发送直接引导，正在执行的任务会在下一次接收消息时处理。')
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : String(err))
+      if (err instanceof ApiRequestError && err.status >= 400 && err.status < 500) {
+        steeringDraftMessageIdsRef.current.delete(attempt.key)
+        clearSteeringDraftAttempt(localStorageOrNull(), sessionId, content, attempt.messageId)
+        setNotice(`直接引导未被接收，消息仍在输入框中：${err.message}`)
+      } else {
+        setNotice(`直接引导结果暂无法确认，消息仍保留在对话和输入框中；重试会沿用同一条消息：${err instanceof Error ? err.message : String(err)}`)
+      }
     } finally {
       steeringMessageRef.current = false
       setSteeringMessage(false)
+    }
+  }
+
+  const steerQueuedMessage = async (message: QueuedMessage) => {
+    const sessionId = selectedSessionId
+    const activeRun = sessionId ? runningSessionsRef.current[sessionId] : null
+    const queue = sessionId ? messageQueuesRef.current[sessionId] : null
+    if (!sessionId || !activeRun || activeRun.operation === 'compact' || !queue?.items.some((item) => item.id === message.id)) {
+      return
+    }
+    if (steeringMessageRef.current) return
+    steeringMessageRef.current = true
+    setSteeringMessage(true)
+    setSteeringQueuedMessageId(message.id)
+    steeringQueuedMessageIdRef.current = message.id
+    try {
+      await steerContent(sessionId, message.content, activeRun.requestId, message.id)
+      updateSessionMessageQueue(sessionId, (current) => withdrawQueuedMessage(current, message.id))
+      setNotice('已将这条排队消息作为直接引导发送。')
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : String(err)
+      setNotice(`直接引导未发送，消息仍保留在队列中：${messageText}`)
+      if (/当前任务已结束/.test(messageText)) {
+        try {
+          await resumeActiveRun(sessionId)
+        } catch {
+          // Keep the queued message available if refreshing the run state also fails.
+        }
+      }
+    } finally {
+      steeringQueuedMessageIdRef.current = null
+      steeringMessageRef.current = false
+      setSteeringMessage(false)
+      setSteeringQueuedMessageId(null)
+      if (!runningSessionsRef.current[sessionId]) {
+        const queuedMessage = popQueuedSessionMessage(sessionId)
+        if (queuedMessage) {
+          window.setTimeout(() => void runSessionMessage(sessionId, queuedMessage.content, selectedProjectId), 0)
+        }
+      }
     }
   }
 
@@ -2323,6 +2488,51 @@ export default function App() {
 
         {view === 'chat' && (
           <section className={`chat-view ${drawerOpen ? 'chat-view--compressed' : ''}`}>
+            {chatTurns.length > 0 && (
+              <div className="chat-turn-navigation-shell">
+                <nav ref={chatTurnNavigationRef} className="chat-turn-navigation" aria-label="对话导航">
+                  {chatTurns.map((turn, index) => {
+                    const userPreview = turn.user ? messageText(turn.user) : '对话'
+                    return (
+                      <button
+                        key={turn.key}
+                        type="button"
+                        className="chat-turn-marker"
+                        data-turn-index={index}
+                        aria-label={`跳转到第 ${index + 1} 轮对话：${firstLine(userPreview, '对话')}`}
+                        aria-current={activeTurnIndex === index ? 'true' : undefined}
+                        aria-describedby={hoveredTurnPreview?.index === index ? `chat-turn-preview-${index}` : undefined}
+                        onMouseEnter={(event) => updateTurnPreview(index, event.currentTarget)}
+                        onMouseLeave={(event) => {
+                          if ((event.relatedTarget as HTMLElement | null)?.closest('.chat-turn-preview')) return
+                          setHoveredTurnPreview((current) => current?.index === index ? null : current)
+                        }}
+                        onFocus={(event) => updateTurnPreview(index, event.currentTarget)}
+                        onBlur={() => setHoveredTurnPreview((current) => current?.index === index ? null : current)}
+                        onClick={() => {
+                          setActiveTurnIndex(index)
+                          document.getElementById(`chat-turn-${index}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                        }}
+                      >
+                        <span className="chat-turn-marker-line" />
+                      </button>
+                    )
+                  })}
+                </nav>
+                {hoveredTurnPreview && previewedTurn && (
+                  <div
+                    id={`chat-turn-preview-${hoveredTurnPreview.index}`}
+                    className="chat-turn-preview"
+                    role="tooltip"
+                    style={{ top: hoveredTurnPreview.top }}
+                    onMouseLeave={() => setHoveredTurnPreview(null)}
+                  >
+                    <strong>{firstLine(previewedTurn.user ? messageText(previewedTurn.user) : '', '对话')}</strong>
+                    <span>{firstLine(previewedAssistantText, currentLiveWindow ? '正在处理' : '尚无回答')}</span>
+                  </div>
+                )}
+              </div>
+            )}
             <div
               className={`message-stream ${showEmptyState ? 'empty-state-active' : ''}`}
               ref={messageStreamRef}
@@ -2348,26 +2558,46 @@ export default function App() {
                 const hasProcessContent = processPresentation.toolCalls.length > 0
                   || processPresentation.unpairedResults.length > 0
                   || processPresentation.otherItems.length > 0
-                const keepProcessTextVisible = processPresentation.toolCalls.some(
-                  (toolCall) => Boolean(toolCall.assistantText),
-                )
+                const historicalAssistantText = [
+                  ...turn.assistants.map(messageText),
+                  ...processPresentation.toolCalls.map((toolCall) => toolCall.assistantText),
+                ].filter((text) => text.trim()).join('\n\n')
                 const assistantText = hasAttachedLiveRun
-                  ? displayedAssistantText(currentStreamText, turn.assistant ? messageText(turn.assistant) : '')
-                  : turn.assistant ? messageText(turn.assistant) : ''
+                  ? displayedAssistantText(currentStreamText, historicalAssistantText)
+                  : historicalAssistantText
 
                 return (
-                  <article key={turn.key} className="chat-turn">
+                  <article key={turn.key} id={`chat-turn-${turnIndex}`} className="chat-turn">
                     {turn.user && (
                       <div className="message user">
                         <div className="message-role">{turn.user.source_agent_id || turn.user._sender_id ? 'AGENT' : 'USER'}</div>
                         <pre>{messageText(turn.user)}</pre>
+                        {turn.user.delivery_status && (
+                          <div className={`message-delivery-status ${turn.user.delivery_status}`}>
+                            {turn.user.delivery_status === 'sending' ? '发送中'
+                              : turn.user.delivery_status === 'confirming' ? '发送结果待确认'
+                              : turn.user.delivery_status === 'received' ? '已接收'
+                                : turn.user.delivery_status === 'failed' ? '发送失败' : '等待处理'}
+                          </div>
+                        )}
                       </div>
                     )}
                     <div className="assistant-stack">
+                      {assistantText && (
+                        <div className={`message assistant ${hasAttachedLiveRun && currentStreamText ? 'streaming' : ''}`}>
+                          <div className="message-role">ASSISTANT</div>
+                          {turn.assistants.some((message) => message.partial) && (
+                            <div className="partial-answer-note">包含中断前已生成的内容</div>
+                          )}
+                          <div
+                            className="message-body"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(assistantText) }}
+                          />
+                        </div>
+                      )}
                       {hasProcessContent && (
                         <details
                           className={`process-group ${hasAttachedLiveRun ? 'live' : ''} ${hasAttachedLiveRun && isShowingFailedRun ? 'failed' : ''}`}
-                          open={keepProcessTextVisible ? true : undefined}
                         >
                           <summary>
                             {hasAttachedLiveRun ? (
@@ -2386,15 +2616,6 @@ export default function App() {
                           <span>{summarizeLiveStatus(currentRunEvents)}</span>
                         </div>
                       )}
-                      {assistantText && (
-                        <div className={`message assistant ${hasAttachedLiveRun && currentStreamText ? 'streaming' : ''}`}>
-                          <div className="message-role">ASSISTANT</div>
-                          <div
-                            className="message-body"
-                            dangerouslySetInnerHTML={{ __html: renderMarkdown(assistantText) }}
-                          />
-                        </div>
-                      )}
                       {hasAttachedLiveRun && isShowingFailedRun && currentFailedRun && (
                         <div className={`message assistant ${isShowingRecoverableRun ? 'run-recoverable' : 'run-error'}`}>
                           <div className="message-role">SYSTEM</div>
@@ -2407,12 +2628,15 @@ export default function App() {
               })}
               {currentLiveWindow && !liveRunAttachedToChat && (
                 <div className="assistant-stack live-stack">
-                  {currentStreamText && (
+                  {(currentStreamText || detachedLiveProcessPresentation.toolCalls.some((call) => call.assistantText)) && (
                     <div className="message assistant streaming">
                       <div className="message-role">ASSISTANT</div>
                       <div
                         className="message-body"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(currentStreamText) }}
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(
+                          currentStreamText
+                            || detachedLiveProcessPresentation.toolCalls.map((call) => call.assistantText).filter(Boolean).join('\n\n'),
+                        ) }}
                       />
                     </div>
                   )}
@@ -2600,6 +2824,7 @@ export default function App() {
                         const dropClass = queueDropTarget?.id === message.id
                           ? ` drop-${queueDropTarget.placement}`
                           : ''
+                        const isSteeringThisMessage = steeringQueuedMessageId === message.id
                         return (
                           <div
                             key={message.id}
@@ -2612,7 +2837,8 @@ export default function App() {
                               className="queued-message-drag"
                               title="拖动调整顺序"
                               aria-label={`拖动第 ${index + 1} 条排队消息`}
-                              draggable
+                              draggable={!isSteeringThisMessage}
+                              disabled={isSteeringThisMessage}
                               onDragStart={(event) => handleQueuedMessageDragStart(event, message.id)}
                               onDragEnd={handleQueuedMessageDragEnd}
                             >
@@ -2622,9 +2848,24 @@ export default function App() {
                             <span className="queued-message-content" title={message.content}>{message.content}</span>
                             <button
                               type="button"
+                              className="queued-message-steer"
+                              disabled={
+                                steeringMessage
+                                || selectedRun?.operation !== 'chat'
+                                || !selectedRun.requestId
+                                || selectedRun.status !== 'running'
+                              }
+                              onClick={() => void steerQueuedMessage(message)}
+                              aria-label={`将第 ${index + 1} 条排队消息直接引导给正在运行的任务`}
+                            >
+                              {steeringQueuedMessageId === message.id ? <LoaderCircle size={13} className="spinning" /> : '直接引导'}
+                            </button>
+                            <button
+                              type="button"
                               className="queued-message-withdraw"
                               title="撤回排队消息"
                               aria-label={`撤回第 ${index + 1} 条排队消息`}
+                              disabled={isSteeringThisMessage}
                               onClick={() => setQueuedMessageToWithdraw({ sessionId: selectedSessionId!, message })}
                             >
                               <Trash2 size={15} />
@@ -2677,7 +2918,12 @@ export default function App() {
                   <span className="composer-status">{composerUploading ? '上传中...' : selectedRun?.operation === 'compact' ? '正在压缩上下文' : ''}</span>
                   <div className="composer-run-actions">
                     {selectedRun && selectedRun.operation !== 'compact' && (
-                      <button type="button" className="steer-button" disabled={!draft.trim() || steeringMessage} onClick={() => void steerMessage()}>
+                      <button
+                        type="button"
+                        className="steer-button"
+                        disabled={!draft.trim() || steeringMessage || !selectedRun?.requestId || selectedRun.status !== 'running'}
+                        onClick={() => void steerMessage()}
+                      >
                         直接引导
                       </button>
                     )}

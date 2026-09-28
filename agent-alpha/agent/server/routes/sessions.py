@@ -46,13 +46,42 @@ def _read_event_file(path: Path) -> list[dict[str, Any]]:
 
 def _message_history_from_events(path: Path) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
+    partial_response: list[str] = []
+    user_count = 0
+    request_user_order: int | None = None
+    request_user_content: Any = None
     for event in _read_event_file(path):
+        payload = event.get("event")
+        payload = payload if isinstance(payload, dict) else {}
+        event_type = str(event.get("type") or payload.get("type") or "")
+        if event_type == "llm_request_started":
+            partial_response.clear()
+            request_user_order = user_count - 1 if user_count else None
+            request_user_content = next(
+                (message.get("content") for message in reversed(messages) if message.get("role") == "user"),
+                None,
+            )
+        elif event_type == "assistant_delta":
+            partial_response.append(str(payload.get("content") or ""))
+        elif event_type == "llm_request_succeeded":
+            partial_response.clear()
+        elif event_type == "llm_request_interrupted":
+            content = "".join(partial_response)
+            if content:
+                messages.append({
+                    "role": "assistant", "content": content, "_partial": True,
+                    "_partial_user_order": request_user_order,
+                    "_partial_user_content": request_user_content,
+                })
+            partial_response.clear()
         entry = event.get("entry")
         if not isinstance(entry, dict):
             continue
         if entry.get("role") not in {"user", "assistant", "tool"}:
             continue
         messages.append(dict(entry))
+        if entry.get("role") == "user":
+            user_count += 1
     return messages
 
 
@@ -66,10 +95,43 @@ def _display_history_for_record(record: SessionRecord) -> list[dict[str, Any]]:
     event_history = _message_history_from_events(event_path)
     event_user_count = _count_user_messages(event_history)
     history_user_count = _count_user_messages(history)
+    public_event_history = [
+        {key: value for key, value in message.items()
+         if key not in {"_partial_user_order", "_partial_user_content"}}
+        for message in event_history
+    ]
     if event_user_count > history_user_count:
-        return event_history
-    if event_history and event_user_count >= history_user_count and len(event_history) > len(history):
-        return event_history
+        return public_event_history
+    partial_messages = [message for message in event_history if message.get("_partial")]
+    complete_event_messages = [message for message in event_history if not message.get("_partial")]
+    if (event_history and event_user_count >= history_user_count
+            and len(complete_event_messages) > len(history)):
+        return public_event_history
+    if partial_messages:
+        user_indices = [index for index, message in enumerate(history) if message.get("role") == "user"]
+        for partial in partial_messages:
+            user_order = partial.get("_partial_user_order")
+            target_user_index = user_indices[user_order] if (
+                isinstance(user_order, int) and 0 <= user_order < len(user_indices)
+            ) else None
+            if target_user_index is None and partial.get("_partial_user_content") is not None:
+                matches = [index for index in user_indices
+                           if history[index].get("content") == partial["_partial_user_content"]]
+                target_user_index = matches[-1] if matches else None
+            if target_user_index is None:
+                target_user_index = user_indices[-1] if user_indices else len(history) - 1
+            next_user_index = next(
+                (index for index in user_indices if index > target_user_index), len(history),
+            )
+            if any(message.get("role") == "assistant"
+                   and message.get("content") == partial.get("content")
+                   for message in history[target_user_index + 1:next_user_index]):
+                continue
+            history.insert(next_user_index, {
+                key: value for key, value in partial.items()
+                if key not in {"_partial_user_order", "_partial_user_content"}
+            })
+        return history
     return history
 
 
@@ -210,6 +272,25 @@ def get_session(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
     info = to_session_info(record)
     messages = _display_history_for_record(record)
+    message_ids = {message.get("_message_id") for message in messages}
+    mailbox = record.metadata.get("mailbox", [])
+    direct_messages = {item.get("id"): item for item in mailbox
+                       if item.get("sender_id") is None and item.get("delivery") == "steer"}
+    for message in messages:
+        item = direct_messages.get(message.get("_message_id"))
+        if item and item.get("state") == "delivered":
+            message["delivery_status"] = "received"
+    for item in mailbox:
+        message_id = item.get("id")
+        if (item.get("sender_id") is None and item.get("delivery") == "steer"
+                and item.get("state") in {"pending", "reserved"} and message_id not in message_ids):
+            messages.append({
+                "role": "user",
+                "content": item.get("content", ""),
+                "_message_id": message_id,
+                "delivery_status": "waiting",
+            })
+            message_ids.add(message_id)
     info.message_count = len(messages)
     return SessionDetail(
         **info.model_dump(),

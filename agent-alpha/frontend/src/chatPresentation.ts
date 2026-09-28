@@ -1,5 +1,20 @@
 import type { Message, SessionEvent } from './types'
 
+export function mergeVisibleChatMessages(history: Message[], pending: Message[], events: SessionEvent[]) {
+  const historyIds = new Set(history.map((message) => message.message_id).filter(Boolean))
+  const receivedIds = new Set(
+    events
+      .map((event) => event.entry?._message_id)
+      .filter((id): id is string => typeof id === 'string' && Boolean(id)),
+  )
+  const visiblePending = pending
+    .filter((message) => !message.message_id || !historyIds.has(message.message_id))
+    .map((message) => message.message_id && receivedIds.has(message.message_id)
+      ? { ...message, delivery_status: 'received' as const }
+      : message)
+  return [...history, ...visiblePending]
+}
+
 export type ProcessPresentationItem =
   | { key: string; kind: 'message'; message: Message }
   | { key: string; kind: 'event'; event: SessionEvent }

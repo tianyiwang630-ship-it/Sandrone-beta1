@@ -52,12 +52,8 @@ class AgentManager:
             if time.monotonic() >= next_log_cleanup:
                 try:
                     memory = getattr(self, "memory", None)
-                    active = memory.current_task() if memory is not None else None
-                    if active and active["status"] in {"organizing", "reviewing"}:
-                        protected = {turn["session_id"] for turn in active["turns"]}
-                        cleanup_expired_logs(self.logs_dir, protected_sessions=protected)
-                    else:
-                        cleanup_expired_logs(self.logs_dir)
+                    protected = memory.protected_sessions() if memory is not None else set()
+                    cleanup_expired_logs(self.logs_dir, protected_sessions=protected)
                 except OSError:
                     pass  # A transient directory/filesystem failure is retried next sweep.
                 next_log_cleanup = time.monotonic() + self.LOG_CLEANUP_INTERVAL_SECONDS

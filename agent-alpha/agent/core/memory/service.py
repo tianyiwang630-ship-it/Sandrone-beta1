@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import shutil
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -24,9 +25,15 @@ except ImportError:  # pragma: no cover
 
 
 ACTIVE = {"organizing", "reviewing", "committing"}
+TERMINAL = {"completed", "partial", "no_change", "skipped", "cancelled"}
+
+
+class MemoryConflict(RuntimeError):
+    """An external edit needs attention, rather than an automatic overwrite."""
 
 
 class MemoryService:
+    STALL_SECONDS = 1800
     def __init__(self, data_root: Path):
         self.store = MemoryStore(data_root)
         self.root = self.store.root
@@ -36,6 +43,7 @@ class MemoryService:
         self._thread: threading.Thread | None = None
         self._lease_file = None
         self._closing = False
+        self._last_activity = time.monotonic()
         self.store.initialize()
 
     @contextmanager
@@ -96,7 +104,7 @@ class MemoryService:
 
     def allowed(self, *, manual: bool) -> list[str]:
         config = self.config()
-        return (["user", "memory"] if config["enabled"] and (manual or config["documents_auto_update"]) else []) + (
+        return (["user", "memory"] if manual or config["documents_auto_update"] else []) + (
             ["references"] if manual or config["skills_auto_update"] else [])
 
     def document(self, target: str) -> dict:
@@ -125,8 +133,8 @@ class MemoryService:
             if self._editing():
                 raise RuntimeError("Another memory edit is active")
             document = self.document(target)
-            current = self.store.latest_task()
-            if current and current["status"] in ACTIVE:
+            current = self.current_task()
+            if current and current["status"] in ACTIVE | {"failed"}:
                 current["status"] = "cancelled"
                 self.store.save_task(current)
                 if self._worker:
@@ -166,7 +174,11 @@ class MemoryService:
         return self.save_document(target, content, edit_id=edit_id, revision=revision)
 
     def current_task(self) -> dict | None:
-        return self.store.latest_task()
+        pending = self.store.pending_tasks()
+        return pending[0] if pending else self.store.latest_task()
+
+    def protected_sessions(self) -> set[str]:
+        return {turn["session_id"] for task in self.store.pending_tasks() for turn in task.get("turns", [])}
 
     def start_task(self, *, manual: bool, start: str | None = None, end: str | None = None,
                    targets: list[str] | None = None, llm_settings: dict | None = None) -> dict:
@@ -174,7 +186,7 @@ class MemoryService:
             if self._editing():
                 raise RuntimeError("Memory is being edited")
             current = self.current_task()
-            if current and current["status"] in ACTIVE:
+            if current and current["status"] in ACTIVE | {"failed"}:
                 raise RuntimeError("A memory update is already running")
             if self._thread and self._thread.is_alive():
                 raise RuntimeError("Previous memory update is still stopping")
@@ -208,6 +220,8 @@ class MemoryService:
                         "created_at": now(), "start": start, "end": range_end, "turns": selected,
                         "prompt": self.config()["manual_prompt" if manual else "auto_prompt"],
                         "allowed_at_start": allowed, "proposals": None, "operations": {}, "error": None,
+                        "results": {}, "document_revisions": {target: self.document(target)["revision"]
+                                                               for target in ("user", "memory")},
                         "organizer_history": [], "reviewer_history": []}
                 self.store.save_task(task)
                 self._thread = threading.Thread(target=self._run, args=(task["id"], llm_settings or {}), daemon=True)
@@ -220,7 +234,10 @@ class MemoryService:
 
     @staticmethod
     def _public_task(task: dict) -> dict:
-        return {key: task.get(key) for key in ("id", "manual", "status", "created_at", "start", "end", "error", "allowed_at_start")}
+        public = {key: task.get(key) for key in ("id", "manual", "status", "created_at", "start", "end", "error",
+                                                "allowed_at_start", "retry_after", "retryable", "proposal_count", "operation_count")}
+        public["results"] = list(task.get("results", {}).values())
+        return public
 
     def task(self, task_id: str) -> dict:
         return self._public_task(self.store.task(task_id))
@@ -230,7 +247,7 @@ class MemoryService:
             if self._editing() or not self.allowed(manual=False):
                 return None
             current = self.current_task()
-            if current and current["status"] == "failed" and not current["manual"]:
+            if current and current["status"] in ACTIVE | {"failed"}:
                 return None
             progress = self.store.progress()
             if len(progress.get("recent_completed_ids", [])) < 20:
@@ -272,18 +289,23 @@ class MemoryService:
             memory_role={"role": role, "task_id": task_id},
         )
         self._worker = runner
+        self._last_activity = time.monotonic()
         runner.history = task[f"{role}_history"]
         runner.checkpoint_handler = lambda history: self._checkpoint(task_id, role, history)
         runner.rpc_handler = lambda method, payload: self._memory_rpc(task_id, role, method, payload)
         if role == "organizer":
-            prompt = f"整理任务 {task_id}。本批有 {len(task['turns'])} 轮。先 memory_read(kind='turns') 获取清单并分段读取。补充要求：{task['prompt']}。结束前必须调用 memory_submit。"
+            prompt = f"整理任务 {task_id}。本批有 {len(task['turns'])} 轮。先读取已有文档，再 memory_read(kind='turns') 获取清单并分段读取。补充要求：{task['prompt']}。结束前必须调用 memory_submit。"
         else:
-            prompt = f"审核任务 {task_id}。先 memory_read(kind='proposals') 查看整理提案，按原始依据逐项核查。补充要求：{task['prompt']}。合格项用 memory_edit；不合格项跳过。"
+            prompt = f"审核任务 {task_id}。先 memory_read(kind='proposals') 和 memory_read(kind='results') 查看提案与已处理项，继续未处理项，按原始依据逐项核查。补充要求：{task['prompt']}。合格项用 memory_edit；不合格项用 memory_skip 记录原因。每项必须有结果。"
+        prompt += f" 本批允许修改：{task['allowed_at_start']}；容量：{LIMITS}，每个 Skill references 合计 5000 字符。"
         stop_watch = threading.Event()
 
         def watch_cancellation():
             while not stop_watch.wait(0.2):
                 if self.store.task(task_id)["status"] == "cancelled":
+                    runner.interrupt()
+                    return
+                if time.monotonic() - self._last_activity > self.STALL_SECONDS:
                     runner.interrupt()
                     return
 
@@ -302,6 +324,7 @@ class MemoryService:
 
     def _checkpoint(self, task_id: str, role: str, history: list) -> None:
         with self._lock:
+            self._last_activity = time.monotonic()
             task = self.store.task(task_id)
             if task["status"] in ACTIVE:
                 task[f"{role}_history"] = history
@@ -322,11 +345,16 @@ class MemoryService:
                     task["status"] = "reviewing" if task["proposals"] else "committing"
                     self.store.save_task(task)
             if task["status"] == "reviewing":
-                self._run_role(task_id, "reviewer", llm_settings)
+                with self._lock, self._data_lock():
+                    self._recover_operation(task)
+                if len(task.get("results", {})) < len(task["proposals"]):
+                    self._run_role(task_id, "reviewer", llm_settings)
                 with self._lock, self._data_lock():
                     task = self.store.task(task_id)
                     if task["status"] == "cancelled":
                         return
+                    if len(task.get("results", {})) != len(task["proposals"]):
+                        raise RuntimeError("Reviewer left proposals unfinished; resume remaining items")
                     task["status"] = "committing"
                     self.store.save_task(task)
             with self._lock, self._data_lock():
@@ -346,10 +374,16 @@ class MemoryService:
                                                         if identity not in completed]
                     progress["last_auto_completed_at"] = now()
                     self.store.save_progress(progress)
-                task["status"] = "completed" if task["operations"] else "no_change"
+                results = list(task.get("results", {}).values())
+                changed = sum(item.get("changed", False) for item in results)
+                skipped = any(item["status"] in {"skipped", "blocked"} for item in results)
+                task["status"] = ("partial" if skipped else "completed") if changed else ("skipped" if skipped else "no_change")
                 task["completed_at"] = now()
                 task["proposal_count"] = len(task["proposals"] or [])
-                task["operation_count"] = len(task["operations"])
+                task["operation_count"] = changed
+                task["attempts"] = 0
+                task["error"] = None
+                task.pop("retry_after", None)
                 task.pop("organizer_history", None)
                 task.pop("reviewer_history", None)
                 task.pop("turns", None)
@@ -365,17 +399,16 @@ class MemoryService:
                         task["failed_stage"] = task["status"]
                         task["status"] = "failed"
                         task["attempts"] = task.get("attempts", 0) + 1
-                        task["retry_after"] = (datetime.now().astimezone() + timedelta(hours=1)).isoformat()
+                        task["retryable"] = not isinstance(exc, (ValueError, MemoryConflict))
+                        delay = min(3600, 60 * 2 ** min(task["attempts"] - 1, 6))
+                        task["retry_after"] = (datetime.now().astimezone() + timedelta(seconds=delay)).isoformat()
                         task["error"] = str(exc)
                     self.store.save_task(task)
         finally:
             try:
                 task = self.store.task(task_id)
-                if task["status"] in {"completed", "no_change", "cancelled"}:
-                    shutil.rmtree(self.root / "temp" / "memory" / task_id, ignore_errors=True)
-                    for directory in ("logs", "events"):
-                        (self.store.state / directory / f"{task_id}.jsonl").unlink(missing_ok=True)
-                    self.store.prune_tasks()
+                if task["status"] in TERMINAL:
+                    self._cleanup(task)
             finally:
                 with self._lock:
                     self._release_lease()
@@ -384,12 +417,13 @@ class MemoryService:
         if method != "memory_tool":
             raise ValueError("Unknown memory request")
         with self._lock:
+            self._last_activity = time.monotonic()
             task = self.store.task(task_id)
             expected = "organizing" if role == "organizer" else "reviewing"
             if task["status"] != expected:
                 raise RuntimeError("Memory task is no longer active")
             name = payload["name"]
-            allowed_names = {"memory_read", "memory_note", "memory_submit"} if role == "organizer" else {"memory_read", "memory_note", "memory_edit"}
+            allowed_names = {"memory_read", "memory_note", "memory_submit"} if role == "organizer" else {"memory_read", "memory_note", "memory_edit", "memory_skip"}
             if name not in allowed_names:
                 raise ValueError("Tool not available to this role")
             arguments = payload.get("arguments") or {}
@@ -406,21 +440,20 @@ class MemoryService:
         if kind == "turn":
             if index < 0 or index >= len(task["turns"]):
                 raise ValueError("Turn index outside this task")
-            return read_turn(self.root, task["turns"][index], offset=offset)
+            page = read_turn(self.root, task["turns"][index], offset=offset)
+            if page["missing"]:
+                raise ValueError("Original conversation log is missing; evidence cannot be verified")
+            return page
         if kind == "document":
-            if not self.config()["enabled"]:
-                raise ValueError("Document memory is disabled")
             return self.store.read_document(target)
         if kind == "versions":
-            if not self.config()["enabled"]:
-                raise ValueError("Document memory is disabled")
             return self.store.versions(target)
         if kind == "version":
-            if not self.config()["enabled"]:
-                raise ValueError("Document memory is disabled")
             return self.store.version(target, version_id)
         if kind == "proposals" and role == "reviewer":
             return task["proposals"]
+        if kind == "results" and role == "reviewer":
+            return list(task.get("results", {}).values())
         if kind == "skills":
             loader = SkillLoader(APP_ROOT / "skills", extra_skills_dirs=[self.root / "home" / ".agents" / "skills"])
             return [{"name": name, "writable": Path(item["path"]).resolve().is_relative_to(self.root)}
@@ -495,12 +528,23 @@ class MemoryService:
         with self._data_lock():
             if self.store.task(task["id"])["status"] != "reviewing":
                 raise RuntimeError("Memory task was cancelled")
+            self._recover_operation(task)
+            if str(proposal_index) in task.get("results", {}):
+                return task["results"][str(proposal_index)]
             if target not in task["allowed_at_start"] or target not in self.allowed(manual=task["manual"]):
-                return {"ok": False, "reason": "This update target is disabled"}
+                return self._record_result(task, proposal_index, "blocked", "This update target is disabled")
             if target in LIMITS:
                 if operation != "replace":
                     raise ValueError("Document edit must replace the full content")
-                self.store.save_document(target, content, source="ai", batch_id=task["id"])
+                content = content.replace("\r\n", "\n")
+                if len(content) > LIMITS[target]:
+                    raise ValueError(f"{target}.md exceeds {LIMITS[target]} characters")
+                document = self.document(target)
+                expected = task.get("document_revisions", {}).get(target, document["revision"])
+                if expected != document["revision"]:
+                    raise MemoryConflict("Memory document changed outside this task; review before retrying")
+                old_content = document["content"]
+                existed = True
             else:
                 destination = self._skill_path(skill, path, writable=True)
                 if operation not in {"replace", "delete"}:
@@ -510,24 +554,112 @@ class MemoryService:
                                     if file.is_file() and file.resolve().is_relative_to(base)
                                     and file.suffix.lower() in {".md", ".org", ".txt"}) if base.exists() else 0
                 old_content = destination.read_text(encoding="utf-8") if destination.exists() else ""
+                existed = destination.exists()
                 new_total = current_total - len(old_content) + (len(content) if operation == "replace" else 0)
                 if new_total > 5000 and new_total >= current_total:
                     raise ValueError("Skill references exceed 5000 characters")
-                if operation == "delete":
-                    destination.unlink(missing_ok=True)
-                else:
-                    atomic_text(destination, content)
-        result = {"ok": True}
-        task["operations"][operation_id] = result
+            task["pending_operation"] = {"proposal_index": proposal_index, "operation_id": operation_id,
+                                         "target": target, "operation": operation, "content": content,
+                                         "skill": skill, "path": path, "old_content": old_content,
+                                         "existed": existed}
+            self.store.save_task(task)
+            return self._recover_operation(task)
+
+    def _record_result(self, task: dict, index: int, status: str, reason: str, *, changed: bool = False) -> dict:
+        result = {"proposal_index": index, "target": task["proposals"][index]["target"],
+                  "status": status, "reason": reason, "changed": changed, "ok": status == "applied"}
+        task.setdefault("results", {})[str(index)] = result
         self.store.save_task(task)
         return result
 
-    def resume(self, llm_settings: dict | None = None) -> None:
+    def _memory_skip(self, task: dict, *, role: str, proposal_index: int, reason: str):
+        if not 0 <= proposal_index < len(task["proposals"]) or not reason.strip() or len(reason) > 1000:
+            raise ValueError("Skip requires a valid proposal and a short reason")
+        with self._data_lock():
+            if self.store.task(task["id"])["status"] != "reviewing":
+                raise RuntimeError("Memory task was cancelled")
+            self._recover_operation(task)
+            if str(proposal_index) in task.get("results", {}):
+                return task["results"][str(proposal_index)]
+            return self._record_result(task, proposal_index, "skipped", reason)
+
+    def _recover_operation(self, task: dict) -> dict | None:
+        """Reconcile a write-ahead record while holding the shared data lock."""
+        pending = task.get("pending_operation")
+        if not pending:
+            return None
+        target = pending["target"]
+        destination = (self.store.document_path(target) if target in LIMITS else
+                       self._skill_path(pending["skill"], pending["path"], writable=True))
+        exists = destination.exists()
+        current = destination.read_text(encoding="utf-8") if exists else ""
+        after_exists = pending["operation"] != "delete"
+        after = pending["content"] if after_exists else ""
+        already_written = (exists, current) == (after_exists, after)
+        if not already_written:
+            if (exists, current) != (pending["existed"], pending["old_content"]):
+                raise MemoryConflict("Pending memory write conflicts with newer file content")
+            if target not in self.allowed(manual=task["manual"]):
+                task.pop("pending_operation")
+                return self._record_result(task, pending["proposal_index"], "blocked", "This update target is disabled")
+            if target in LIMITS:
+                self.store.save_document(target, after, source="ai", batch_id=task["id"],
+                                         expected_revision=self.store._revision(destination))
+            elif after_exists:
+                atomic_text(destination, after)
+            else:
+                destination.unlink(missing_ok=True)
+        if target in LIMITS:
+            task.setdefault("document_revisions", {})[target] = self.store._revision(destination)
+        changed = (pending["existed"], pending["old_content"]) != (after_exists, after)
+        task.pop("pending_operation")
+        # Keep the operation receipt and proposal outcome in the same persisted task update.
+        result = {"proposal_index": pending["proposal_index"], "target": target, "status": "applied",
+                  "reason": "Saved" if changed else "Content already matches", "changed": changed, "ok": True}
+        task.setdefault("results", {})[str(pending["proposal_index"])] = result
+        task["operations"][pending["operation_id"]] = result
+        self.store.save_task(task)
+        return result
+
+    def _cleanup(self, task: dict) -> None:
+        try:
+            shutil.rmtree(self.root / "temp" / "memory" / task["id"], ignore_errors=False) if (
+                self.root / "temp" / "memory" / task["id"]).exists() else None
+            for directory in ("logs", "events"):
+                (self.store.state / directory / f"{task['id']}.jsonl").unlink(missing_ok=True)
+            task.pop("cleanup_pending", None)
+        except OSError:
+            task["cleanup_pending"] = True
+        self.store.save_task(task)
+        self.store.prune_tasks()
+
+    def control_task(self, task_id: str, *, action: str, llm_settings: dict | None = None) -> dict:
         with self._lock, self._data_lock():
             if self._thread and self._thread.is_alive():
+                raise RuntimeError("Memory worker is still running")
+            task = self.store.task(task_id)
+            if task["status"] != "failed" or action not in {"retry", "cancel"}:
+                raise ValueError("Only a failed task can be retried or abandoned")
+            if action == "cancel":
+                task["status"] = "cancelled"
+            else:
+                task["retry_after"] = now()
+                task["retryable"] = True
+            self.store.save_task(task)
+        if action == "retry":
+            self.resume(llm_settings)
+        else:
+            self._cleanup(task)
+        return self.task(task_id)
+
+    def resume(self, llm_settings: dict | None = None) -> None:
+        with self._lock, self._data_lock():
+            if self._closing or self._editing() or (self._thread and self._thread.is_alive()):
                 return
             task = self.current_task()
-            if task and task["status"] == "failed" and task.get("attempts", 0) < 3:
+            if task and task["status"] in TERMINAL and task.get("cleanup_pending"):
+                self._cleanup(task)
+            if task and task["status"] == "failed" and task.get("retryable", True):
                 if parse_time(task["retry_after"]) <= datetime.now().astimezone():
                     if self._lease():
                         task["status"] = task["failed_stage"]

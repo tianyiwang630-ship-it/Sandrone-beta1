@@ -8,6 +8,7 @@ from typing import Iterable
 
 from agent.core.sandbox_types import AccessAction, BashCategory
 from agent.core.runtime_layout import current_layout, runtime_python
+from agent.core.managed_python import resolve_python_entry
 
 
 READ_ONLY_SINGLE_COMMANDS = {"pwd"}
@@ -63,6 +64,22 @@ MUTATION_COMMANDS = {"mkdir", "cp", "mv", "rm", "del", "rmdir", "touch", "tee", 
 CONTROL_OPERATORS = ("&&", "||", ";", "$(", "`")
 
 
+def has_shell_control(command: str) -> bool:
+    """Detect shell operators outside quoted arguments."""
+    quote: str | None = None
+    for index, char in enumerate(command):
+        if char in {"'", '"'}:
+            if quote is None:
+                quote = char
+            elif quote == char:
+                quote = None
+            continue
+        if quote is None and (char in {"&", "|", ";", ">", "<", "`", "\n", "\r"}
+                              or command[index:index + 2] == "$("):
+            return True
+    return quote is not None
+
+
 def classify_bash_command(command: str) -> BashCategory:
     stripped = command.strip()
     if not stripped:
@@ -95,13 +112,45 @@ def classify_bash_command(command: str) -> BashCategory:
 
 def extract_script_path(command: str, *, base_dir: Path | None = None) -> Path | None:
     tokens = _split_command(command)
-    if not _is_script_run(tokens):
+    if len(tokens) < 2 or not _is_python_launcher_name(tokens[0]) or tokens[1].startswith("-"):
         return None
 
     raw_path = _strip_quotes(tokens[1])
     if not raw_path:
         return None
     return _resolve_path(raw_path, base_dir=base_dir)
+
+
+def classify_environment_creation(command: str, *, project_root: Path, base_dir: Path) -> str:
+    """Return none, allowed, or deny for the supported uv venv form."""
+    tokens = _split_command(command)
+    if len(tokens) >= 3 and _is_python_launcher_name(tokens[0]) and tokens[1:3] == ["-m", "venv"]:
+        if resolve_python_entry(tokens[0], Path(project_root), base_dir)[1] != "shared" or len(tokens) != 4:
+            return "deny"
+        target = _resolve_path(tokens[3], base_dir=base_dir)
+        parent = Path(project_root).resolve() / "tools" / "venvs"
+        return "allowed" if target is not None and target.parent == parent and not target.exists() else "deny"
+    if len(tokens) < 2 or Path(tokens[0]).name.lower() not in {"uv", "uv.exe"} or tokens[1].lower() != "venv":
+        return "none"
+    forbidden = {"--clear", "--allow-existing", "--system-site-packages", "--directory", "--project", "--config-file"}
+    if any(token.lower().split("=", 1)[0] in forbidden for token in tokens[2:]):
+        return "deny"
+    values = tokens[2:]
+    sources = [values[index + 1] for index, value in enumerate(values[:-1]) if value.lower() == "--python"]
+    sources += [value.split("=", 1)[1] for value in values if value.lower().startswith("--python=")]
+    if len(sources) != 1 or resolve_python_entry(sources[0], Path(project_root), base_dir)[1] != "shared":
+        return "deny"
+    recognized = {"--no-project", "--no-config", "--no-python-downloads", "--python"}
+    if any(value.startswith("-") and value.lower() not in recognized and not value.lower().startswith("--python=") for value in values):
+        return "deny"
+    targets = [value for value in values if not value.startswith("-") and value not in sources]
+    if len(targets) != 1:
+        return "deny"
+    target = _resolve_path(targets[0], base_dir=base_dir)
+    parent = Path(project_root).resolve() / "tools" / "venvs"
+    if target is None or target.parent != parent or target == parent or target.exists():
+        return "deny"
+    return "allowed"
 
 
 def extract_bash_paths(
@@ -131,7 +180,7 @@ def extract_general_write_paths(command: str, *, base_dir: Path | None = None) -
     )
 
 
-def classify_python_launcher_scope(command: str, *, project_root: Path) -> str:
+def classify_python_launcher_scope(command: str, *, project_root: Path, base_dir: Path | None = None) -> str:
     """Return allowed_alpha_venv, deny, or none for direct Python launcher usage."""
     tokens = _split_command(command)
     if not tokens:
@@ -149,7 +198,7 @@ def classify_python_launcher_scope(command: str, *, project_root: Path) -> str:
         index = lowered.index("--python")
         if index + 1 >= len(tokens):
             return "deny"
-        return "allowed_alpha_venv" if _is_venv_python(tokens[index + 1], project_root=project_root) else "deny"
+        return "allowed_alpha_venv" if _is_venv_python(tokens[index + 1], project_root=project_root, base_dir=base_dir) else "deny"
 
     executable = tokens[0]
     if _is_windows_py_launcher(executable):
@@ -159,7 +208,7 @@ def classify_python_launcher_scope(command: str, *, project_root: Path) -> str:
         return "none"
 
     if _is_path_like_executable(executable):
-        return "allowed_alpha_venv" if _is_venv_python(executable, project_root=project_root) else "deny"
+        return "allowed_alpha_venv" if _is_venv_python(executable, project_root=project_root, base_dir=base_dir) else "deny"
 
     return "allowed_alpha_venv"
 
@@ -203,16 +252,19 @@ def is_external_executable_invocation(
     return not _is_relative_to(executable_path, project_root) and not _is_relative_to(executable_path, workspace_root)
 
 
-def classify_package_install_scope(command: str, *, project_root: Path) -> str:
+def classify_package_install_scope(command: str, *, project_root: Path, base_dir: Path | None = None) -> str:
     """Return allowed_host_global, allowed_alpha_venv, ask, or deny for package installs."""
     tokens = _split_command(command)
     if not tokens:
         return "deny"
+    if has_shell_control(command):
+        return "deny"
 
     lowered = [token.lower() for token in tokens]
-    first = lowered[0]
+    first = Path(lowered[0]).name
 
-    if "--user" in lowered or "--system" in lowered:
+    forbidden = {"--user", "--system", "--target", "--prefix", "--root", "--exact", "--upgrade", "-u", "--reinstall", "--force-reinstall", "--no-deps", "--config-file", "--directory", "--project"}
+    if any(token.split("=", 1)[0] in forbidden for token in lowered):
         return "deny"
 
     if first == "go" and len(lowered) >= 2 and lowered[1] == "install":
@@ -229,22 +281,71 @@ def classify_package_install_scope(command: str, *, project_root: Path) -> str:
             return "allowed_host_global"
         return "ask"
 
-    if first == "uv" and len(lowered) >= 3 and lowered[1:3] == ["tool", "install"]:
+    if first in {"uv", "uv.exe"} and len(lowered) >= 3 and lowered[1] == "tool":
+        if lowered[2] == "list":
+            return "allowed_alpha_venv"
+        if lowered[2] != "install" or any(value.startswith(("--force", "--reinstall", "--upgrade", "--with")) for value in lowered[3:]):
+            return "deny"
+        specifications = []
+        index = 3
+        while index < len(tokens):
+            value = tokens[index]
+            if value == "--python" and index + 1 < len(tokens):
+                index += 2
+                continue
+            if value == "--no-config" or value.startswith("--python="):
+                index += 1
+                continue
+            if value.startswith("-"):
+                return "deny"
+            specifications.append(value)
+            index += 1
+        if len(specifications) != 1:
+            return "deny"
+        match = re.match(r"^[A-Za-z0-9][A-Za-z0-9_.-]*", specifications[0])
+        if match is None:
+            return "deny"
+        tool_name = re.sub(r"[-_.]+", "-", match.group(0)).lower()
+        if (Path(project_root).resolve() / "tools" / "uv" / tool_name).exists():
+            return "deny"
         return "allowed_alpha_venv"
 
-    if first == "uv" and len(lowered) >= 3 and lowered[1:3] == ["pip", "install"]:
-        return _classify_uv_pip_install(tokens, project_root=project_root)
+    if first in {"uv", "uv.exe"} and len(lowered) >= 3 and lowered[1] == "pip":
+        if lowered[2] == "install":
+            return _classify_uv_pip_install(tokens, project_root=project_root, base_dir=base_dir)
+        if lowered[2] in {"list", "check", "show", "freeze"}:
+            return _classify_uv_pip_install(tokens, project_root=project_root, base_dir=base_dir, for_install=False)
+        return "deny"
 
     if _is_bare_pip_launcher(first) and len(lowered) >= 2 and lowered[1] in {"install", "uninstall"}:
         return "deny"
 
     if _is_python_pip_install(tokens):
-        return "allowed_alpha_venv" if _is_allowed_python_launcher(tokens[0], project_root=project_root) else "deny"
+        return "allowed_alpha_venv" if _is_allowed_python_launcher(tokens[0], project_root=project_root, base_dir=base_dir, for_install=True) else "deny"
+
+    if len(lowered) >= 4 and lowered[1:3] == ["-m", "pip"]:
+        return "deny"
 
     return "ask"
 
 
-def classify_alpha_venv_command_scope(command: str, *, project_root: Path) -> str:
+def package_install_target_kind(command: str, *, project_root: Path, base_dir: Path) -> str | None:
+    """Identify the selected Python target after command validation."""
+    tokens = _split_command(command)
+    if len(tokens) < 4:
+        return None
+    first = Path(tokens[0]).name.lower()
+    if first in {"uv", "uv.exe"} and tokens[1:3] == ["pip", "install"]:
+        targets = [tokens[index + 1] for index, value in enumerate(tokens[:-1]) if value in {"--python", "-p"}]
+        targets += [value.split("=", 1)[1] for value in tokens if value.startswith("--python=")]
+        if len(targets) == 1:
+            return resolve_python_entry(targets[0], Path(project_root), base_dir)[1]
+    if [value.lower() for value in tokens[1:4]] == ["-m", "pip", "install"]:
+        return resolve_python_entry(tokens[0], Path(project_root), base_dir)[1]
+    return None
+
+
+def classify_alpha_venv_command_scope(command: str, *, project_root: Path, base_dir: Path | None = None) -> str:
     """Return allowed_alpha_venv, deny, or none for alpha venv CLI/module commands."""
     tokens = _split_command(command)
     if not tokens:
@@ -254,12 +355,12 @@ def classify_alpha_venv_command_scope(command: str, *, project_root: Path) -> st
     lowered = [token.lower() for token in tokens]
 
     if _is_python_module_command(tokens):
-        if _is_allowed_python_launcher(executable, project_root=project_root):
+        if _is_allowed_python_launcher(executable, project_root=project_root, base_dir=base_dir):
             return "allowed_alpha_venv"
         if _is_path_like_executable(executable):
             return "deny"
 
-    if _is_path_like_executable(executable) and _is_venv_python_or_cli(executable, project_root=project_root):
+    if _is_path_like_executable(executable) and _is_venv_python_or_cli(executable, project_root=project_root, base_dir=base_dir):
         return "allowed_alpha_venv"
 
     if lowered[0] in {"agent-reach", "agent_reach"}:
@@ -486,12 +587,16 @@ def _is_dangerous_command(command: str, tokens: list[str]) -> bool:
 
 
 def _is_package_install(tokens: list[str]) -> bool:
-    lowered = tuple(token.lower() for token in tokens[:2])
+    lowered = tuple(Path(token).name.lower().removesuffix(".exe") for token in tokens[:2])
     if lowered in PACKAGE_INSTALL_PATTERNS:
         return True
     if len(tokens) >= 2 and _is_bare_pip_launcher(tokens[0].lower()) and tokens[1].lower() in {"install", "uninstall"}:
         return True
-    return _is_python_pip_install(tokens)
+    return _is_python_pip_install(tokens) or (
+        len(tokens) >= 4 and _is_python_launcher_name(tokens[0])
+        and [token.lower() for token in tokens[1:3]] == ["-m", "pip"]
+        and tokens[3].lower() in {"uninstall", "sync"}
+    )
 
 
 def _is_project_command(tokens: list[str]) -> bool:
@@ -556,12 +661,12 @@ def _is_bare_pip_launcher(token: str) -> bool:
     return bool(re.fullmatch(r"pip(?:\d+(?:\.\d+)?)?", Path(_strip_quotes(token)).name.lower()))
 
 
-def _is_allowed_python_launcher(token: str, *, project_root: Path) -> bool:
+def _is_allowed_python_launcher(token: str, *, project_root: Path, base_dir: Path | None = None, for_install: bool = False) -> bool:
     if _is_windows_py_launcher(token):
         return False
-    if _is_path_like_executable(token):
-        return _is_venv_python(token, project_root=project_root)
-    return _is_python_launcher_name(token)
+    if not _is_python_launcher_name(token):
+        return False
+    return _is_venv_python(token, project_root=project_root, base_dir=base_dir, for_install=for_install)
 
 
 def _is_python_launcher_name(token: str) -> bool:
@@ -573,27 +678,18 @@ def _is_windows_py_launcher(token: str) -> bool:
     return Path(_strip_quotes(token)).name.lower() in {"py", "py.exe"}
 
 
-def _is_venv_python(token: str, *, project_root: Path) -> bool:
-    try:
-        python_path = _resolve_executable_path(token, project_root=project_root)
-        if not _is_python_executable_path(python_path):
-            return False
-        if _uses_packaged_runtime(project_root):
-            return python_path == runtime_python(Path(project_root)).resolve()
-        python_path.relative_to(Path(project_root).resolve() / ".venv")
-        return True
-    except Exception:
-        return False
+def _is_venv_python(token: str, *, project_root: Path, base_dir: Path | None = None, for_install: bool = False) -> bool:
+    path, kind = resolve_python_entry(token, Path(project_root), base_dir or Path(project_root))
+    return kind in ({"shared", "skill"} if for_install else {"shared", "skill", "tool"})
 
 
-def _is_venv_python_or_cli(token: str, *, project_root: Path) -> bool:
-    try:
-        executable_path = _resolve_executable_path(token, project_root=project_root)
-        if _uses_packaged_runtime(project_root):
-            executable_path.relative_to(runtime_python(Path(project_root)).resolve().parent)
-        else:
-            executable_path.relative_to(Path(project_root).resolve() / ".venv")
+def _is_venv_python_or_cli(token: str, *, project_root: Path, base_dir: Path | None = None) -> bool:
+    if _is_venv_python(token, project_root=project_root, base_dir=base_dir):
         return True
+    try:
+        entry = _resolve_executable_path(token, project_root=project_root, base_dir=base_dir)
+        shared = runtime_python(Path(project_root)).resolve()
+        return entry.parent == shared.parent or entry.parent == shared.parent / "Scripts"
     except Exception:
         return False
 
@@ -608,15 +704,11 @@ def _is_path_like_executable(token: str) -> bool:
     return "/" in token or "\\" in token or lowered.endswith((".exe", ".cmd", ".bat", ".ps1"))
 
 
-def _resolve_executable_path(token: str, *, project_root: Path) -> Path:
-    path = Path(_strip_quotes(token))
+def _resolve_executable_path(token: str, *, project_root: Path, base_dir: Path | None = None) -> Path:
+    path = _path_from_shell_input(_strip_quotes(token))
     if not path.is_absolute():
-        path = Path(project_root) / path
+        path = (base_dir or Path(project_root)) / path
     return path.resolve()
-
-
-def _is_python_executable_path(path: Path) -> bool:
-    return path.name.lower() in {"python", "python.exe", "python3", "python3.exe"}
 
 
 def _has_inline_path_override(command: str) -> bool:
@@ -627,14 +719,13 @@ def _has_inline_path_override(command: str) -> bool:
     )
 
 
-def _classify_uv_pip_install(tokens: list[str], *, project_root: Path) -> str:
+def _classify_uv_pip_install(tokens: list[str], *, project_root: Path, base_dir: Path | None = None, for_install: bool = True) -> str:
     lowered = [token.lower() for token in tokens]
-    if "--python" not in lowered:
+    targets = [tokens[index + 1] for index, token in enumerate(lowered[:-1]) if token in {"--python", "-p"}]
+    targets.extend(token.split("=", 1)[1] for token in tokens if token.lower().startswith("--python="))
+    if len(targets) != 1:
         return "deny"
-    index = lowered.index("--python")
-    if index + 1 >= len(tokens):
-        return "deny"
-    return "allowed_alpha_venv" if _is_venv_python(tokens[index + 1], project_root=project_root) else "deny"
+    return "allowed_alpha_venv" if _is_venv_python(targets[0], project_root=project_root, base_dir=base_dir, for_install=for_install) else "deny"
 
 
 def _strip_quotes(value: str) -> str:

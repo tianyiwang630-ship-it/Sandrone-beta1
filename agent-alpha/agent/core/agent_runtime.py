@@ -120,6 +120,18 @@ class AgentRuntime:
         )
 
     def _build_system_prompt(self) -> str:
+        from agent.core.runtime_info import write_runtime_info
+
+        runtime_info_path = None
+        try:
+            runtime_info_path = write_runtime_info(
+                data_root=PROJECT_ROOT,
+                app_root=APP_ROOT,
+                built_in_skills=self.skills_dir,
+                third_party_skills=self.agent_home_skills_dir,
+            )
+        except (OSError, UnicodeError) as exc:
+            print(f"Runtime guide unavailable: {exc}")
         return build_system_prompt(
             workspace_root=self.workspace_root,
             logs_dir=self.runtime_logs_dir,
@@ -133,6 +145,7 @@ class AgentRuntime:
             task_id=self.task_id,
             skill_summaries=self.skill_loader.get_summaries(),
             prompt_documents=self.prompt_documents,
+            runtime_info_path=runtime_info_path,
         )
 
     def handle(self, request: str | RuntimeRequest) -> RuntimeResponse:

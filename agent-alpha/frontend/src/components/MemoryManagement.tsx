@@ -49,6 +49,18 @@ export default function MemoryManagement() {
   }, [open, target])
 
   useEffect(() => {
+    if (!open || edit || !task || !['completed', 'partial', 'no_change', 'skipped'].includes(task.status)) return
+    let active = true
+    void Promise.all([api.getMemoryDocument(target), api.listMemoryVersions(target)]).then(([nextDocument, nextVersions]) => {
+      if (!active) return
+      setDocument(nextDocument)
+      setDraft(nextDocument.content)
+      setVersions(nextVersions)
+    }).catch((reason: Error) => { if (active) setError(reason.message) })
+    return () => { active = false }
+  }, [open, target, edit?.id, task?.id, task?.status])
+
+  useEffect(() => {
     if (!edit) return
     return () => { void api.cancelMemoryEdit(edit.id).catch(() => undefined) }
   }, [edit?.id])
@@ -120,7 +132,7 @@ export default function MemoryManagement() {
     const started = await api.startMemoryTask({
       ...(start ? { start: new Date(start).toISOString() } : {}),
       ...(end ? { end: new Date(end).toISOString() } : {}),
-      targets: [...(updateDocuments && config.enabled ? ['documents' as const] : []),
+      targets: [...(updateDocuments ? ['documents' as const] : []),
         ...(updateReferences ? ['references' as const] : [])],
     })
     setTask(started)
@@ -131,6 +143,7 @@ export default function MemoryManagement() {
   const taskLabels: Record<string, string> = {
     organizing: '整理中', reviewing: '审核中', committing: '保存结果中', completed: '已完成', no_change: '无需修改',
     failed: '失败', cancelled: '已取消',
+    partial: '部分完成', skipped: '已检查，未修改',
   }
 
   return <section className="memory-management">
@@ -139,10 +152,10 @@ export default function MemoryManagement() {
     </button>
     {open && config && <div className="memory-content">
       <h3>用户与长期记忆</h3>
-      <label title="控制 user.md 和 memory.md 是否加载到新对话；文件仍保留，不影响技能。">
+      <label title="仅控制 user.md 和 memory.md 是否加载到新对话；关闭后仍可查看、编辑和整理。">
         <input type="checkbox" checked={config.enabled} disabled={busy} onChange={event => void changeConfig({ enabled: event.target.checked })} />启用记忆 ⓘ
       </label>
-      <label title="自动整理 user.md 和 memory.md；关闭后仍可使用已有内容及手动更新。">
+      <label title="控制自动整理 user.md 和 memory.md，与启用记忆独立；关闭后仍可手动整理。">
         <input type="checkbox" checked={config.documents_auto_update} disabled={busy} onChange={event => void changeConfig({ documents_auto_update: event.target.checked })} />自动更新 ⓘ
       </label>
       <div className="memory-tabs">
@@ -190,13 +203,29 @@ export default function MemoryManagement() {
       <h3>现在更新</h3>
       <label>开始时间<input type="datetime-local" value={start} onChange={event => setStart(event.target.value)} /></label>
       <label>结束时间（默认现在）<input type="datetime-local" value={end} onChange={event => setEnd(event.target.value)} /></label>
-      <label><input type="checkbox" checked={updateDocuments} disabled={busy || !config.enabled}
+      <label><input type="checkbox" checked={updateDocuments} disabled={busy}
         onChange={event => setUpdateDocuments(event.target.checked)} />文档记忆</label>
       <label><input type="checkbox" checked={updateReferences} disabled={busy}
         onChange={event => setUpdateReferences(event.target.checked)} />技能经验</label>
-      <button type="button" disabled={busy || running || !!edit || (!!start && !!end && start > end) ||
-        (!updateReferences && (!updateDocuments || !config.enabled))} onClick={() => void run()}>开始整理</button>
+      <button type="button" disabled={busy || running || task?.status === 'failed' || !!edit || (!!start && !!end && start > end) ||
+        (!updateReferences && !updateDocuments)} onClick={() => void run()}>开始整理</button>
       {task && <p>最近整理：{taskLabels[task.status] || task.status} · {task.created_at}{task.error ? ` · ${task.error}` : ''}</p>}
+      {task && <>
+        <p>本次对象：{task.allowed_at_start.map(item => ({ user: '用户信息', memory: '长期记忆', references: '技能经验' }[item] || item)).join('、')}
+          {task.operation_count != null ? ` · 实际修改 ${task.operation_count} 项` : ''}</p>
+        {task.results?.map(item => <p key={item.proposal_index}>提案 {item.proposal_index + 1} · {item.target} · {
+          ({ applied: item.changed ? '已修改' : '内容一致', skipped: '审核跳过', blocked: '目标禁止写入' }[item.status] || item.status)
+        }：{item.reason}</p>)}
+        {task.status === 'failed' && <div className="memory-actions">
+          <p>{task.retryable !== false && task.retry_after ? `等待自动重试：${new Date(task.retry_after).toLocaleString()}` : '需要处理上述原因后重试'}；未完成任务保留。</p>
+          <button type="button" disabled={busy || !!edit} onClick={() => void action(async () => {
+            setTask(await api.controlMemoryTask(task.id, 'retry'))
+          })}>立即重试</button>
+          <button type="button" disabled={busy || !!edit} onClick={() => void action(async () => {
+            setTask(await api.controlMemoryTask(task.id, 'cancel'))
+          })}>放弃本次整理</button>
+        </div>}
+      </>}
       <p>记忆更新及启用状态的变更，在新对话中生效；当前对话不会实时更新。应用重启后恢复对话时，也会加载最新配置和记忆。</p>
     </div>}
     {open && error && <p role="alert">{error}</p>}

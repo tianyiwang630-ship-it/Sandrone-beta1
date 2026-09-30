@@ -108,6 +108,7 @@ def ensure_runtime_directories(project_root: Path) -> None:
         "cache/cargo/bin",
         "cache/rustup",
         "tools/uv",
+        "tools/venvs",
         "config/appdata",
         "config/appdata/npm/node_modules",
         "data/localappdata",
@@ -147,15 +148,16 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
     """Return environment variables that redirect normal user dirs into agent-alpha."""
     root = Path(project_root).resolve()
     home = root / "home"
-    from agent.core.runtime_layout import RuntimeLayout
+    from agent.core.runtime_layout import RuntimeLayout, python_for_root
 
     os_name = _runtime_os_name()
     layout = RuntimeLayout.from_env(base_env)
     packaged_layout = layout.packaged and layout.data_root == root
     app_root = layout.app_root if packaged_layout else root
-    python_executable = layout.python_executable if packaged_layout else _default_python(root, os_name)
+    python_executable = python_for_root(layout, root)
     venv = python_executable.parent.parent if python_executable.parent.name.lower() in {"scripts", "bin"} else python_executable.parent
     scripts_dir = python_executable.parent
+    cli_dir = python_cli_dir(python_executable, os_name=os_name)
     agent_bin_dir = root / "bin"
     npm_prefix = root / "config" / "appdata" / "npm"
     npm_bin_dir = npm_prefix if os_name == "nt" else npm_prefix / "bin"
@@ -224,6 +226,7 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
 
     path_prefix_entries = [
         scripts_dir,
+        cli_dir,
         agent_bin_dir,
         npm_bin_dir,
         home / ".local" / "bin",
@@ -235,8 +238,31 @@ def build_runtime_env(project_root: Path, *, base_env: Mapping[str, str] | None 
     return env
 
 
-def _default_python(root: Path, os_name: str) -> Path:
-    return root / ".venv" / ("Scripts/python.exe" if os_name == "nt" else "bin/python")
+def python_cli_dir(python_executable: Path, *, os_name: str | None = None) -> Path:
+    """Directory where commands installed into the selected Python appear."""
+    python_executable = Path(python_executable)
+    if python_executable.parent.name.lower() in {"scripts", "bin"}:
+        return python_executable.parent
+    return python_executable.parent / ("Scripts" if (os_name or os.name) == "nt" else "bin")
+
+
+INSTALL_ENV_KEYS = {
+    "UV_VENV_CLEAR", "UV_VENV_SEED", "UV_WORKING_DIR", "UV_PROJECT", "UV_CONFIG_FILE",
+    "UV_PYTHON", "UV_SYSTEM_PYTHON", "UV_BREAK_SYSTEM_PACKAGES", "UV_CONSTRAINT",
+    "UV_OVERRIDE", "UV_EXCLUDE", "UV_BUILD_CONSTRAINT", "UV_NO_BUILD_ISOLATION",
+    "PIP_TARGET", "PIP_PREFIX", "PIP_ROOT", "PIP_USER", "PIP_PYTHON",
+    "PIP_CONSTRAINT", "PIP_REQUIREMENT", "PIP_NO_DEPS", "PIP_IGNORE_INSTALLED",
+    "PIP_FORCE_REINSTALL",
+}
+
+
+def installation_env(runtime_env: Mapping[str, str]) -> dict[str, str]:
+    """Remove package-manager controls from this child only, preserving service settings."""
+    env = {key: value for key, value in runtime_env.items() if key.upper() not in INSTALL_ENV_KEYS}
+    env["UV_NO_CONFIG"] = "1"
+    env["UV_PYTHON_DOWNLOADS"] = "never"
+    env["PIP_CONFIG_FILE"] = os.devnull
+    return env
 
 
 def _merge_path_entries(prefix_entries: list[Path], old_path: str, *, os_name: str) -> str:

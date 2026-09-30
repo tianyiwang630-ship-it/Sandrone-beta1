@@ -51,6 +51,7 @@ def build_system_prompt(
     task_id: Optional[str] = None,
     skill_summaries: Optional[List[Dict[str, str]]] = None,
     prompt_documents: Optional[List[Dict[str, str]]] = None,
+    runtime_info_path: Path | None = None,
 ) -> str:
     """Build the base system prompt with runtime paths and optional session docs."""
     task_line = f"Task ID: {task_id}" if task_id else "Task ID: (not set)"
@@ -71,6 +72,12 @@ def build_system_prompt(
 
     python_interpreter = runtime_python(alpha_root)
     app_root_line = f"AGENT_ALPHA_APP_ROOT: {app_root}\n" if app_root != alpha_root else ""
+    runtime_guide = (
+        f"Runtime environment guide: {Path(runtime_info_path).resolve()}\n"
+        "Before installing skills or choosing dependency paths, read this guide and load install-alpha-skill."
+        if runtime_info_path is not None
+        else "Runtime environment guide unavailable for this run; check actual paths before installing skills."
+    )
 
     return f"""You are an agent running inside agent-alpha.
 
@@ -87,6 +94,7 @@ Third-party skill install directory: {recommended_skills_dir}
 Temporary directory: {alpha_root / "temp"}
 Cache directory: {alpha_root / "cache"}
 Python interpreter: {python_interpreter}
+{runtime_guide}
 MCP servers directory: {mcp_servers_dir}
 MCP registry: {mcp_registry_path}
 
@@ -99,16 +107,16 @@ Logs are archived logs. Events are real-time runtime records.
 - Recommended skill install path: {recommended_skills_dir}/<skill-name>
 - load_skill reads both {skills_dir}/<skill-name> and {recommended_skills_dir}/<skill-name>; {skills_dir} wins if names conflict.
 - Do not install skill bodies into ~/.claude/skills, ~/.codex/skills, ~/.openclaw/skills, ~/.agent-alpha/skills, or C:\\Users\\<user>.
-- agent-alpha sets AGENT_ALPHA_ROOT to {alpha_root} and redirects HOME, USERPROFILE, XDG_CONFIG_HOME, XDG_CACHE_HOME, XDG_DATA_HOME, XDG_STATE_HOME, APPDATA, LOCALAPPDATA, TMP, TEMP, PIP_CACHE_DIR, UV_CACHE_DIR, UV_TOOL_DIR, UV_TOOL_BIN_DIR, NODE_PATH, NPM_CONFIG_PREFIX, NPM_CONFIG_CACHE, PYTHONUSERBASE, PYTHONPYCACHEPREFIX, HF_HOME, TRANSFORMERS_CACHE, PLAYWRIGHT_BROWSERS_PATH, DOTNET_CLI_HOME, CARGO_HOME, and RUSTUP_HOME into project-local runtime directories.
+- The runtime guide lists the actual redirected directories and public environment variables for this run.
 - Persistent local environment variables live in {alpha_root / "config" / "runtime_env.local.json"} and are injected into bash commands. When the user provides environment variables that should persist, including tokens, cookies, API keys, auth headers, proxies, or service configuration, save them there unless the user says they are temporary or should not be saved.
 - The runtime env profile is for service variables, not path policy. Do not put HOME, USERPROFILE, PATH, TEMP, APPDATA, AGENT_ALPHA_ROOT, or XDG_* overrides there.
-- Python package installs and Python CLI tool installs should target {python_interpreter}. Do not use bare `pip`, `pip3`, or versioned `pip` commands because they may resolve to a host Python. Use `{python_interpreter} -m pip install ...` or `uv pip install --python {python_interpreter} ...`. If a third-party README suggests `pipx install ...` or `uv tool install ...` for a Python CLI, prefer translating it to this environment. npm and Go global installs keep their host-global behavior.
-- The current workspace and project-local runtime directories are writable, except {alpha_root / "agent"}, which is always read-only to runtime agents.
+- Before installing a Python dependency, load install-alpha-skill and check whether it is compatible with the shared Python. Use the actual interpreter and directories from the runtime guide. Do not use bare pip or host Conda.
+- The current workspace and data root are governed by the normal file policy. {alpha_root / "agent"} is read-only to runtime agents.
 
 ## Bash Runtime
 - Bash working_dir rules are defined by the bash tool schema; follow that schema when choosing the command directory.
 - {alpha_root / "agent"} can be read but must never be created, edited, moved, overwritten, or deleted by runtime agents. Write project files to WORKSPACE_ROOT and temporary artifacts to {alpha_root / "temp"}.
-- {python_interpreter.parent} and {alpha_root / "bin"} are placed at the front of PATH, so Python CLI tools installed in the alpha venv can be called directly when available.
+- The selected Python directory, its CLI directory and {alpha_root / "bin"} are on PATH. Confirm a specific command exists before calling it.
 - Bash receives the project-local runtime env above plus persistent variables from {alpha_root / "config" / "runtime_env.local.json"}.
 - Bash tool calls default to a 30 second timeout and may set `timeout_seconds` up to 300 seconds for expected long tasks such as builds, tests, installs, or large file processing. If a bash command times out, simplify the command, avoid shell pipelines, or retry with an explicit longer timeout when the work is genuinely long.
 - External shell tools such as `grep`, `sed`, `awk`, `xargs`, `head`, `tail`, `cut`, `tr`, `sort`, `uniq`, `wc`, and `tee` may exist through Git Bash, MSYS, WSL, or host PATH. They are allowed, but do not rely on them for critical environment or dependency checks.

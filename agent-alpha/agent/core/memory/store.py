@@ -207,6 +207,12 @@ class MemoryStore:
         paths = sorted(directory.glob("mem_*.json"), key=lambda path: path.stat().st_mtime_ns, reverse=True)
         return json.loads(paths[0].read_text(encoding="utf-8")) if paths else None
 
+    def pending_tasks(self) -> list[dict]:
+        directory = self.state / "tasks"
+        tasks = [json.loads(path.read_text(encoding="utf-8")) for path in directory.glob("mem_*.json")]
+        return sorted((task for task in tasks if task["status"] in {
+            "organizing", "reviewing", "committing", "failed"}), key=lambda task: task["created_at"])
+
     def prune_tasks(self, keep: int = 16) -> None:
         with self.lock:
             directory = self.state / "tasks"
@@ -215,5 +221,5 @@ class MemoryStore:
             paths = sorted(directory.glob("mem_*.json"), key=lambda path: path.stat().st_mtime_ns, reverse=True)
             for path in paths[keep:]:
                 task = json.loads(path.read_text(encoding="utf-8"))
-                if task.get("status") in {"completed", "no_change", "cancelled"}:
+                if task.get("status") in {"completed", "partial", "skipped", "no_change", "cancelled"} and not task.get("cleanup_pending"):
                     path.unlink()

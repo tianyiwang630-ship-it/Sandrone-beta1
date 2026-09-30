@@ -34,7 +34,7 @@ def test_sandbox_allows_uv_pip_install_with_alpha_python(tmp_path: Path):
 
     result = guard.check_tool_call(
         "bash",
-        {"command": "uv pip install --python .venv/Scripts/python.exe pymupdf"},
+        {"command": "uv pip install --python .venv/Scripts/python.exe pymupdf", "working_dir": str(guard.project_root)},
     )
 
     assert result.decision == "allow"

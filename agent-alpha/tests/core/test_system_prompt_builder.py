@@ -125,11 +125,8 @@ def test_system_prompt_rejects_bare_pip_for_python_installs():
         mcp_registry_path=Path("mcp-servers/registry.json"),
     )
 
-    assert "Do not use bare `pip`, `pip3`, or versioned `pip` commands" in prompt
-    alpha_root = Path("skills").resolve().parent
-    python = alpha_root / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    assert f"`{python} -m pip install ...`" in prompt
-    assert f"`uv pip install --python {python} ...`" in prompt
+    assert "Do not use bare pip or host Conda" in prompt
+    assert "load install-alpha-skill" in prompt
 
 
 def test_system_prompt_includes_runtime_records_for_logs_and_events():

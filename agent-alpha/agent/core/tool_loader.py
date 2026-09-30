@@ -75,7 +75,7 @@ class ToolLoader:
             extra_skills_dirs=[self.agent_home_skills_dir],
         )
         self.workspace_root = Path(workspace_root).resolve() if workspace_root else self.project_root.resolve()
-        self.sandbox_guard = SandboxGuard(project_root=self.project_root, workspace_root=self.workspace_root)
+        self.sandbox_guard = SandboxGuard(project_root=self.project_root, workspace_root=self.workspace_root, builtin_skills_dir=self.skills_dir)
 
         self.tools: List[Dict[str, Any]] = []
         self.tool_executors: Dict[str, Any] = {}
@@ -187,7 +187,7 @@ class ToolLoader:
     def configure_runtime(self, workspace_root: Path) -> None:
         """Bind workspace-aware tool instances to the active runtime."""
         self.workspace_root = Path(workspace_root).resolve()
-        self.sandbox_guard = SandboxGuard(project_root=self.project_root, workspace_root=self.workspace_root)
+        self.sandbox_guard = SandboxGuard(project_root=self.project_root, workspace_root=self.workspace_root, builtin_skills_dir=self.skills_dir)
         for tool in self.tool_instances.values():
             if hasattr(tool, "set_workspace_root"):
                 tool.set_workspace_root(self.workspace_root)

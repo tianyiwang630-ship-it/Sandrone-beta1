@@ -12,10 +12,15 @@ import time
 from pathlib import Path
 from typing import Dict, Any, List
 
-from agent.core.command_path_extractor import classify_python_launcher_scope, command_uses_python_launcher
+from agent.core.command_path_extractor import (
+    classify_bash_command, classify_environment_creation, classify_python_launcher_scope,
+    command_uses_python_launcher, has_shell_control, package_install_target_kind,
+)
 from agent.core.path_policy import resolve_bash_command_context, resolve_working_directory
-from agent.core.runtime_paths import build_runtime_env, ensure_runtime_directories
+from agent.core.runtime_paths import build_runtime_env, ensure_runtime_directories, installation_env
 from agent.core.runtime_layout import current_layout, runtime_python
+from agent.core.managed_python import managed_python_kind, resolve_python_entry
+from agent.tools.python_install_guard import install_shared, shared_install_args
 from agent.tools.base_tool import BaseTool
 from agent.tools.process_utils import subprocess_group_kwargs, terminate_process_tree
 
@@ -180,11 +185,32 @@ class BashTool(BaseTool):
 
         command = prepared["command"]
         cwd = prepared["cwd"]
+        process_env = build_runtime_env(self.project_root, base_env=os.environ)
+        if classify_bash_command(command) == "package_install" or classify_environment_creation(command, project_root=self.project_root, base_dir=cwd) != "none":
+            process_env = installation_env(process_env)
+        launcher = self._resolve_alpha_python_launcher(command, cwd) if command_uses_python_launcher(command) else None
+        if launcher is not None and managed_python_kind(launcher, self.project_root) == "skill":
+            environment = launcher.parent.parent
+            process_env["VIRTUAL_ENV"] = str(environment)
+            process_env["PATH"] = os.pathsep.join((str(launcher.parent), process_env.get("PATH", "")))
         null_redirection_error = self._validate_null_redirection(command)
         if null_redirection_error is not None:
             null_redirection_error["command"] = command
             null_redirection_error["working_dir"] = str(cwd)
             return null_redirection_error
+
+        target_kind = package_install_target_kind(command, project_root=self.project_root, base_dir=cwd)
+        if target_kind == "shared" and shared_install_args(command, runtime_python(self.project_root), cwd=cwd) is None:
+            return self._working_dir_error("共用 Python 安装需要一条可明确检查的命令；请拆开复杂命令或改用独立环境。", command)
+        if target_kind == "shared":
+            result = install_shared(
+                command, python=runtime_python(self.project_root), root=self.project_root,
+                cwd=cwd, env=process_env, timeout=timeout_seconds,
+                interrupt_event=self.interrupt_event,
+            )
+            result["command"] = command
+            result["working_dir"] = str(cwd)
+            return result
 
         try:
             # 根据 shell 类型调整命令格式
@@ -208,7 +234,7 @@ class BashTool(BaseTool):
                 encoding='utf-8',  # 明确使用UTF-8编码，避免Windows GBK编码问题
                 errors='replace',  # 遇到无法解码的字符用�替换，而不是抛出异常
                 cwd=str(cwd),
-                env=build_runtime_env(self.project_root, base_env=os.environ),
+                env=process_env,
                 **subprocess_group_kwargs(),
             )
             stdout_parts, stderr_parts, reader_threads = self._start_output_readers(proc)
@@ -660,9 +686,17 @@ class BashTool(BaseTool):
         if misplaced_path_error:
             return self._working_dir_error(misplaced_path_error, command)
 
-        python_error = self._validate_alpha_python(command)
+        if classify_environment_creation(command, project_root=self.project_root, base_dir=cwd) == "deny":
+            return self._working_dir_error("只能在当前 Alpha 数据根的 tools/venvs/<技能名> 创建新环境，并明确使用共用 Python。", command)
+
+        python_error = self._validate_alpha_python(command, cwd)
         if python_error:
             return self._working_dir_error(python_error, command)
+
+        try:
+            command = self._bind_python_entry(command, cwd)
+        except ValueError as exc:
+            return self._working_dir_error(str(exc), command)
 
         return {
             "success": True,
@@ -731,11 +765,11 @@ class BashTool(BaseTool):
             result["guidance"] = self._alpha_python_guidance()
         return result
 
-    def _validate_alpha_python(self, command: str) -> str | None:
+    def _validate_alpha_python(self, command: str, cwd: Path | None = None) -> str | None:
         if not command_uses_python_launcher(command):
             return None
 
-        scope = classify_python_launcher_scope(command, project_root=self.project_root)
+        scope = classify_python_launcher_scope(command, project_root=self.project_root, base_dir=cwd or self.project_root)
         if scope == "deny":
             return (
                 "Python commands must use agent-alpha runtime Python."
@@ -743,7 +777,9 @@ class BashTool(BaseTool):
                 else "Python commands must use agent-alpha .venv Python."
             )
 
-        launcher = self._resolve_alpha_python_launcher(command)
+        if command.lstrip().lower().startswith("uv run "):
+            return None  # uv resolves its own explicitly selected interpreter.
+        launcher = self._resolve_alpha_python_launcher(command, cwd)
         if launcher is None or not launcher.exists():
             return (
                 "Missing agent-alpha runtime Python; Python commands will not fall back to host Python."
@@ -752,7 +788,7 @@ class BashTool(BaseTool):
             )
         return None
 
-    def _resolve_alpha_python_launcher(self, command: str) -> Path | None:
+    def _resolve_alpha_python_launcher(self, command: str, cwd: Path | None = None) -> Path | None:
         try:
             tokens = shlex.split(command, posix=False)
         except ValueError:
@@ -762,10 +798,13 @@ class BashTool(BaseTool):
             return None
 
         executable = tokens[0]
+        if Path(executable).name.lower() in {"python", "python3", "python.exe", "python3.exe"}:
+            entry, kind = resolve_python_entry(executable, self.project_root, cwd or self.project_root)
+            return entry if kind else None
         if "/" in executable or "\\" in executable or executable.lower().endswith((".exe", ".cmd", ".bat")):
             path = Path(executable)
             if not path.is_absolute():
-                path = self.project_root / path
+                path = (cwd or self.project_root) / path
             return path.resolve()
 
         launcher = executable.lower()
@@ -787,6 +826,21 @@ class BashTool(BaseTool):
             if candidate.exists():
                 return candidate.resolve()
         return candidates[0].resolve() if candidates else None
+
+    def _bind_python_entry(self, command: str, cwd: Path) -> str:
+        """Use the launcher we validated, avoiding shell lookup in the working directory."""
+        match = re.match(r"^(\s*)(\"[^\"]+\"|'[^']+'|\S+)(.*)$", command, flags=re.DOTALL)
+        if match is None:
+            return command
+        token = self._strip_quotes(match.group(2))
+        if Path(token).name.lower() not in {"python", "python3", "python.exe", "python3.exe"}:
+            return command
+        if has_shell_control(command):
+            raise ValueError("请将 Python 调用拆成单条命令，以便确认实际解释器。")
+        entry, kind = resolve_python_entry(token, self.project_root, cwd)
+        if kind is None or entry is None:
+            raise ValueError("Python 解释器不属于当前 Alpha 受管环境。")
+        return f'{match.group(1)}"{entry}"{match.group(3)}'
 
     def _strip_quotes(self, value: str) -> str:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:

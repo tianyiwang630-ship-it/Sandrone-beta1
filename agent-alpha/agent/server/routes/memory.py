@@ -53,6 +53,10 @@ class TaskStart(BaseModel):
     targets: list[str] | None = None
 
 
+class TaskAction(BaseModel):
+    action: str
+
+
 @router.get("/config")
 def config():
     return agent_manager.memory.config()
@@ -114,6 +118,12 @@ def start_task(body: TaskStart):
 def current_task():
     task = agent_manager.memory.current_task()
     return agent_manager.memory._public_task(task) if task else None
+
+
+@router.post("/tasks/{task_id}/actions")
+def control_task(task_id: str, body: TaskAction):
+    return call(agent_manager.memory.control_task, task_id, action=body.action,
+                llm_settings=state_store.get_settings())
 
 
 @router.get("/tasks/{task_id}")

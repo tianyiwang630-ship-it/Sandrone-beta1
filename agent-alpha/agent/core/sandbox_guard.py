@@ -6,6 +6,7 @@ from typing import Any, Dict
 from agent.core.command_path_extractor import (
     classify_alpha_venv_command_scope,
     classify_bash_command,
+    classify_environment_creation,
     classify_package_install_scope,
     classify_python_launcher_scope,
     explain_alpha_venv_command_guidance,
@@ -30,9 +31,10 @@ class SandboxGuard:
         "edit": "write",
     }
 
-    def __init__(self, *, project_root: Path, workspace_root: Path):
+    def __init__(self, *, project_root: Path, workspace_root: Path, builtin_skills_dir: Path | None = None):
         self.project_root = Path(project_root).resolve()
         self.workspace_root = Path(workspace_root).resolve()
+        self.builtin_skills_dir = Path(builtin_skills_dir).resolve() if builtin_skills_dir else None
 
     def check_tool_call(self, tool_name: str, arguments: Dict[str, Any]) -> SandboxCheckResult:
         if tool_name == "bash":
@@ -203,7 +205,14 @@ class SandboxGuard:
             cwd = git_cwd
             category = git_category
 
-        python_scope = classify_python_launcher_scope(command, project_root=self.project_root)
+        creation = classify_environment_creation(command, project_root=self.project_root, base_dir=cwd)
+        if creation != "none":
+            return SandboxCheckResult(
+                decision="allow" if creation == "allowed" else "deny",
+                action="write", zone="project", reason="Managed Python environment creation" if creation == "allowed" else "Unsupported Python environment creation",
+            )
+
+        python_scope = classify_python_launcher_scope(command, project_root=self.project_root, base_dir=cwd)
         if python_scope == "deny":
             return SandboxCheckResult(
                 decision="deny",
@@ -217,7 +226,7 @@ class SandboxGuard:
             )
 
         if category == "package_install":
-            scope = classify_package_install_scope(command, project_root=self.project_root)
+            scope = classify_package_install_scope(command, project_root=self.project_root, base_dir=cwd)
             if scope in {"allowed_host_global", "allowed_alpha_venv"}:
                 return SandboxCheckResult(
                     decision="allow",
@@ -244,6 +253,13 @@ class SandboxGuard:
                 guidance="Package installation commands such as pip install or npm install are allowed only after one-time approval.",
             )
 
+        script_path = extract_script_path(command, base_dir=cwd)
+        if script_path is not None and python_scope == "allowed_alpha_venv":
+            in_builtin = self.builtin_skills_dir is not None and script_path.is_relative_to(self.builtin_skills_dir)
+            _decision, zone = decide_path_access(script_path, action="read", workspace_root=self.workspace_root, project_root=self.project_root)
+            if zone not in {"workspace", "project"} and not in_builtin:
+                return SandboxCheckResult(decision="deny", action="read", zone="outside", reason="Python script is outside the allowed workspace, data root and built-in skills")
+
         if category == "project_command":
             return SandboxCheckResult(
                 decision="allow",
@@ -252,7 +268,7 @@ class SandboxGuard:
                 reason="Project command execution is allowed for common development workflows",
             )
 
-        alpha_venv_scope = classify_alpha_venv_command_scope(command, project_root=self.project_root)
+        alpha_venv_scope = classify_alpha_venv_command_scope(command, project_root=self.project_root, base_dir=cwd)
         if alpha_venv_scope == "allowed_alpha_venv":
             return SandboxCheckResult(
                 decision="allow",
@@ -277,7 +293,7 @@ class SandboxGuard:
                 workspace_root=self.workspace_root,
                 project_root=self.project_root,
             )
-            if zone in {"workspace", "project"}:
+            if zone in {"workspace", "project"} or (self.builtin_skills_dir is not None and script_path is not None and script_path.is_relative_to(self.builtin_skills_dir)):
                 return SandboxCheckResult(
                     decision="allow",
                     action="read",

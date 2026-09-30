@@ -43,6 +43,11 @@ export interface MemoryTask {
   created_at: string
   error?: string | null
   allowed_at_start: string[]
+  retry_after?: string | null
+  retryable?: boolean | null
+  operation_count?: number | null
+  proposal_count?: number | null
+  results?: { proposal_index: number; target: string; status: string; reason: string; changed: boolean }[]
 }
 
 export class ApiRequestError extends Error {
@@ -90,6 +95,8 @@ export const api = {
   restoreMemoryVersion: (target: 'user' | 'memory', body: { edit_id: string; revision: string; version_id: string }) =>
     request<MemoryDocument>(`/memory/documents/${target}/restorations`, { method: 'POST', body: JSON.stringify(body) }),
   getMemoryTask: () => request<MemoryTask | null>('/memory/tasks/current'),
+  controlMemoryTask: (id: string, action: 'retry' | 'cancel') =>
+    request<MemoryTask>(`/memory/tasks/${encodeURIComponent(id)}/actions`, { method: 'POST', body: JSON.stringify({ action }) }),
   startMemoryTask: (body: { start?: string; end?: string; targets?: ('documents' | 'references')[] }) =>
     request<MemoryTask>('/memory/tasks', { method: 'POST', body: JSON.stringify(body) }),
   startBrowserMaintenance: () => request<{ ok: boolean }>('/runtime/browser/maintenance/start', { method: 'POST' }),

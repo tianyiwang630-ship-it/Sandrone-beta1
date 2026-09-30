@@ -62,6 +62,9 @@ def current_layout() -> RuntimeLayout:
 
 def runtime_python(project_root: Path | None = None) -> Path:
     layout = current_layout()
-    if project_root is None or Path(project_root).resolve() == layout.data_root:
-        return layout.python_executable
-    return _development_python(Path(project_root).resolve())
+    return python_for_root(layout, layout.data_root if project_root is None else Path(project_root))
+
+
+def python_for_root(layout: RuntimeLayout, project_root: Path) -> Path:
+    root = Path(project_root).resolve()
+    return layout.python_executable if root == layout.data_root else _development_python(root)

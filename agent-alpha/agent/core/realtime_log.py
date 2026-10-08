@@ -16,7 +16,7 @@ from agent.core.session_events import truncate_text
 MAX_LOG_TOOL_RESULT_CHARS = 128_000
 MAX_LOG_TOOL_RESULT_LINES = 2_000
 LOG_VERSION = 3
-LOG_RETENTION_DAYS = 7
+LOG_RETENTION_DAYS = 40
 _BODY_FIELDS = {"content", "reasoning_content", "arguments", "system_prompt", "tools"}
 
 

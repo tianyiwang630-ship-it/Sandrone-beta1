@@ -53,7 +53,10 @@ class AgentManager:
                 try:
                     memory = getattr(self, "memory", None)
                     protected = memory.protected_sessions() if memory is not None else set()
-                    cleanup_expired_logs(self.logs_dir, protected_sessions=protected)
+                    if protected:
+                        cleanup_expired_logs(self.logs_dir, protected_sessions=protected)
+                    else:
+                        cleanup_expired_logs(self.logs_dir)
                 except OSError:
                     pass  # A transient directory/filesystem failure is retried next sweep.
                 next_log_cleanup = time.monotonic() + self.LOG_CLEANUP_INTERVAL_SECONDS

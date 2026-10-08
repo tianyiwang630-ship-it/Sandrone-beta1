@@ -127,7 +127,7 @@ def test_prompt_snapshot_switches_and_cancelled_late_write(tmp_path, monkeypatch
     assert saved["prompt"] == "本次要求"
     assert saved["status"] == "failed"  # Organizer must submit a proposal or 'no change'.
     service.update_config({"manual_prompt": "下次要求", "enabled": False})
-    assert service.allowed(manual=True) == ["references"]
+    assert service.allowed(manual=True) == ["user", "memory", "references"]
     assert service.store.task(task["id"])["prompt"] == "本次要求"
 
 
@@ -147,7 +147,8 @@ def test_manual_target_selection_is_enforced_at_review_write(tmp_path, monkeypat
     result = service._memory_rpc(task["id"], "reviewer", "memory_tool", {
         "name": "memory_edit", "arguments": {"proposal_index": 0, "operation_id": "forbidden",
                                             "target": "user", "operation": "replace", "content": "不应写入"}})
-    assert result == {"ok": False, "reason": "This update target is disabled"}
+    assert not result["ok"] and result["status"] == "blocked"
+    assert result["reason"] == "This update target is disabled"
     assert service.document("user")["content"] == ""
 
 

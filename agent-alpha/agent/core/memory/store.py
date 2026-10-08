@@ -208,10 +208,11 @@ class MemoryStore:
         return json.loads(paths[0].read_text(encoding="utf-8")) if paths else None
 
     def pending_tasks(self) -> list[dict]:
-        directory = self.state / "tasks"
-        tasks = [json.loads(path.read_text(encoding="utf-8")) for path in directory.glob("mem_*.json")]
-        return sorted((task for task in tasks if task["status"] in {
+        return sorted((task for task in self.tasks() if task["status"] in {
             "organizing", "reviewing", "committing", "failed"}), key=lambda task: task["created_at"])
+
+    def tasks(self) -> list[dict]:
+        return [json.loads(path.read_text(encoding="utf-8")) for path in (self.state / "tasks").glob("mem_*.json")]
 
     def prune_tasks(self, keep: int = 16) -> None:
         with self.lock:
